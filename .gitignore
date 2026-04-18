@@ -1,0 +1,31 @@
+# Rust build artifacts
+/target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# Criterion raw data (checked-in HTML report is in target/ anyway)
+/target/criterion/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Claude Code session data
+.claude/
+
+# Vendored reference material (not shipped)
+/reference/
+
+# Local env + scratch
+.env
+.env.local
+scratch/
+scan_exports.ps1
+
+# Logs
+*.log

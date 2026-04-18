@@ -1,0 +1,23 @@
+[package]
+name = "ironaccelerator-metal"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Metal backend for IronAccelerator (Apple GPU + ANE via MPS, MPSGraph, MLX-style kernels)"
+
+[dependencies]
+ironaccelerator-core = { workspace = true }
+once_cell  = { workspace = true }
+
+[target.'cfg(target_vendor = "apple")'.dependencies]
+# Real bindings will use objc2 / metal-rs; the v0.1 scaffold avoids the dep
+# so the workspace builds on non-Apple hosts.
+
+[features]
+default = []
+mps     = []
+mpsgraph = []
+mlx     = []
+coreml  = []

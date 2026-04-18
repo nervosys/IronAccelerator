@@ -1,0 +1,26 @@
+[package]
+name = "ironaccelerator-rocm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "ROCm/HIP backend for IronAccelerator (AMD CDNA & RDNA via HIP, hipBLASLt, MIOpen, RCCL)"
+
+[dependencies]
+ironaccelerator-core = { workspace = true }
+libloading = { workspace = true }
+once_cell  = { workspace = true }
+
+[features]
+default = ["dynamic-loading"]
+dynamic-loading = []
+hip      = []
+hipblas  = []
+hipblaslt = []
+miopen   = []
+rocfft   = []
+rocrand  = []
+rocsparse = []
+rocsolver = []
+rccl     = []

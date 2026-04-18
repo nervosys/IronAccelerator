@@ -1,0 +1,58 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/ironaccelerator",
+    "crates/ironaccelerator-core",
+    "crates/ironaccelerator-ontology",
+    "crates/ironaccelerator-cuda",
+    "crates/ironaccelerator-cuda-sys",
+    "crates/ironaccelerator-rocm",
+    "crates/ironaccelerator-metal",
+    "crates/ironaccelerator-qnn",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+license = "AGPL-3.0-or-later"
+authors = ["Nervosys"]
+repository = "https://github.com/nervosys/IronAccelerator"
+homepage = "https://github.com/nervosys/IronAccelerator"
+description = "High-performance, agentic-first Rust acceleration library spanning CUDA, ROCm, Metal, and Qualcomm NPUs"
+keywords = ["cuda", "rocm", "metal", "npu", "accelerator"]
+categories = ["api-bindings", "hardware-support", "science"]
+
+[workspace.dependencies]
+ironaccelerator-core      = { path = "crates/ironaccelerator-core",     version = "0.1.0" }
+ironaccelerator-ontology  = { path = "crates/ironaccelerator-ontology", version = "0.1.0" }
+ironaccelerator-cuda      = { path = "crates/ironaccelerator-cuda",     version = "0.1.0" }
+ironaccelerator-cuda-sys  = { path = "crates/ironaccelerator-cuda-sys", version = "0.1.0" }
+ironaccelerator-rocm      = { path = "crates/ironaccelerator-rocm",     version = "0.1.0" }
+ironaccelerator-metal     = { path = "crates/ironaccelerator-metal",    version = "0.1.0" }
+ironaccelerator-qnn       = { path = "crates/ironaccelerator-qnn",      version = "0.1.0" }
+
+half      = { version = "2", default-features = false, features = ["num-traits"] }
+bitflags  = "2"
+thiserror = "2"
+serde     = { version = "1", features = ["derive"] }
+serde_json = "1"
+libloading = "0.9"
+once_cell = "1"
+parking_lot = "0.12"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+incremental = false
+
+[profile.release-debug]
+inherits = "release"
+debug = true
+strip = "none"
+
+[profile.bench]
+inherits = "release"

@@ -1,0 +1,20 @@
+[package]
+name = "ironaccelerator-qnn"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Qualcomm AI Engine (Hexagon NPU / QNN SDK) backend for IronAccelerator"
+
+[dependencies]
+ironaccelerator-core = { workspace = true }
+libloading = { workspace = true }
+once_cell  = { workspace = true }
+
+[features]
+default = ["dynamic-loading"]
+dynamic-loading = []
+htp = []   # Hexagon Tensor Processor
+gpu = []   # Adreno GPU backend of QNN
+cpu = []   # QNN CPU reference

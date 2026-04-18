@@ -1,0 +1,47 @@
+[package]
+name = "ironaccelerator-cuda"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "CUDA backend for IronAccelerator, targeting CUDA Toolkit 13.2 via iron_cuda_sys"
+
+[dependencies]
+ironaccelerator-core     = { workspace = true }
+ironaccelerator-cuda-sys = { workspace = true }
+once_cell = { workspace = true }
+parking_lot = { workspace = true }
+half = { workspace = true, optional = true }
+
+[dev-dependencies]
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "host_hot_path"
+harness = false
+
+[[bench]]
+name = "gpu_vs_cudart"
+harness = false
+
+[features]
+default = ["driver", "runtime", "cublas", "cublaslt", "cudnn", "nvrtc",
+           "curand", "nccl", "cusparse", "cusolver", "cufft", "cutensor",
+           "nvtx", "cupti", "f16"]
+
+driver   = []
+runtime  = []
+cublas   = []
+cublaslt = []
+cudnn    = []
+nvrtc    = []
+curand   = []
+nccl     = []
+cusparse = []
+cusolver = []
+cufft    = []
+cutensor = []
+nvtx     = []
+cupti    = []
+f16      = ["dep:half"]

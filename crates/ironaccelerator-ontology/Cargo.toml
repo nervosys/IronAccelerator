@@ -1,0 +1,19 @@
+[package]
+name = "ironaccelerator-ontology"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Machine-readable ontology of accelerators, workloads, and strategies for agent-driven planning"
+
+[dependencies]
+ironaccelerator-core = { workspace = true }
+serde      = { workspace = true }
+serde_json = { workspace = true }
+once_cell  = { workspace = true }
+
+[features]
+default = ["embed"]
+# Embed the JSON knowledge base into the binary.
+embed = []
