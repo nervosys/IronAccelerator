@@ -109,17 +109,41 @@ tool-call schema for an LLM agent loop.
 
 ## Performance posture
 
-Every host-side wrapper is benchmarked against the raw driver API. On a
-reference run (RTX 3090 Ti, CUDA 13.2, release build):
+Every host-side wrapper is benchmarked against the raw `iron_cuda_sys`
+driver path on the same primary context. On a reference run
+(RTX 3090 Ti, CUDA 13.2 / driver 596.21, release build, 2026-04-18):
 
-| Path                                  | Wrapped       | Raw driver    |
-|---------------------------------------|---------------|---------------|
-| `Stream` create + destroy             | ~650 ns       | ~555 ns       |
-| Stream synchronize (empty)            | ~98 ns        | ~98 ns        |
-| `Event` create+record+sync+destroy    | ~18 µs        | ~18 µs        |
-| Async alloc + free (1 KB … 256 MB)    | ~500–590 ns   | ~430–570 ns   |
-| D→D memcpy round-trip (16 MB)         | 48.6 µs (321 GiB/s) | 48.8 µs (320 GiB/s) |
-| D→D memcpy round-trip (256 MB)        | 616 µs (406 GiB/s)  | 616 µs (406 GiB/s)  |
+| Path                                  | Raw driver          | Wrapped             | Overhead |
+|---------------------------------------|---------------------|---------------------|----------|
+| Stream synchronize (empty)            | 58 ns               | 99 ns               | +41 ns   |
+| `Stream` create + destroy             | 806 ns              | 1 026 ns            | +220 ns  |
+| `Event` create+record+sync+destroy    | 31.9 µs             | 28.3 µs             | faster   |
+| Async alloc + free (1 KB … 256 MB)    | 571–1 177 ns        | 556–1 181 ns        | ~0       |
+| Memset async enqueue (1 KB … 16 MB)   | 5.2–12.7 µs         | 4.5–13.0 µs         | ~0       |
+| H→D memcpy round-trip (16 MB)         | 1.774 ms (8.8 GiB/s)  | 1.774 ms (8.8 GiB/s)  | **0%** |
+| H→D memcpy round-trip (256 MB)        | 37.78 ms (6.6 GiB/s)  | 37.73 ms (6.6 GiB/s)  | **0%** |
+| D→D memcpy round-trip (16 MB)         | 48.7 µs (320 GiB/s)   | 48.7 µs (320 GiB/s)   | **0%** |
+| D→D memcpy round-trip (256 MB)        | 612 µs (408 GiB/s)    | 613 µs (408 GiB/s)    | **0%** |
+
+Bulk data paths show **zero measurable overhead**. Microsecond-scale
+control-plane ops carry a fixed ~40–220 ns cost, well under driver jitter
+and irrelevant at kernel-launch scale. The wrapper ties or beats the raw
+driver on several paths — the hot `fns()` pointer table is cached once
+and every wrapper call is `#[inline(always)]`.
+
+### Live-GPU functional coverage
+
+`tests/gpu_smoke.rs` exercises the full CUDA pipeline end-to-end on the
+host's actual GPU (cleanly skipped on GPU-less CI):
+
+- Device enumeration + bind across every visible ordinal
+- H→D / D→H / D→D memcpy with byte-for-byte value integrity
+- Event record + sync
+- Raw-driver ↔ wrapper parity on memset + memcpy
+- 8 concurrent streams in flight (verifies no hidden global mutex)
+- **NVRTC compile + launch of a real SAXPY kernel over 1 M elements**,
+  result verified against a CPU reference
+- NVRTC cache identity (same source+arch → same `Arc<Module>`)
 
 Pure-CPU hot paths (host overhead, no GPU involvement):
 
