@@ -92,8 +92,8 @@ pub enum CublasOp { N = 0, T = 1, C = 2 }
 pub enum CublasLtMatmulDescAttr {
     TransA = 3,
     TransB = 4,
-    Epilogue = 23,
-    BiasPointer = 22,
+    Epilogue = 7,
+    BiasPointer = 8,
     ScaleA = 17,
     ScaleB = 18,
     ScaleC = 19,
@@ -113,7 +113,15 @@ pub enum CublasLtMatrixLayoutAttr {
 #[repr(u32)]
 #[derive(Debug, Clone, Copy)]
 pub enum CublasLtMatmulPrefAttr {
-    MaxWorkspaceBytes = 0,
+    SearchMode = 0,
+    MaxWorkspaceBytes = 1,
+    ReductionSchemeMask = 3,
+    MinAlignmentABytes = 5,
+    MinAlignmentBBytes = 6,
+    MinAlignmentCBytes = 7,
+    MinAlignmentDBytes = 8,
+    MaxWavesCount = 9,
+    ImplMask = 12,
 }
 
 /// `cublasLtOrder_t`.

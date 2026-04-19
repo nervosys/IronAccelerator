@@ -264,11 +264,14 @@ impl Preference {
 
     pub fn set_max_workspace(&mut self, bytes: usize) -> Result<()> {
         let f = fns()?;
+        // cuBLASLt documents MaxWorkspaceBytes as u64 (size_t). On 64-bit
+        // platforms `usize` matches; on 32-bit we still need a 8-byte write.
+        let v: u64 = bytes as u64;
         unsafe {
             check("cublasLtMatmulPreferenceSetAttribute(MaxWorkspaceBytes)",
                   (f.cublasLtMatmulPreferenceSetAttribute)(
                       self.raw, sys::CublasLtMatmulPrefAttr::MaxWorkspaceBytes,
-                      &bytes as *const _ as *const c_void, std::mem::size_of::<usize>()))
+                      &v as *const u64 as *const c_void, std::mem::size_of::<u64>()))
         }
     }
 

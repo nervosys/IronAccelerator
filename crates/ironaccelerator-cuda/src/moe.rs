@@ -38,14 +38,21 @@ use iron_cuda_sys::driver::CUdeviceptr;
 use ironaccelerator_core::{Error, Result};
 use std::sync::Arc;
 
-/// Element type for expert activations. FP16 only in v1.0.
-#[derive(Debug, Copy, Clone)]
-pub enum MoeDType { F16 }
+/// Element type for expert activations. FP16 and BF16 supported.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum MoeDType { F16, Bf16 }
 
 impl MoeDType {
-    fn bytes(self) -> usize { match self { Self::F16 => 2 } }
+    fn bytes(self) -> usize { 2 }
     fn cublas(self) -> sys::CudaDataType {
-        match self { Self::F16 => sys::CudaDataType::R16F }
+        match self {
+            Self::F16 => sys::CudaDataType::R16F,
+            Self::Bf16 => sys::CudaDataType::R16BF,
+        }
+    }
+    /// NVRTC suffix for kernel names instantiated from the C++ template.
+    fn suffix(self) -> &'static str {
+        match self { Self::F16 => "f16", Self::Bf16 => "bf16" }
     }
 }
 
@@ -84,7 +91,19 @@ impl MoeParams {
 
 const MOE_SRC: &str = r#"
 #include <cuda_fp16.h>
+#include <cuda_bf16.h>
 #include <math_constants.h>
+
+// Dtype traits — kept minimal so NVRTC's C++17 compile stays cheap.
+template<typename T> struct DT;
+template<> struct DT<__half> {
+    static __device__ __forceinline__ float to_f(const __half& v) { return __half2float(v); }
+    static __device__ __forceinline__ __half from_f(float v) { return __float2half(v); }
+};
+template<> struct DT<__nv_bfloat16> {
+    static __device__ __forceinline__ float to_f(const __nv_bfloat16& v) { return __bfloat162float(v); }
+    static __device__ __forceinline__ __nv_bfloat16 from_f(float v) { return __float2bfloat16(v); }
+};
 
 extern "C" __global__ void moe_softmax_topk(
     const float* __restrict__ logits,
@@ -140,18 +159,19 @@ extern "C" __global__ void moe_exclusive_scan(
     }
 }
 
-extern "C" __global__ void moe_permute(
-    const __half* __restrict__ x,
+template<typename T>
+__device__ __forceinline__ void permute_impl(
+    const T* __restrict__ x,
     const int* __restrict__ topk_idx,
     const int* __restrict__ offsets,
     int* __restrict__ running,
-    __half* __restrict__ permuted,
+    T* __restrict__ permuted,
     int* __restrict__ scatter_pos,
-    int T, int H, int K)
+    int T_tok, int H, int K)
 {
     int t = blockIdx.x;
     int k = blockIdx.y;
-    if (t >= T || k >= K) return;
+    if (t >= T_tok || k >= K) return;
     __shared__ int dst_row;
     if (threadIdx.x == 0) {
         int e = topk_idx[t * K + k];
@@ -165,33 +185,51 @@ extern "C" __global__ void moe_permute(
     }
 }
 
-extern "C" __global__ void moe_silu(__half* y, int N) {
+template<typename T>
+__device__ __forceinline__ void silu_impl(T* y, int N) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= N) return;
-    float v = __half2float(y[i]);
+    float v = DT<T>::to_f(y[i]);
     float s = v / (1.f + __expf(-v));
-    y[i] = __float2half(s);
+    y[i] = DT<T>::from_f(s);
 }
 
-extern "C" __global__ void moe_combine(
-    const __half* __restrict__ permuted_y,
+template<typename T>
+__device__ __forceinline__ void combine_impl(
+    const T* __restrict__ permuted_y,
     const int* __restrict__ scatter_pos,
     const float* __restrict__ topk_w,
-    __half* __restrict__ y,
-    int T, int H, int K)
+    T* __restrict__ y,
+    int T_tok, int H, int K)
 {
     int t = blockIdx.x;
-    if (t >= T) return;
+    if (t >= T_tok) return;
     for (int h = threadIdx.x; h < H; h += blockDim.x) {
         float acc = 0.f;
         for (int k = 0; k < K; ++k) {
             int src = scatter_pos[t * K + k];
             float w = topk_w[t * K + k];
-            acc += w * __half2float(permuted_y[(size_t)src * H + h]);
+            acc += w * DT<T>::to_f(permuted_y[(size_t)src * H + h]);
         }
-        y[(size_t)t * H + h] = __float2half(acc);
+        y[(size_t)t * H + h] = DT<T>::from_f(acc);
     }
 }
+
+#define INSTANTIATE(SUF, T)                                                 \
+extern "C" __global__ void moe_permute_##SUF(                               \
+    const T* x, const int* topk_idx, const int* offsets, int* running,      \
+    T* permuted, int* scatter_pos, int T_tok, int H, int K)                 \
+{ permute_impl<T>(x, topk_idx, offsets, running, permuted, scatter_pos,     \
+                  T_tok, H, K); }                                           \
+extern "C" __global__ void moe_silu_##SUF(T* y, int N)                      \
+{ silu_impl<T>(y, N); }                                                     \
+extern "C" __global__ void moe_combine_##SUF(                               \
+    const T* permuted_y, const int* scatter_pos, const float* topk_w,       \
+    T* y, int T_tok, int H, int K)                                          \
+{ combine_impl<T>(permuted_y, scatter_pos, topk_w, y, T_tok, H, K); }
+
+INSTANTIATE(f16,  __half)
+INSTANTIATE(bf16, __nv_bfloat16)
 "#;
 
 // ── Scratch ────────────────────────────────────────────────────────────────
@@ -290,7 +328,7 @@ impl FlashMoePlan {
         params.validate()?;
 
         let opts = CompileOptions {
-            extras: vec!["--use_fast_math".into(), "-default-device".into()],
+            extras: vec!["--use_fast_math".into(), "-std=c++17".into()],
             ..Default::default()
         };
         let ck = kernel::get_or_compile(&device, MOE_SRC, "moe_softmax_topk", &opts)?;
@@ -298,13 +336,14 @@ impl FlashMoePlan {
         let k_softmax_topk = ck.function;
         let k_count   = module.function("moe_count")?;
         let k_scan    = module.function("moe_exclusive_scan")?;
-        let k_permute = module.function("moe_permute")?;
-        let k_silu    = module.function("moe_silu")?;
-        let k_combine = module.function("moe_combine")?;
+        let suf = params.dtype.suffix();
+        let k_permute = module.function(&format!("moe_permute_{suf}"))?;
+        let k_silu    = module.function(&format!("moe_silu_{suf}"))?;
+        let k_combine = module.function(&format!("moe_combine_{suf}"))?;
 
         // Both the router and the expert matmul use FP32 accumulation with
-        // FP16 I/O. One descriptor can be reused for both by rebuilding the
-        // layouts per call.
+        // FP16/BF16 I/O. One descriptor can be reused for both by rebuilding
+        // the layouts per call.
         let mut router_desc = MatmulDesc::new(sys::CublasComputeType::F32, sys::CudaDataType::R32F)?;
         router_desc.set_transpose(sys::CublasOp::N, sys::CublasOp::N)?;
         let mut expert_desc = MatmulDesc::new(sys::CublasComputeType::F32, sys::CudaDataType::R32F)?;
@@ -349,9 +388,14 @@ impl FlashMoePlan {
         let ii = p.inter as i32;
 
         // ── 1. Router GEMM: logits[T, E] = X[T, H] @ W_gate[H, E] ──────
-        let a_layout = MatrixLayout::new(p.dtype.cublas(), t as u64, h as u64, h as i64)?;
-        let b_layout = MatrixLayout::new(p.dtype.cublas(), h as u64, e as u64, e as i64)?;
-        let c_layout = MatrixLayout::new(sys::CudaDataType::R32F, t as u64, e as u64, e as i64)?;
+        // All tensors are row-major; set Order=Row on every layout so
+        // cuBLASLt interprets (rows, cols, ld=cols) correctly.
+        let mut a_layout = MatrixLayout::new(p.dtype.cublas(), t as u64, h as u64, h as i64)?;
+        let mut b_layout = MatrixLayout::new(p.dtype.cublas(), h as u64, e as u64, e as i64)?;
+        let mut c_layout = MatrixLayout::new(sys::CudaDataType::R32F, t as u64, e as u64, e as i64)?;
+        a_layout.set_order(blas::Order::Row)?;
+        b_layout.set_order(blas::Order::Row)?;
+        c_layout.set_order(blas::Order::Row)?;
         let alpha: f32 = 1.0; let beta: f32 = 0.0;
         let heur = blas::heuristic(&self.blaslt, &self.router_desc,
                                    &a_layout, &b_layout, &c_layout, &c_layout, &self.pref)?;
@@ -427,9 +471,12 @@ impl FlashMoePlan {
             let wd = w_down_stack + (e_id as u64) * (wd_stride as u64);
 
             // up: [n_e, I] = [n_e, H] @ [H, I]
-            let a_l = MatrixLayout::new(p.dtype.cublas(), n_e as u64, h as u64, h as i64)?;
-            let b_l = MatrixLayout::new(p.dtype.cublas(), h as u64, ii as u64, ii as i64)?;
-            let c_l = MatrixLayout::new(p.dtype.cublas(), n_e as u64, ii as u64, ii as i64)?;
+            let mut a_l = MatrixLayout::new(p.dtype.cublas(), n_e as u64, h as u64, h as i64)?;
+            let mut b_l = MatrixLayout::new(p.dtype.cublas(), h as u64, ii as u64, ii as i64)?;
+            let mut c_l = MatrixLayout::new(p.dtype.cublas(), n_e as u64, ii as u64, ii as i64)?;
+            a_l.set_order(blas::Order::Row)?;
+            b_l.set_order(blas::Order::Row)?;
+            c_l.set_order(blas::Order::Row)?;
             let heur = blas::heuristic(&self.blaslt, &self.expert_desc,
                                        &a_l, &b_l, &c_l, &c_l, &self.pref)?;
             unsafe {
@@ -447,9 +494,12 @@ impl FlashMoePlan {
                 stream, (m_off, n_act))?;
 
             // down: [n_e, H] = [n_e, I] @ [I, H]
-            let a_l = MatrixLayout::new(p.dtype.cublas(), n_e as u64, ii as u64, ii as i64)?;
-            let b_l = MatrixLayout::new(p.dtype.cublas(), ii as u64, h as u64, h as i64)?;
-            let c_l = MatrixLayout::new(p.dtype.cublas(), n_e as u64, h as u64, h as i64)?;
+            let mut a_l = MatrixLayout::new(p.dtype.cublas(), n_e as u64, ii as u64, ii as i64)?;
+            let mut b_l = MatrixLayout::new(p.dtype.cublas(), ii as u64, h as u64, h as i64)?;
+            let mut c_l = MatrixLayout::new(p.dtype.cublas(), n_e as u64, h as u64, h as i64)?;
+            a_l.set_order(blas::Order::Row)?;
+            b_l.set_order(blas::Order::Row)?;
+            c_l.set_order(blas::Order::Row)?;
             let heur = blas::heuristic(&self.blaslt, &self.expert_desc,
                                        &a_l, &b_l, &c_l, &c_l, &self.pref)?;
             unsafe {

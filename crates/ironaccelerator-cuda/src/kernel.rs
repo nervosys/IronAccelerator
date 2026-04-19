@@ -65,6 +65,39 @@ fn nvrtc_err(op: &'static str) -> Error {
     Error::Other(op)
 }
 
+/// Return a list of CUDA toolkit `include/` directories to add to every
+/// NVRTC compile. Checks `CUDA_PATH`, `IRON_CUDA_INCLUDE`, and the standard
+/// install locations on Linux / Windows / macOS.
+fn default_cuda_include_paths() -> Vec<String> {
+    let mut out = Vec::new();
+    let mut push = |p: String| {
+        if std::path::Path::new(&p).is_dir() && !out.contains(&p) {
+            out.push(p);
+        }
+    };
+    if let Ok(p) = std::env::var("IRON_CUDA_INCLUDE") {
+        for part in p.split(if cfg!(windows) { ';' } else { ':' }) {
+            if !part.is_empty() { push(part.to_string()); }
+        }
+    }
+    if let Ok(p) = std::env::var("CUDA_PATH") {
+        push(format!("{p}/include"));
+    }
+    if let Ok(p) = std::env::var("CUDA_HOME") {
+        push(format!("{p}/include"));
+    }
+    // Common defaults.
+    if cfg!(target_os = "linux") {
+        push("/usr/local/cuda/include".into());
+    }
+    if cfg!(target_os = "windows") {
+        for v in ["v13.2", "v13.1", "v13.0", "v12.9", "v12.8", "v12.5"] {
+            push(format!("C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/{v}/include"));
+        }
+    }
+    out
+}
+
 /// Get-or-compile a kernel for `device`.
 pub fn get_or_compile(
     device: &Arc<Device>,
@@ -119,6 +152,12 @@ fn compile(src: &str, arch: &str, opts: &CompileOptions) -> Result<Vec<u8>> {
     for inc in &opts.include_paths {
         flags.push(CString::new(format!("-I{inc}")).unwrap());
     }
+    // Best-effort auto-detect of the CUDA toolkit `include/` directory so
+    // kernels that use `cuda_fp16.h` / `cuda_bf16.h` etc. resolve without
+    // callers having to plumb the path themselves.
+    for inc in default_cuda_include_paths() {
+        flags.push(CString::new(format!("-I{inc}")).unwrap());
+    }
     for ex in &opts.extras { flags.push(CString::new(ex.as_str()).unwrap()); }
     let ptrs: Vec<*const std::ffi::c_char> = flags.iter().map(|c| c.as_ptr()).collect();
 
@@ -130,9 +169,11 @@ fn compile(src: &str, arch: &str, opts: &CompileOptions) -> Result<Vec<u8>> {
         // Pull compile log for diagnostics, then destroy.
         let mut sz: usize = 0;
         unsafe { let _ = (n.nvrtcGetProgramLogSize)(prog, &mut sz); }
-        let mut buf = vec![0i8; sz.max(1)];
-        unsafe { let _ = (n.nvrtcGetProgramLog)(prog, buf.as_mut_ptr()); }
+        let mut buf = vec![0u8; sz.max(1)];
+        unsafe { let _ = (n.nvrtcGetProgramLog)(prog, buf.as_mut_ptr() as *mut i8); }
         unsafe { let _ = (n.nvrtcDestroyProgram)(&mut prog); }
+        let log = String::from_utf8_lossy(&buf).trim_end_matches('\0').to_string();
+        eprintln!("[nvrtc] compile log:\n{log}");
         return Err(nvrtc_err("nvrtcCompileProgram failed"));
     }
 
