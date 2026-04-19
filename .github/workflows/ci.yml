@@ -59,11 +59,10 @@ jobs:
   # pure library + loader-probe tests.
   docs:
     runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -D warnings
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      # -D warnings here would break on pre-existing broken intra-doc
-      # links inherited from the 0.1 CUDA sys crate. Tracked in
-      # ROADMAP.md (API review). Re-enable once cleaned up.
       - run: cargo doc --workspace --no-deps

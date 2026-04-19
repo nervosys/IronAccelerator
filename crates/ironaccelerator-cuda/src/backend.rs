@@ -1,8 +1,8 @@
 //! `Backend` trait implementation for CUDA.
 //!
-//! Uses cudarc's safe [`CudaContext`] to enumerate devices and read
-//! capability bits, then derives an IronAccelerator [`Strategy`] from the
-//! workload + capability flags.
+//! Uses the in-crate [`crate::drv::Device`] layer to enumerate devices and
+//! read capability bits, then derives an IronAccelerator `Strategy` from
+//! the workload + capability flags.
 
 use crate::drv::Device;
 use iron_cuda_sys::driver::CUdevice_attribute as Attr;

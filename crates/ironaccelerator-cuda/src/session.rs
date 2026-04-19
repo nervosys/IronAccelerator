@@ -1,13 +1,13 @@
 //! `Session` — the canonical entry point for executing IronAccelerator
 //! workloads on CUDA.
 //!
-//! Built on the in-crate [`drv`] safe layer (which sits directly on
+//! Built on the in-crate [`crate::drv`] safe layer (which sits directly on
 //! `iron_cuda_sys`). A `Session` bundles:
 //!
-//! - a retained primary [`drv::Device`] for an ordinal
-//! - the active [`drv::Stream`] (`Arc`-shared so it can be cloned cheaply
+//! - a retained primary [`crate::drv::Device`] for an ordinal
+//! - the active [`crate::drv::Stream`] (`Arc`-shared so it can be cloned cheaply
 //!   into tensor lifetimes when needed)
-//! - the device's [`Capability`] profile
+//! - the device's `Capability` profile
 //! - per-session [`Metrics`] and [`Profiler`]
 //!
 //! Library handles (cuBLASLt, cuDNN, cuFFT, …) are **not** held by the

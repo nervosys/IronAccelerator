@@ -1,8 +1,8 @@
 //! Attention strategy dispatch.
 //!
-//! cudarc does not yet expose a safe cuDNN frontend / Flash-Attention
-//! operator, so this module is intentionally a **planner shim**: it maps an
-//! attention [`Workload`] onto the [`Strategy`] the CUDA backend would
+//! The cuDNN frontend / Flash-Attention operator is wired up in
+//! [`crate::flash_attention`]; this module is a **planner shim** that maps
+//! an attention `Workload` onto the `Strategy` the CUDA backend would
 //! execute (FA-v3, FA-v2, cuDNN fused MHA, or fall-back) and exposes the
 //! pieces each path needs (qkv layout, scale, causal flag, head dim).
 //!

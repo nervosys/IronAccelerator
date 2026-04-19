@@ -156,12 +156,12 @@ impl MetricsSnapshot {
     #[inline] pub fn resident_bytes(&self) -> i64 {
         self.alloc_bytes as i64 - self.free_bytes as i64
     }
-    /// NVRTC cache hit ratio in [0,1]. Returns 0 if the cache was never hit.
+    /// NVRTC cache hit ratio in `[0, 1]`. Returns 0 if the cache was never hit.
     #[inline] pub fn nvrtc_hit_ratio(&self) -> f32 {
         let total = self.nvrtc_hits + self.nvrtc_misses;
         if total == 0 { 0.0 } else { self.nvrtc_hits as f32 / total as f32 }
     }
-    /// cuFFT plan cache hit ratio in [0,1].
+    /// cuFFT plan cache hit ratio in `[0, 1]`.
     #[inline] pub fn fft_hit_ratio(&self) -> f32 {
         let total = self.fft_hits + self.fft_misses;
         if total == 0 { 0.0 } else { self.fft_hits as f32 / total as f32 }

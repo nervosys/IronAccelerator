@@ -3,7 +3,7 @@
 //! Turns an [`Fp8Recipe`] + shape into a concrete cuBLASLt call. The recipe
 //! is pre-validated; the builder configures:
 //!
-//! - per-operand [`CudaDataType`] (E4M3/E5M2 inputs, Bf16/Fp16/Fp32 output)
+//! - per-operand `CudaDataType` (E4M3/E5M2 inputs, Bf16/Fp16/Fp32 output)
 //! - compute type (FP32 accumulate, or FP32-fast-BF16 for [`AccumMode::Bf16Fast`])
 //! - delayed-scaling pointers (A / B / D)
 //! - optional output-amax pointer

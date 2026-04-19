@@ -41,7 +41,7 @@ pub fn copy_tensor(_session: &Session, src: &CudaTensor, dst: &mut CudaTensor) -
     Ok(())
 }
 
-/// Read a tensor back to a host Vec<u8>. Blocking — calls `synchronize`.
+/// Read a tensor back to a host `Vec<u8>`. Blocking — calls `synchronize`.
 pub fn to_host_bytes(session: &Session, src: &CudaTensor) -> Result<Vec<u8>> {
     let mut out = vec![0u8; src.bytes() as usize];
     src.raw().copy_to_host(&mut out)?;

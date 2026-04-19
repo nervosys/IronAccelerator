@@ -2,9 +2,9 @@
 //! helpers for storage buffers + compute pipelines + dispatch.
 //!
 //! On WASM the browser hands us a device directly via
-//! [`crate::drv::bind_device`]; [`Context::from_bound`] uses that path.
-//! On native (or on WASM when no preselected device was bound) we run
-//! the normal `pollster::block_on` adapter request.
+//! [`crate::drv::bind_device`]; `Context::new` uses that path if a device
+//! has been bound. On native (or on WASM when no preselected device was
+//! bound) we run the normal `pollster::block_on` adapter request.
 
 use pollster::block_on;
 use wgpu::util::DeviceExt;

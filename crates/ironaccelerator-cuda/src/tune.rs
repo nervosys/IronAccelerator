@@ -1,5 +1,5 @@
 //! Autotuner — benchmarks candidate implementations and caches the winner
-//! per problem key. Timing uses [`Timer`](crate::events::Timer) so the
+//! per problem key. Timing uses [`crate::events::Timer`] so the
 //! measurement is GPU-accurate (wall-clock via `cuEventElapsedTime`).
 //!
 //! Typical use: pass a set of `Candidate`s (tile sizes, kernel variants),

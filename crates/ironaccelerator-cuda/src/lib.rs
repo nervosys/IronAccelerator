@@ -5,7 +5,7 @@
 //! libraries: driver, runtime, NVRTC, cuBLAS / cuBLASLt, cuDNN, cuRAND,
 //! cuSPARSE, cuSOLVER, cuFFT, cuTENSOR, NCCL, NVTX, CUPTI.
 //!
-//! The crate re-exports [`cudarc`] verbatim under [`raw`] so callers can
+//! The crate re-exports the raw FFI surface under [`sys`] so callers can
 //! drop down to vendor primitives without losing IronAccelerator's planner
 //! integration. New code should prefer the [`safe`] module which adds
 //! IronAccelerator-specific fast paths:
@@ -71,7 +71,8 @@ pub use backend::{CudaBackend, CUDA_BACKEND};
 pub use session::Session;
 pub use tensor::CudaTensor;
 
-/// Register the CUDA backend with the global [`BackendRegistry`]. Idempotent.
+/// Register the CUDA backend with the global
+/// `ironaccelerator_core::BackendRegistry`. Idempotent.
 pub fn register(reg: &mut ironaccelerator_core::BackendRegistry) {
     let b: &'static backend::CudaBackend = &CUDA_BACKEND;
     reg.register(b);

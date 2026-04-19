@@ -1,7 +1,7 @@
 //! IronAccelerator launch helpers over [`crate::drv::Function::launch`].
 //!
 //! The safe driver layer already exposes a compile-time typed launch path via
-//! the [`LaunchArgs`](crate::drv::LaunchArgs) trait. This module adds shorthand
+//! the [`crate::drv::LaunchArgs`] trait. This module adds shorthand
 //! constructors for 1-D / 2-D geometries and a pass-through for the fully
 //! general case.
 

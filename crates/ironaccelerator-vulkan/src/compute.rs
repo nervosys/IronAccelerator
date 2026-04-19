@@ -210,7 +210,7 @@ impl Buffer {
     }
 
     /// Map a host-visible buffer; returns a raw pointer valid until
-    /// [`unmap`]. Caller upholds aliasing / lifetime invariants.
+    /// [`Self::unmap`]. Caller upholds aliasing / lifetime invariants.
     ///
     /// # Safety
     /// Buffer must have been allocated with `HOST_VISIBLE`.
