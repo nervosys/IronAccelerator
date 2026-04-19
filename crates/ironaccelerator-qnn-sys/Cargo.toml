@@ -1,0 +1,14 @@
+[package]
+name = "ironaccelerator-qnn-sys"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "QNN SDK FFI for IronAccelerator (Hexagon HTP / Adreno GPU / CPU reference)"
+
+[lib]
+name = "iron_qnn_sys"
+
+[dependencies]
+libloading = { workspace = true }

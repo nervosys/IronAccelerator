@@ -17,14 +17,20 @@
 //! cudarc crate layout). The CDNA3 (`gfx942`) FP8 path through hipBLASLt is
 //! the highest-priority follow-up.
 
-#![allow(clippy::missing_safety_doc)]
+#![allow(
+    clippy::missing_safety_doc,
+    clippy::too_many_arguments,
+    clippy::type_complexity,
+)]
 
 pub mod backend;
+pub mod blas;
+pub mod drv;
 
 pub use backend::{RocmBackend, ROCM_BACKEND};
 
 pub fn register(reg: &mut ironaccelerator_core::BackendRegistry) {
     // Force the Lazy and hand the registry the inner `'static` reference.
-    let b: &'static backend::RocmBackend = &*ROCM_BACKEND;
+    let b: &'static backend::RocmBackend = &ROCM_BACKEND;
     reg.register(b);
 }

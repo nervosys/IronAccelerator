@@ -191,6 +191,41 @@ impl BackendDescr {
         Ok(())
     }
 
+    /// Read `cap` elements of `ty` from the given attribute slot. Returns
+    /// the actual count reported by cuDNN.
+    ///
+    /// # Safety
+    /// `ty` must match the attribute's declared type, and `out` must have
+    /// room for `cap` elements of `T`.
+    pub unsafe fn get_attribute<T>(
+        &self, attr: u32, ty: AttrType, cap: i64, out: *mut T,
+    ) -> Result<i64> {
+        let f = fns()?;
+        let mut n: i64 = 0;
+        unsafe {
+            check("cudnnBackendGetAttribute",
+                  (f.cudnnBackendGetAttribute)(
+                      self.raw, attr, ty as u32, cap, &mut n, out as *mut c_void))?;
+        }
+        Ok(n)
+    }
+
+    pub fn get_i64(&self, attr: u32) -> Result<i64> {
+        let mut v: i64 = 0;
+        unsafe { self.get_attribute(attr, AttrType::Int64, 1, &mut v)?; }
+        Ok(v)
+    }
+    pub fn get_descriptor(&self, attr: u32) -> Result<sys::CudnnBackendDescriptor> {
+        let mut v = sys::CudnnBackendDescriptor::default();
+        let n = unsafe {
+            self.get_attribute(attr, AttrType::BackendDescriptor, 1, &mut v)?
+        };
+        if n < 1 {
+            return Err(Error::Other("cudnn::get_descriptor: no result"));
+        }
+        Ok(v)
+    }
+
     /// Execute an already-finalized engine/plan descriptor against a
     /// finalized variant-pack descriptor.
     pub fn execute(
@@ -207,6 +242,14 @@ impl BackendDescr {
                 handle.raw(), plan.raw, variant_pack.raw))
         }
     }
+}
+
+/// Adopt a raw descriptor that was created externally (e.g. by
+/// `cudnnBackendGetAttribute`) so it participates in RAII destruction.
+pub fn adopt_descriptor(raw: sys::CudnnBackendDescriptor, kind: u32, finalized: bool)
+    -> BackendDescr
+{
+    BackendDescr { raw, kind, finalized }
 }
 
 impl Drop for BackendDescr {

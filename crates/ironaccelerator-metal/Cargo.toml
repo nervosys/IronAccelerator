@@ -12,8 +12,10 @@ ironaccelerator-core = { workspace = true }
 once_cell  = { workspace = true }
 
 [target.'cfg(target_vendor = "apple")'.dependencies]
-# Real bindings will use objc2 / metal-rs; the v0.1 scaffold avoids the dep
-# so the workspace builds on non-Apple hosts.
+metal            = "0.32"
+objc2            = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSString", "NSArray"] }
+block2           = "0.6"
 
 [features]
 default = []

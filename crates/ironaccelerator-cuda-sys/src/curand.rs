@@ -7,7 +7,7 @@
 use crate::driver::{CUdeviceptr, CUstream};
 use crate::loader::{sym, try_load, LoadError};
 use libloading::Library;
-use std::ffi::{c_int, c_void};
+use std::ffi::c_void;
 use std::sync::{LazyLock, OnceLock};
 
 #[repr(transparent)]

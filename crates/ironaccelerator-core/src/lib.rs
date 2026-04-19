@@ -17,6 +17,7 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
+pub mod activation;
 pub mod backend;
 pub mod capability;
 pub mod device;
@@ -25,6 +26,8 @@ pub mod error;
 pub mod handle;
 pub mod kernel;
 pub mod memory;
+pub mod quant;
+pub mod simd;
 pub mod stream;
 pub mod strategy;
 pub mod tensor;

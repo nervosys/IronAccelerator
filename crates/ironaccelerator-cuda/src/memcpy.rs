@@ -13,7 +13,7 @@ use ironaccelerator_core::{Error, Result};
 #[inline]
 pub fn htod<T: Repr>(session: &Session, src: &[T], dst: &mut DeviceBuf<T>) -> Result<()> {
     dst.copy_from_host(src)?;
-    session.metrics().record_htod((src.len() * std::mem::size_of::<T>()) as u64);
+    session.metrics().record_htod(std::mem::size_of_val(src) as u64);
     Ok(())
 }
 
@@ -21,7 +21,7 @@ pub fn htod<T: Repr>(session: &Session, src: &[T], dst: &mut DeviceBuf<T>) -> Re
 #[inline]
 pub fn dtoh<T: Repr>(session: &Session, src: &DeviceBuf<T>, dst: &mut [T]) -> Result<()> {
     src.copy_to_host(dst)?;
-    session.metrics().record_dtoh((dst.len() * std::mem::size_of::<T>()) as u64);
+    session.metrics().record_dtoh(std::mem::size_of_val(dst) as u64);
     Ok(())
 }
 

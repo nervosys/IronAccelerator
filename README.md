@@ -1,14 +1,38 @@
 # IronAccelerator
 
 A high-performance, **agentic-first** Rust acceleration library spanning
-NVIDIA CUDA, AMD ROCm, Apple Metal, and Qualcomm Hexagon NPUs.
+NVIDIA, AMD, Apple, Qualcomm, Intel, Google, and AWS accelerators plus
+open cross-vendor APIs (Vulkan / OpenGL / WebGPU).
 
-> **Status: v0.1.** The CUDA backend is a complete, purpose-built safe
-> wrapper over CUDA Toolkit 13.2 — driver API, cuBLAS, cuBLASLt (FP8),
-> cuDNN v9 backend graph, cuSOLVER, cuSPARSE, cuFFT, cuRAND, NCCL,
-> cuTENSOR, CUPTI, NVRTC, NVTX — built directly on hand-written FFI in
-> `ironaccelerator-cuda-sys`. No cudarc dependency. ROCm, Metal, and QNN
-> backends are scaffolded with dynamic-load probes and planner stubs.
+> **Status: v1.0.** CUDA / ROCm / Metal / QNN backends ship live device
+> enumeration + real kernels. FlashAttention-3 (cuDNN v9 backend graph)
+> and Flash-MoE land in 1.0. Cross-vendor (Vulkan / OpenGL / WebGPU) and
+> vendor-specific (Level Zero / TPU / AWS Neuron) backends compile
+> clean, enumerate devices, and carry compute scaffolds; see
+> [`ROADMAP.md`](ROADMAP.md) for what flips on the way to 1.1.
+
+## Backend support matrix
+
+| Backend        | Vendor / API                         | Enumerate | Compute scaffold | Real kernels              | Min SDK / runtime                |
+|----------------|--------------------------------------|-----------|------------------|---------------------------|----------------------------------|
+| CUDA           | NVIDIA                               | ✅        | ✅               | BLAS / cuDNN / FA-3 / MoE | CUDA 12.5+ driver (13.x tested)  |
+| ROCm           | AMD                                  | ✅        | ✅               | hipBLASLt (FP8 on gfx942) | ROCm 6.2+                        |
+| Metal          | Apple                                | ✅        | ✅               | MPS GEMM                  | macOS 14+ / iOS 17+              |
+| QNN            | Qualcomm Hexagon NPU                 | ✅        | ⚠️ HDK needed    | —                         | QNN SDK 2.22+                    |
+| Vulkan         | cross-vendor GPU compute             | ✅        | ✅               | SAXPY (WGSL→SPIR-V)       | Vulkan 1.3 ICD                   |
+| OpenGL         | legacy / embedded GPU fallback       | ✅ ctx    | ✅               | SAXPY                     | GL 4.3+ compute                  |
+| WebGPU         | native (Vk/Metal/DX12) + browser     | ✅        | ✅               | SAXPY WGSL                | wgpu 22 / Chrome 113+            |
+| TPU (PJRT)     | Google TPU v4 / v5 / v6e             | ✅ env    | ⏳ PJRT client   | —                         | PJRT plugin (`libtpu.so`)        |
+| Level Zero     | Intel GPU (Arc / Flex / PVC) + NPU   | ✅        | ✅               | —                         | `ze_loader` from Intel compute   |
+| AWS Neuron     | Trainium / Inferentia                | ✅ cores  | ⏳ NEFF load     | —                         | `libnrt` (Neuron SDK 2.x)        |
+| CPU SIMD       | AVX2 / NEON                          | n/a       | ✅               | row-wise INT8 quant       | none                             |
+
+Every backend is loaded via `libloading` at first use — the workspace
+builds on any host, present or missing vendor SDK. Missing runtimes
+surface as typed `BackendUnavailable` errors, not link failures.
+
+Per-backend build prerequisites and runtime environment variables live in
+[`docs/backends/`](docs/backends/).
 
 ## Why
 

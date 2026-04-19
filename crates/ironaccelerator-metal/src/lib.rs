@@ -18,6 +18,11 @@
 
 pub mod backend;
 
+#[cfg(target_vendor = "apple")]
+pub mod drv;
+#[cfg(target_vendor = "apple")]
+pub mod blas;
+
 pub use backend::{MetalBackend, METAL_BACKEND};
 
 pub fn register(reg: &mut ironaccelerator_core::BackendRegistry) {

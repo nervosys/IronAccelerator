@@ -1,7 +1,7 @@
 //! CUDA Driver API (`libcuda.so` / `nvcuda.dll`). Targets 13.2.
 //!
 //! Only the functions IronAccelerator's safe layer actually uses are bound.
-//! If you need a new one, add it to [`DriverFns`] and [`load`].
+//! If you need a new one, add it to [`DriverFns`] and `DriverFns::load`.
 
 use crate::loader::{sym, try_load, LoadError, LoaderResult};
 use libloading::Library;

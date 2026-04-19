@@ -42,7 +42,7 @@ struct CacheKey {
 
 struct CacheEntry {
     module: Arc<Module>,
-    fn_name: CString,
+    _fn_name: CString,
 }
 
 static CACHE: Lazy<RwLock<HashMap<CacheKey, CacheEntry>>> =
@@ -92,7 +92,7 @@ pub fn get_or_compile(
 
     CACHE.write().insert(key, CacheEntry {
         module: module.clone(),
-        fn_name: CString::new(fn_name).map_err(|_| nvrtc_err("fn_name: NUL in string"))?,
+        _fn_name: CString::new(fn_name).map_err(|_| nvrtc_err("fn_name: NUL in string"))?,
     });
     Ok(CompiledKernel { module, function })
 }

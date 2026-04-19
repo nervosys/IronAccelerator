@@ -6,7 +6,7 @@ use crate::cublas_lt::CudaDataType;
 use crate::driver::CUstream;
 use crate::loader::{sym, try_load, LoadError};
 use libloading::Library;
-use std::ffi::{c_int, c_void};
+use std::ffi::c_void;
 use std::sync::{LazyLock, OnceLock};
 
 #[repr(transparent)] #[derive(Copy, Clone, Debug, Default)] pub struct CutensorHandle(pub *mut c_void);

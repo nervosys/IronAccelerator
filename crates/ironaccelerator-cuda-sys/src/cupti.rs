@@ -3,10 +3,9 @@
 //! We bind the Activity API (records flushed in batches) and the simpler
 //! subscriber/callback API used to time individual driver/runtime calls.
 
-use crate::driver::CUstream;
 use crate::loader::{sym, try_load, LoadError};
 use libloading::Library;
-use std::ffi::{c_int, c_uint, c_void};
+use std::ffi::c_void;
 use std::sync::{LazyLock, OnceLock};
 
 #[repr(transparent)]

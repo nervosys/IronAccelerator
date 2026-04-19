@@ -19,7 +19,7 @@ fn fns() -> Result<&'static sys::CublasLtFns> {
     sys::fns().map_err(|e| Error::Other(Box::leak(format!("cublasLt not available: {e}").into_boxed_str())))
 }
 
-fn check(op: &'static str, s: sys::CublasStatus) -> Result<()> {
+fn check(_op: &'static str, s: sys::CublasStatus) -> Result<()> {
     if s.is_ok() { Ok(()) } else {
         Err(Error::Backend {
             backend: ironaccelerator_core::BackendKind::Cuda,

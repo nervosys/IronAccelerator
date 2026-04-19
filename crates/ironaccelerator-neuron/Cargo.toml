@@ -1,0 +1,16 @@
+[package]
+name = "ironaccelerator-neuron"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "AWS Neuron backend for IronAccelerator — Trainium (trn1 / trn2) and Inferentia (inf1 / inf2) via libnrt"
+
+[dependencies]
+ironaccelerator-core = { workspace = true }
+once_cell  = { workspace = true }
+libloading = { workspace = true }
+
+[features]
+default = []

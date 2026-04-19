@@ -1,0 +1,15 @@
+[package]
+name = "ironaccelerator-rocm-sys"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Clean-room ROCm 6.x HIP FFI + dynamic loader for IronAccelerator."
+
+[lib]
+name = "iron_rocm_sys"
+
+[dependencies]
+libloading = { workspace = true }
+parking_lot = { workspace = true }

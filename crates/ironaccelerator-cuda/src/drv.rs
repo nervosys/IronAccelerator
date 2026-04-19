@@ -303,7 +303,7 @@ impl Drop for Stream {
 
 /// Fast event — timing disabled, suitable for stream-ordered fences.
 pub struct Event {
-    device: Arc<Device>,
+    _device: Arc<Device>,
     handle: CUevent,
     timing: bool,
 }
@@ -317,7 +317,7 @@ impl Event {
         let d = driver()?;
         let mut handle = CUevent::default();
         unsafe { check("cuEventCreate", (d.cuEventCreate)(&mut handle, flags as u32))?; }
-        Ok(Self { device, handle, timing })
+        Ok(Self { _device: device, handle, timing })
     }
 
     pub fn record(&self, stream: &Stream) -> Result<()> {
@@ -809,7 +809,7 @@ launch_args_tuple!(12; 0=>A,1=>B,2=>C,3=>D,4=>E,5=>F,6=>G,7=>H,8=>I,9=>J,10=>K,1
 
 pub struct CapturedGraph { handle: CUgraph }
 
-pub struct GraphExec { handle: CUgraphExec, device: Arc<Device> }
+pub struct GraphExec { handle: CUgraphExec, _device: Arc<Device> }
 
 impl Stream {
     /// Begin capturing all subsequent work on this stream into a graph.
@@ -848,7 +848,7 @@ impl GraphExec {
         // graph is consumed: destroy it now.
         unsafe { let _ = (d.cuGraphDestroy)(graph.handle); }
         std::mem::forget(graph);
-        Ok(Self { handle: exec, device })
+        Ok(Self { handle: exec, _device: device })
     }
 
     pub fn launch(&self, stream: &Stream) -> Result<()> {

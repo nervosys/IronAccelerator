@@ -1,0 +1,17 @@
+[package]
+name = "ironaccelerator-webgpu"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "WebGPU backend for IronAccelerator — native via wgpu and primary WASM compute path"
+
+[dependencies]
+ironaccelerator-core = { workspace = true }
+once_cell = { workspace = true }
+wgpu = "22"
+pollster = "0.4"
+
+[features]
+default = []

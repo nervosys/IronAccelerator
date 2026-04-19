@@ -51,6 +51,18 @@ pub use ironaccelerator_rocm as rocm;
 pub use ironaccelerator_metal as metal;
 #[cfg(feature = "qnn")]
 pub use ironaccelerator_qnn as qnn;
+#[cfg(feature = "vulkan")]
+pub use ironaccelerator_vulkan as vulkan;
+#[cfg(feature = "opengl")]
+pub use ironaccelerator_opengl as opengl;
+#[cfg(feature = "webgpu")]
+pub use ironaccelerator_webgpu as webgpu;
+#[cfg(feature = "tpu")]
+pub use ironaccelerator_tpu as tpu;
+#[cfg(feature = "levelzero")]
+pub use ironaccelerator_levelzero as levelzero;
+#[cfg(feature = "neuron")]
+pub use ironaccelerator_neuron as neuron;
 
 pub mod prelude {
     pub use ironaccelerator_core::{

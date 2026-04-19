@@ -20,10 +20,12 @@
 #![allow(clippy::missing_safety_doc)]
 
 pub mod backend;
+pub mod drv;
 
 pub use backend::{QnnBackend, QNN_BACKEND};
+pub use iron_qnn_sys as sys;
 
 pub fn register(reg: &mut ironaccelerator_core::BackendRegistry) {
-    let b: &'static backend::QnnBackend = &*QNN_BACKEND;
+    let b: &'static backend::QnnBackend = &QNN_BACKEND;
     reg.register(b);
 }

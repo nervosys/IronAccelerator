@@ -30,6 +30,18 @@ impl Runtime {
         ironaccelerator_metal::register(&mut registry);
         #[cfg(feature = "qnn")]
         ironaccelerator_qnn::register(&mut registry);
+        #[cfg(feature = "vulkan")]
+        ironaccelerator_vulkan::register(&mut registry);
+        #[cfg(feature = "opengl")]
+        ironaccelerator_opengl::register(&mut registry);
+        #[cfg(feature = "webgpu")]
+        ironaccelerator_webgpu::register(&mut registry);
+        #[cfg(feature = "tpu")]
+        ironaccelerator_tpu::register(&mut registry);
+        #[cfg(feature = "levelzero")]
+        ironaccelerator_levelzero::register(&mut registry);
+        #[cfg(feature = "neuron")]
+        ironaccelerator_neuron::register(&mut registry);
 
         Self { registry }
     }
@@ -73,7 +85,7 @@ impl Runtime {
                     strategy,
                     score,
                 };
-                if best.as_ref().map_or(true, |b| candidate.score > b.score) {
+                if best.as_ref().is_none_or(|b| candidate.score > b.score) {
                     best = Some(candidate);
                 }
             }

@@ -24,6 +24,8 @@ pub enum Vendor {
     Apple,
     Qualcomm,
     Intel,
+    Google,
+    Aws,
     Other,
 }
 

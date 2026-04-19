@@ -8,9 +8,11 @@ authors.workspace = true
 description = "Qualcomm AI Engine (Hexagon NPU / QNN SDK) backend for IronAccelerator"
 
 [dependencies]
-ironaccelerator-core = { workspace = true }
+ironaccelerator-core     = { workspace = true }
+ironaccelerator-qnn-sys  = { workspace = true }
 libloading = { workspace = true }
 once_cell  = { workspace = true }
+parking_lot = { workspace = true }
 
 [features]
 default = ["dynamic-loading"]

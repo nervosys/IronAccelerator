@@ -8,9 +8,11 @@ authors.workspace = true
 description = "ROCm/HIP backend for IronAccelerator (AMD CDNA & RDNA via HIP, hipBLASLt, MIOpen, RCCL)"
 
 [dependencies]
-ironaccelerator-core = { workspace = true }
+ironaccelerator-core     = { workspace = true }
+ironaccelerator-rocm-sys = { workspace = true }
 libloading = { workspace = true }
 once_cell  = { workspace = true }
+parking_lot = { workspace = true }
 
 [features]
 default = ["dynamic-loading"]

@@ -30,6 +30,19 @@ pub enum BackendKind {
     QualcommNpu,
     /// CPU SIMD reference path (used as a fallback / oracle).
     Cpu,
+    /// Vulkan Compute — cross-vendor GPU compute, including the Rust→WASM
+    /// compute path on browsers that expose WebGPU-over-Vulkan.
+    Vulkan,
+    /// OpenGL 4.3+ compute shaders — legacy / embedded GPU fallback.
+    OpenGl,
+    /// WebGPU — native (via `wgpu`) and the primary WASM compute path.
+    WebGpu,
+    /// Google TPU (v4 / v5 / v6e) via the PJRT plugin interface.
+    Tpu,
+    /// Intel GPU + NPU via oneAPI Level Zero (`ze_loader`).
+    LevelZero,
+    /// AWS Trainium / Inferentia via the Neuron Runtime (`libnrt`).
+    Neuron,
 }
 
 impl BackendKind {
@@ -39,6 +52,12 @@ impl BackendKind {
         BackendKind::Metal,
         BackendKind::QualcommNpu,
         BackendKind::Cpu,
+        BackendKind::Vulkan,
+        BackendKind::OpenGl,
+        BackendKind::WebGpu,
+        BackendKind::Tpu,
+        BackendKind::LevelZero,
+        BackendKind::Neuron,
     ];
 
     pub const fn name(self) -> &'static str {
@@ -48,6 +67,12 @@ impl BackendKind {
             BackendKind::Metal => "metal",
             BackendKind::QualcommNpu => "qnn",
             BackendKind::Cpu => "cpu",
+            BackendKind::Vulkan => "vulkan",
+            BackendKind::OpenGl => "opengl",
+            BackendKind::WebGpu => "webgpu",
+            BackendKind::Tpu => "tpu",
+            BackendKind::LevelZero => "level-zero",
+            BackendKind::Neuron => "neuron",
         }
     }
 }
@@ -80,7 +105,7 @@ pub trait Backend: Send + Sync + 'static {
 }
 
 /// Process-wide registry of compiled-in backends. Backends register themselves
-/// from their crate's `init()` (called from [`ironaccelerator::init`]).
+/// from their crate's `init()` (called from `ironaccelerator::init`).
 pub struct BackendRegistry {
     entries: Vec<&'static dyn Backend>,
 }
@@ -106,6 +131,16 @@ impl BackendRegistry {
 
     pub fn available(&self) -> impl Iterator<Item = &'static dyn Backend> + '_ {
         self.iter().filter(|b| b.is_available())
+    }
+
+    /// Enumerate every device across every *available* backend. Errors
+    /// from any one backend are swallowed (we return an empty list for
+    /// it) so a single broken backend can't mask the rest — callers
+    /// that want error visibility should iterate manually.
+    pub fn describe_all(&self) -> Vec<DeviceDescriptor> {
+        self.available()
+            .flat_map(|b| b.enumerate().unwrap_or_default())
+            .collect()
     }
 }
 

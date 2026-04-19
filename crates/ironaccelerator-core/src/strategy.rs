@@ -50,6 +50,18 @@ pub enum Strategy {
     QnnHtpGraph { precision: DType },
     /// Naive reference kernel — used for correctness/oracle, not perf.
     Reference,
+    /// SPIR-V compute shader dispatched through Vulkan or Level Zero.
+    SpirvCompute { workgroup: (u32, u32, u32) },
+    /// WGSL compute shader dispatched through WebGPU.
+    Wgsl { workgroup: (u32, u32, u32) },
+    /// GLSL 4.3+ compute shader via OpenGL.
+    GlslCompute { workgroup: (u32, u32, u32) },
+    /// Google TPU via the PJRT plugin interface.
+    Pjrt { accelerator: &'static str },
+    /// AWS Neuron NEFF executing on one or more NeuronCores.
+    Neuron { num_cores: u32 },
+    /// Intel Level Zero compute kernel (GPU or NPU).
+    LevelZero { device_type: &'static str },
     /// User-supplied custom kernel.
     Custom { name: String },
 }

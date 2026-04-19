@@ -22,7 +22,15 @@
 //!   fall back to a per-stream slab pool.
 //! - Every safe call has a paired `_unchecked` sibling.
 
-#![allow(clippy::missing_safety_doc)]
+#![allow(
+    clippy::missing_safety_doc,
+    clippy::too_many_arguments,    // intrinsic to FFI wrappers (cublasLtMatmul &c.)
+    clippy::type_complexity,       // libloading::Symbol<fn(...)> types
+    clippy::missing_transmute_annotations,
+    clippy::field_reassign_with_default,
+    clippy::if_same_then_else,
+    clippy::doc_lazy_continuation,
+)]
 
 pub use iron_cuda_sys as sys;
 
@@ -37,6 +45,8 @@ pub mod fft;
 pub mod fp8;
 pub mod fp8_gemm;
 pub mod cudnn;
+pub mod flash_attention;
+pub mod moe;
 pub mod cusolver;
 pub mod cusparse;
 pub mod cutensor;

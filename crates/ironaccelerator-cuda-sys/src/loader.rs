@@ -41,6 +41,7 @@ impl std::error::Error for LoadError {}
 /// Try each candidate filename in order. On Linux we also try the unversioned
 /// name with `.1` / `.0` suffix if the bare name fails, mirroring how ld
 /// resolves `SONAME` links.
+#[allow(unused_assignments)]
 pub fn try_load(candidates: &[&str]) -> LoaderResult<Library> {
     let extra_dir = std::env::var_os("IRON_CUDA_LIBDIR").map(PathBuf::from);
     let mut last_err = String::new();

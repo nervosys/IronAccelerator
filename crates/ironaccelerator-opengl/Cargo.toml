@@ -1,0 +1,16 @@
+[package]
+name = "ironaccelerator-opengl"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "OpenGL 4.3+ compute-shader backend for IronAccelerator — legacy GPU fallback"
+
+[dependencies]
+ironaccelerator-core = { workspace = true }
+once_cell = { workspace = true }
+glow = "0.14"
+
+[features]
+default = []

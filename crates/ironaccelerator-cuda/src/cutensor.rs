@@ -86,7 +86,7 @@ fn dtype_of<T: Repr>() -> Result<CudaDataType> {
 
 pub struct TensorDescr {
     raw: sys::CutensorTensorDescr,
-    handle: Arc<CutensorHandle>,
+    _handle: Arc<CutensorHandle>,
 }
 
 unsafe impl Send for TensorDescr {} unsafe impl Sync for TensorDescr {}
@@ -108,7 +108,7 @@ impl TensorDescr {
                       extents.as_ptr(), strides_ptr,
                       dtype_of::<T>()?, alignment))?;
         }
-        Ok(Self { raw, handle })
+        Ok(Self { raw, _handle: handle })
     }
 
     #[inline] pub fn raw(&self) -> sys::CutensorTensorDescr { self.raw }

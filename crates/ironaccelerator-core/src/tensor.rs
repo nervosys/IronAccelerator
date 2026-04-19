@@ -51,7 +51,7 @@ impl TensorDesc {
     pub fn bytes(&self) -> u64 {
         let bits = self.dtype.bits() as u64;
         // Round up to byte boundary; quant-block (bits == 0) returns 0.
-        if bits == 0 { 0 } else { (self.numel() * bits + 7) / 8 }
+        if bits == 0 { 0 } else { (self.numel() * bits).div_ceil(8) }
     }
 
     pub fn rank(&self) -> usize { self.shape.len() }

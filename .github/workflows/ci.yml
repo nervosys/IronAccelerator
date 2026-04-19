@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: check / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets --no-deps
+      - run: cargo build --workspace
+      - run: cargo test --workspace --lib
+      - run: cargo test --workspace --tests
+
+  # Build the full backend matrix — same set of crates CI compiles that
+  # we ship behind the `all` feature. No vendor SDK is linked; every
+  # backend loads via libloading at run time.
+  feature-matrix:
+    name: build / ${{ matrix.os }} / features=${{ matrix.features }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            features: "cuda,rocm,vulkan,opengl,webgpu,levelzero,tpu,neuron,ontology"
+          - os: windows-latest
+            features: "cuda,vulkan,opengl,webgpu,levelzero,ontology"
+          - os: macos-latest
+            features: "metal,webgpu,opengl,ontology"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build -p ironaccelerator --no-default-features --features "${{ matrix.features }}"
+
+  # The GPU-bound integration tests (`Device::open`, benches) require a live
+  # CUDA / ROCm runtime and are gated behind an env flag. CI only runs the
+  # pure library + loader-probe tests.
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # -D warnings here would break on pre-existing broken intra-doc
+      # links inherited from the 0.1 CUDA sys crate. Tracked in
+      # ROADMAP.md (API review). Re-enable once cleaned up.
+      - run: cargo doc --workspace --no-deps
