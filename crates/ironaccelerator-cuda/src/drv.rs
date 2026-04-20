@@ -687,15 +687,16 @@ impl Function {
     /// Launch with the given config, stream, and argument tuple.
     pub fn launch<A: LaunchArgs>(&self, cfg: LaunchCfg, stream: &Stream, args: A) -> Result<()> {
         let d = driver()?;
-        let mut slots = A::slots();
-        let ptrs = args.pack(&mut slots);
+        let mut storage = A::storage();
+        let mut ptrs = A::ptrs_init();
+        args.pack(&mut storage, &mut ptrs);
         unsafe {
             check("cuLaunchKernel", (d.cuLaunchKernel)(
                 self.handle,
                 cfg.grid.0, cfg.grid.1, cfg.grid.2,
                 cfg.block.0, cfg.block.1, cfg.block.2,
                 cfg.shared_bytes, stream.handle,
-                ptrs.as_ptr() as *mut *mut c_void,
+                ptrs.as_mut().as_mut_ptr() as *mut *mut c_void,
                 ptr::null_mut(),
             ))
         }
@@ -727,29 +728,41 @@ impl LaunchCfg {
 // LaunchArgs — compile-time typed arg packing
 // ────────────────────────────────────────────────────────────────────────────
 
-/// Trait implemented for tuples of launch arguments. `slots` returns a scratch
-/// array of pointers; `pack` fills it with pointers to each packed arg.
+/// Trait implemented for tuples of launch arguments.
+///
+/// The launch call owns both an 8-byte-per-arg `storage` buffer and a parallel
+/// `ptrs` array of `void*`. `pack` copies each arg's bytes into `storage` and
+/// writes a pointer into `ptrs[i]` aimed at that slot. Keeping the arg values
+/// in caller-owned storage (rather than pointing into the moved-in tuple)
+/// means correctness does not depend on `pack` being inlined.
 pub trait LaunchArgs {
-    type Slots: AsMut<[*const c_void]>;
-    fn slots() -> Self::Slots;
-    fn pack(self, slots: &mut Self::Slots) -> &[*const c_void];
+    type Storage: AsMut<[u64]>;
+    type Ptrs: AsMut<[*const c_void]>;
+    fn storage() -> Self::Storage;
+    fn ptrs_init() -> Self::Ptrs;
+    fn pack(self, storage: &mut Self::Storage, ptrs: &mut Self::Ptrs);
 }
 
 /// Anything that can be passed to a kernel as a scalar argument. Blanket impls
 /// below cover primitive POD + `CUdeviceptr` + `DeviceView`/`DeviceViewMut`
 /// (pointer-valued).
 pub trait KernelArg {
-    /// Write the pointer representing this arg into `slot`. Returns the pointer
-    /// stored (same as `slot` but typed).
-    fn bind(&self, slot: &mut *const c_void);
+    /// Write this arg's bit pattern into the 8-byte `slot`. The caller retains
+    /// ownership of `slot`; `cuLaunchKernel` will read `sizeof(argtype)` bytes
+    /// from the address of `slot`.
+    fn write_into(self, slot: &mut u64);
 }
 
 macro_rules! kernel_arg_pod {
     ($($t:ty),*) => {
         $(impl KernelArg for $t {
             #[inline]
-            fn bind(&self, slot: &mut *const c_void) {
-                *slot = self as *const $t as *const c_void;
+            fn write_into(self, slot: &mut u64) {
+                // Zero the slot first so any unused high bytes are defined.
+                *slot = 0;
+                unsafe {
+                    (slot as *mut u64 as *mut $t).write_unaligned(self);
+                }
             }
         })*
     };
@@ -759,36 +772,42 @@ kernel_arg_pod!(u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, usize, isize);
 
 impl<'a, T: Repr> KernelArg for DeviceView<'a, T> {
     #[inline]
-    fn bind(&self, slot: &mut *const c_void) {
-        *slot = (&self.ptr) as *const CUdeviceptr as *const c_void;
+    fn write_into(self, slot: &mut u64) {
+        *slot = self.ptr as u64;
     }
 }
 
 impl<'a, T: Repr> KernelArg for DeviceViewMut<'a, T> {
     #[inline]
-    fn bind(&self, slot: &mut *const c_void) {
-        *slot = (&self.ptr) as *const CUdeviceptr as *const c_void;
+    fn write_into(self, slot: &mut u64) {
+        *slot = self.ptr as u64;
     }
 }
 
 macro_rules! launch_args_tuple {
     ($n:literal; $($i:tt => $ty:ident),*) => {
         impl<$($ty: KernelArg),*> LaunchArgs for ($($ty,)*) {
-            type Slots = [*const c_void; $n];
-            #[inline] fn slots() -> Self::Slots { [ptr::null(); $n] }
+            type Storage = [u64; $n];
+            type Ptrs = [*const c_void; $n];
+            #[inline] fn storage() -> Self::Storage { [0u64; $n] }
+            #[inline] fn ptrs_init() -> Self::Ptrs { [ptr::null(); $n] }
             #[inline]
-            fn pack(self, slots: &mut Self::Slots) -> &[*const c_void] {
-                $( self.$i.bind(&mut slots[$i]); )*
-                &slots[..]
+            fn pack(self, storage: &mut Self::Storage, ptrs: &mut Self::Ptrs) {
+                $(
+                    self.$i.write_into(&mut storage[$i]);
+                    ptrs[$i] = &storage[$i] as *const u64 as *const c_void;
+                )*
             }
         }
     };
 }
 
 impl LaunchArgs for () {
-    type Slots = [*const c_void; 0];
-    #[inline] fn slots() -> Self::Slots { [] }
-    #[inline] fn pack(self, _s: &mut Self::Slots) -> &[*const c_void] { &[] }
+    type Storage = [u64; 0];
+    type Ptrs = [*const c_void; 0];
+    #[inline] fn storage() -> Self::Storage { [] }
+    #[inline] fn ptrs_init() -> Self::Ptrs { [] }
+    #[inline] fn pack(self, _s: &mut Self::Storage, _p: &mut Self::Ptrs) {}
 }
 launch_args_tuple!(1; 0 => A);
 launch_args_tuple!(2; 0 => A, 1 => B);
@@ -813,10 +832,22 @@ pub struct GraphExec { handle: CUgraphExec, _device: Arc<Device> }
 
 impl Stream {
     /// Begin capturing all subsequent work on this stream into a graph.
+    /// Uses `ThreadLocal` mode: in-thread stream-ordered ops on *any* stream
+    /// implicitly join the capture. For independent cross-stream work during
+    /// capture (e.g. allocations on a sibling stream), use
+    /// [`Stream::begin_capture_mode`] with
+    /// [`CUstreamCaptureMode::Relaxed`].
     pub fn begin_capture(&self) -> Result<()> {
+        self.begin_capture_mode(CUstreamCaptureMode::ThreadLocal)
+    }
+
+    /// Begin capture with an explicit capture mode. `Relaxed` is required
+    /// when other streams in the same thread need to perform non-captured
+    /// stream-ordered operations (typically allocations or frees) concurrently.
+    pub fn begin_capture_mode(&self, mode: CUstreamCaptureMode) -> Result<()> {
         let d = driver()?;
         unsafe { check("cuStreamBeginCapture_v2",
-                       (d.cuStreamBeginCapture_v2)(self.handle, CUstreamCaptureMode::ThreadLocal)) }
+                       (d.cuStreamBeginCapture_v2)(self.handle, mode)) }
     }
 
     /// End capture and return the resulting graph. Call [`GraphExec::new`] to
