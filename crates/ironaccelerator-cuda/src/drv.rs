@@ -218,6 +218,13 @@ impl Device {
     pub fn raw_device(&self) -> CUdevice {
         self.device
     }
+    /// Crate-internal accessor for the cached driver function table — lets
+    /// modules like `cudarc_compat` skip the AtomicPtr load when they already
+    /// hold an `Arc<Device>`.
+    #[inline]
+    pub(crate) fn drv(&self) -> &'static sys::DriverFns {
+        self.drv
+    }
     /// Bind this primary context to the calling thread. Required before any
     /// call that reads the "current context" (most driver functions do).
     #[inline]

@@ -155,10 +155,7 @@ impl CudaDevice {
     /// `cuMemGetInfo_v2`. Matches `cudarc::driver::CudaContext::mem_get_info`.
     pub fn mem_get_info(&self) -> DriverResult<(usize, usize)> {
         self.device.bind()?;
-        let f = iron_cuda_sys::driver::fns().map_err(|_| DriverError::NotAvailable {
-            lib: "cuda-driver",
-            detail: String::from("cuda-driver not loaded"),
-        })?;
+        let f = self.device.drv();
         let mut free: usize = 0;
         let mut total: usize = 0;
         let code = unsafe { (f.cuMemGetInfo_v2)(&mut free, &mut total) };
