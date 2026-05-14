@@ -6,18 +6,173 @@
 use crate::loader::{sym, try_load, LoadError, LoaderResult};
 use libloading::Library;
 use std::ffi::{c_char, c_int, c_uint, c_void};
+use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::{LazyLock, OnceLock};
 
 // ── opaque handles ──────────────────────────────────────────────────────────
 
-#[repr(transparent)] #[derive(Copy, Clone, Debug, Default)] pub struct CUcontext(pub *mut c_void);
-#[repr(transparent)] #[derive(Copy, Clone, Debug, Default)] pub struct CUstream(pub *mut c_void);
-#[repr(transparent)] #[derive(Copy, Clone, Debug, Default)] pub struct CUevent(pub *mut c_void);
-#[repr(transparent)] #[derive(Copy, Clone, Debug, Default)] pub struct CUmodule(pub *mut c_void);
-#[repr(transparent)] #[derive(Copy, Clone, Debug, Default)] pub struct CUfunction(pub *mut c_void);
-#[repr(transparent)] #[derive(Copy, Clone, Debug, Default)] pub struct CUgraph(pub *mut c_void);
-#[repr(transparent)] #[derive(Copy, Clone, Debug, Default)] pub struct CUgraphExec(pub *mut c_void);
-#[repr(transparent)] #[derive(Copy, Clone, Debug, Default)] pub struct CUmemPool(pub *mut c_void);
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Default)]
+pub struct CUcontext(pub *mut c_void);
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Default)]
+pub struct CUstream(pub *mut c_void);
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Default)]
+pub struct CUevent(pub *mut c_void);
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Default)]
+pub struct CUmodule(pub *mut c_void);
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Default)]
+pub struct CUfunction(pub *mut c_void);
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Default)]
+pub struct CUgraph(pub *mut c_void);
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Default)]
+pub struct CUgraphExec(pub *mut c_void);
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Default)]
+pub struct CUmemPool(pub *mut c_void);
+
+// ── CUDA 12.3+/12.4+/13.x additions (optional symbols) ──────────────────────
+
+/// Virtual-memory allocation handle (`CUmemGenericAllocationHandle`).
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Default)]
+pub struct CUmemGenericAllocationHandle(pub u64);
+
+/// Multicast team handle. Added in CUDA 12.3.
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Default)]
+pub struct CUmemcastObjectHandle(pub u64);
+
+/// Green context. Added in CUDA 12.4.
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Default)]
+pub struct CUgreenCtx(pub *mut c_void);
+
+/// Opaque resource descriptor for green-context partitioning.
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug)]
+pub struct CUdevResource(pub [u8; 48]); // 48-byte opaque struct per the header
+impl Default for CUdevResource {
+    fn default() -> Self {
+        Self([0u8; 48])
+    }
+}
+
+/// Graph conditional handle (if/while predicate). Added in CUDA 12.4.
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Default)]
+pub struct CUgraphConditionalHandle(pub u64);
+
+/// Graph node handle.
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Default)]
+pub struct CUgraphNode(pub *mut c_void);
+
+unsafe impl Send for CUgreenCtx {}
+unsafe impl Sync for CUgreenCtx {}
+unsafe impl Send for CUgraphNode {}
+unsafe impl Sync for CUgraphNode {}
+
+/// `CUmemAllocationType`.
+#[repr(u32)]
+#[derive(Copy, Clone, Debug)]
+pub enum CUmemAllocationType {
+    Invalid = 0,
+    Pinned = 1,
+}
+
+/// `CUmemLocationType`.
+#[repr(u32)]
+#[derive(Copy, Clone, Debug)]
+pub enum CUmemLocationType {
+    Invalid = 0,
+    Device = 1,
+    Host = 2,
+    HostNuma = 3,
+    HostNumaCurrent = 4,
+}
+
+/// `CUmemAllocationHandleType`.
+#[repr(u32)]
+#[derive(Copy, Clone, Debug)]
+pub enum CUmemAllocationHandleType {
+    None = 0,
+    PosixFileDescriptor = 1,
+    Win32 = 2,
+    Win32Kmt = 4,
+    Fabric = 8,
+}
+
+/// Flags bit-field for `CUmemAllocationProp`. CUDA 13 adds the bit for
+/// confidential-computing / encrypted memory regions.
+pub const CU_MEM_CREATE_USAGE_ENCRYPT: u32 = 1 << 1;
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct CUmemLocation {
+    pub kind: CUmemLocationType,
+    pub id: c_int,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct CUmemAllocationProp {
+    pub kind: CUmemAllocationType,
+    pub requested_handle_types: CUmemAllocationHandleType,
+    pub location: CUmemLocation,
+    pub win32_handle_metadata: *mut c_void,
+    pub alloc_flags: CUmemAllocationPropFlags,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
+pub struct CUmemAllocationPropFlags {
+    pub compression_type: u8,
+    pub gpu_direct_rdma_capable: u8,
+    pub usage: u16, // bitfield — OR of CU_MEM_CREATE_USAGE_* (encrypted, etc.)
+    pub reserved: [u8; 4],
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct CUmemAccessDesc {
+    pub location: CUmemLocation,
+    pub flags: u32, // CUmemAccess_flags: None=0, Read=1, ReadWrite=3
+}
+
+/// Graph-node type.
+#[repr(u32)]
+#[derive(Copy, Clone, Debug)]
+pub enum CUgraphNodeType {
+    Kernel = 0,
+    Memcpy = 1,
+    Memset = 2,
+    Host = 3,
+    Graph = 4,
+    Empty = 5,
+    WaitEvent = 6,
+    EventRecord = 7,
+    ExtSemasSignal = 8,
+    ExtSemasWait = 9,
+    MemAlloc = 10,
+    MemFree = 11,
+    BatchMemOp = 12,
+    Conditional = 13,
+}
+
+/// Conditional-node type.
+#[repr(u32)]
+#[derive(Copy, Clone, Debug)]
+pub enum CUgraphConditionalNodeType {
+    If = 0,
+    While = 1,
+    Switch = 2,
+}
 
 /// Device ordinal (i32). Not a pointer — the driver actually passes this by value.
 pub type CUdevice = c_int;
@@ -25,52 +180,60 @@ pub type CUdevice = c_int;
 /// Device-side pointer. 64-bit on every supported platform.
 pub type CUdeviceptr = u64;
 
-unsafe impl Send for CUcontext {} unsafe impl Sync for CUcontext {}
-unsafe impl Send for CUstream {}  unsafe impl Sync for CUstream {}
-unsafe impl Send for CUevent {}   unsafe impl Sync for CUevent {}
-unsafe impl Send for CUmodule {}  unsafe impl Sync for CUmodule {}
-unsafe impl Send for CUfunction {} unsafe impl Sync for CUfunction {}
-unsafe impl Send for CUgraph {}     unsafe impl Sync for CUgraph {}
-unsafe impl Send for CUgraphExec {} unsafe impl Sync for CUgraphExec {}
-unsafe impl Send for CUmemPool {}   unsafe impl Sync for CUmemPool {}
+unsafe impl Send for CUcontext {}
+unsafe impl Sync for CUcontext {}
+unsafe impl Send for CUstream {}
+unsafe impl Sync for CUstream {}
+unsafe impl Send for CUevent {}
+unsafe impl Sync for CUevent {}
+unsafe impl Send for CUmodule {}
+unsafe impl Sync for CUmodule {}
+unsafe impl Send for CUfunction {}
+unsafe impl Sync for CUfunction {}
+unsafe impl Send for CUgraph {}
+unsafe impl Sync for CUgraph {}
+unsafe impl Send for CUgraphExec {}
+unsafe impl Sync for CUgraphExec {}
+unsafe impl Send for CUmemPool {}
+unsafe impl Sync for CUmemPool {}
 
 // ── result codes (subset, with `Ok` = 0) ───────────────────────────────────
 
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CUresult {
-    Success                     = 0,
-    InvalidValue                = 1,
-    OutOfMemory                 = 2,
-    NotInitialized              = 3,
-    Deinitialized               = 4,
-    NoDevice                    = 100,
-    InvalidDevice               = 101,
-    InvalidContext              = 201,
-    MapFailed                   = 205,
-    UnmapFailed                 = 206,
-    ArrayIsMapped               = 207,
-    AlreadyMapped               = 208,
-    NoBinaryForGpu              = 209,
-    AlreadyAcquired             = 210,
-    NotMapped                   = 211,
-    InvalidSource               = 300,
-    FileNotFound                = 301,
-    SharedObjectSymbolNotFound  = 302,
-    SharedObjectInitFailed      = 303,
-    OperatingSystem             = 304,
-    InvalidHandle               = 400,
-    NotFound                    = 500,
-    NotReady                    = 600,
-    LaunchFailed                = 700,
-    LaunchOutOfResources        = 701,
-    LaunchTimeout               = 702,
-    PeerAccessAlreadyEnabled    = 704,
-    ContextIsDestroyed          = 709,
-    StreamCaptureUnsupported    = 900,
-    Unknown                     = 999,
+    Success = 0,
+    InvalidValue = 1,
+    OutOfMemory = 2,
+    NotInitialized = 3,
+    Deinitialized = 4,
+    NoDevice = 100,
+    InvalidDevice = 101,
+    InvalidContext = 201,
+    MapFailed = 205,
+    UnmapFailed = 206,
+    ArrayIsMapped = 207,
+    AlreadyMapped = 208,
+    NoBinaryForGpu = 209,
+    AlreadyAcquired = 210,
+    NotMapped = 211,
+    InvalidSource = 300,
+    FileNotFound = 301,
+    SharedObjectSymbolNotFound = 302,
+    SharedObjectInitFailed = 303,
+    OperatingSystem = 304,
+    InvalidHandle = 400,
+    NotFound = 500,
+    NotReady = 600,
+    LaunchFailed = 700,
+    LaunchOutOfResources = 701,
+    LaunchTimeout = 702,
+    PeerAccessAlreadyEnabled = 704,
+    ContextIsDestroyed = 709,
+    StreamCaptureUnsupported = 900,
+    Unknown = 999,
     /// Any code we don't model — hold on to the numeric value.
-    Other                       = 0xFFFF_FFFF,
+    Other = 0xFFFF_FFFF,
 }
 
 impl CUresult {
@@ -78,20 +241,31 @@ impl CUresult {
     pub fn from_raw(r: u32) -> Self {
         // Map the ones we know; everything else → Other.
         match r {
-            0 => Self::Success, 1 => Self::InvalidValue, 2 => Self::OutOfMemory,
-            3 => Self::NotInitialized, 4 => Self::Deinitialized,
-            100 => Self::NoDevice, 101 => Self::InvalidDevice,
+            0 => Self::Success,
+            1 => Self::InvalidValue,
+            2 => Self::OutOfMemory,
+            3 => Self::NotInitialized,
+            4 => Self::Deinitialized,
+            100 => Self::NoDevice,
+            101 => Self::InvalidDevice,
             201 => Self::InvalidContext,
-            205 => Self::MapFailed, 206 => Self::UnmapFailed,
-            207 => Self::ArrayIsMapped, 208 => Self::AlreadyMapped,
-            209 => Self::NoBinaryForGpu, 210 => Self::AlreadyAcquired, 211 => Self::NotMapped,
-            300 => Self::InvalidSource, 301 => Self::FileNotFound,
-            302 => Self::SharedObjectSymbolNotFound, 303 => Self::SharedObjectInitFailed,
+            205 => Self::MapFailed,
+            206 => Self::UnmapFailed,
+            207 => Self::ArrayIsMapped,
+            208 => Self::AlreadyMapped,
+            209 => Self::NoBinaryForGpu,
+            210 => Self::AlreadyAcquired,
+            211 => Self::NotMapped,
+            300 => Self::InvalidSource,
+            301 => Self::FileNotFound,
+            302 => Self::SharedObjectSymbolNotFound,
+            303 => Self::SharedObjectInitFailed,
             304 => Self::OperatingSystem,
             400 => Self::InvalidHandle,
             500 => Self::NotFound,
             600 => Self::NotReady,
-            700 => Self::LaunchFailed, 701 => Self::LaunchOutOfResources,
+            700 => Self::LaunchFailed,
+            701 => Self::LaunchOutOfResources,
             702 => Self::LaunchTimeout,
             704 => Self::PeerAccessAlreadyEnabled,
             709 => Self::ContextIsDestroyed,
@@ -101,8 +275,18 @@ impl CUresult {
         }
     }
 
-    #[inline] pub fn ok(self) -> Result<(), Self> { if self == Self::Success { Ok(()) } else { Err(self) } }
-    #[inline] pub fn is_ok(self) -> bool { self == Self::Success }
+    #[inline]
+    pub fn ok(self) -> Result<(), Self> {
+        if self == Self::Success {
+            Ok(())
+        } else {
+            Err(self)
+        }
+    }
+    #[inline]
+    pub fn is_ok(self) -> bool {
+        self == Self::Success
+    }
 }
 
 // ── attribute / flag enums we need ─────────────────────────────────────────
@@ -110,59 +294,59 @@ impl CUresult {
 #[repr(i32)]
 #[derive(Debug, Clone, Copy)]
 pub enum CUdevice_attribute {
-    MaxThreadsPerBlock              = 1,
-    MaxSharedMemoryPerBlock         = 8,
-    TotalConstantMemory             = 9,
-    WarpSize                        = 10,
-    MaxRegistersPerBlock            = 12,
-    ClockRate                       = 13,
-    MultiprocessorCount             = 16,
-    IntegrationType                 = 18,
-    ComputeCapabilityMajor          = 75,
-    ComputeCapabilityMinor          = 76,
-    PciBusId                        = 33,
-    PciDeviceId                     = 34,
-    PciDomainId                     = 50,
-    MemoryClockRate                 = 36,
-    GlobalMemoryBusWidth            = 37,
-    L2CacheSize                     = 38,
-    MaxThreadsPerMultiProcessor     = 39,
-    AsyncEngineCount                = 40,
-    UnifiedAddressing               = 41,
-    StreamPrioritiesSupported       = 78,
-    CooperativeLaunch               = 95,
-    ConcurrentManagedAccess         = 89,
-    ComputePreemptionSupported      = 90,
-    ComputeMode                     = 20,
-    ManagedMemory                   = 83,
-    MultiGpuBoard                   = 84,
-    MemoryPoolsSupported            = 115,
+    MaxThreadsPerBlock = 1,
+    MaxSharedMemoryPerBlock = 8,
+    TotalConstantMemory = 9,
+    WarpSize = 10,
+    MaxRegistersPerBlock = 12,
+    ClockRate = 13,
+    MultiprocessorCount = 16,
+    IntegrationType = 18,
+    ComputeCapabilityMajor = 75,
+    ComputeCapabilityMinor = 76,
+    PciBusId = 33,
+    PciDeviceId = 34,
+    PciDomainId = 50,
+    MemoryClockRate = 36,
+    GlobalMemoryBusWidth = 37,
+    L2CacheSize = 38,
+    MaxThreadsPerMultiProcessor = 39,
+    AsyncEngineCount = 40,
+    UnifiedAddressing = 41,
+    StreamPrioritiesSupported = 78,
+    CooperativeLaunch = 95,
+    ConcurrentManagedAccess = 89,
+    ComputePreemptionSupported = 90,
+    ComputeMode = 20,
+    ManagedMemory = 83,
+    MultiGpuBoard = 84,
+    MemoryPoolsSupported = 115,
 }
 
 #[repr(u32)]
 #[derive(Debug, Clone, Copy)]
 pub enum CUevent_flags {
-    Default             = 0x0,
-    BlockingSync        = 0x1,
-    DisableTiming       = 0x2,
-    Interprocess        = 0x4,
+    Default = 0x0,
+    BlockingSync = 0x1,
+    DisableTiming = 0x2,
+    Interprocess = 0x4,
 }
 
 #[repr(u32)]
 #[derive(Debug, Clone, Copy)]
 pub enum CUstreamCaptureMode {
-    Global      = 0,
+    Global = 0,
     ThreadLocal = 1,
-    Relaxed     = 2,
+    Relaxed = 2,
 }
 
 #[repr(u32)]
 #[derive(Debug, Clone, Copy)]
 pub enum CUhostAllocFlags {
-    Default         = 0x0,
-    Portable        = 0x1,
-    Mapped          = 0x2,
-    WriteCombined   = 0x4,
+    Default = 0x0,
+    Portable = 0x1,
+    Mapped = 0x2,
+    WriteCombined = 0x4,
 }
 
 pub const CU_STREAM_DEFAULT: u32 = 0x0;
@@ -178,7 +362,8 @@ pub struct DriverFns {
     pub cuDeviceGetCount: unsafe extern "C" fn(*mut c_int) -> CUresult,
     pub cuDeviceGet: unsafe extern "C" fn(*mut CUdevice, c_int) -> CUresult,
     pub cuDeviceGetName: unsafe extern "C" fn(*mut c_char, c_int, CUdevice) -> CUresult,
-    pub cuDeviceGetAttribute: unsafe extern "C" fn(*mut c_int, CUdevice_attribute, CUdevice) -> CUresult,
+    pub cuDeviceGetAttribute:
+        unsafe extern "C" fn(*mut c_int, CUdevice_attribute, CUdevice) -> CUresult,
     pub cuDeviceTotalMem_v2: unsafe extern "C" fn(*mut usize, CUdevice) -> CUresult,
     pub cuDeviceCanAccessPeer: unsafe extern "C" fn(*mut c_int, CUdevice, CUdevice) -> CUresult,
 
@@ -207,35 +392,144 @@ pub struct DriverFns {
 
     pub cuMemAlloc_v2: unsafe extern "C" fn(*mut CUdeviceptr, usize) -> CUresult,
     pub cuMemAllocAsync: unsafe extern "C" fn(*mut CUdeviceptr, usize, CUstream) -> CUresult,
+    pub cuMemGetInfo_v2: unsafe extern "C" fn(*mut usize, *mut usize) -> CUresult,
     pub cuMemFree_v2: unsafe extern "C" fn(CUdeviceptr) -> CUresult,
     pub cuMemFreeAsync: unsafe extern "C" fn(CUdeviceptr, CUstream) -> CUresult,
     pub cuMemsetD8Async: unsafe extern "C" fn(CUdeviceptr, u8, usize, CUstream) -> CUresult,
-    pub cuMemcpyHtoDAsync_v2: unsafe extern "C" fn(CUdeviceptr, *const c_void, usize, CUstream) -> CUresult,
-    pub cuMemcpyDtoHAsync_v2: unsafe extern "C" fn(*mut c_void, CUdeviceptr, usize, CUstream) -> CUresult,
-    pub cuMemcpyDtoDAsync_v2: unsafe extern "C" fn(CUdeviceptr, CUdeviceptr, usize, CUstream) -> CUresult,
+    pub cuMemcpyHtoDAsync_v2:
+        unsafe extern "C" fn(CUdeviceptr, *const c_void, usize, CUstream) -> CUresult,
+    pub cuMemcpyDtoHAsync_v2:
+        unsafe extern "C" fn(*mut c_void, CUdeviceptr, usize, CUstream) -> CUresult,
+    pub cuMemcpyDtoDAsync_v2:
+        unsafe extern "C" fn(CUdeviceptr, CUdeviceptr, usize, CUstream) -> CUresult,
     pub cuMemHostAlloc: unsafe extern "C" fn(*mut *mut c_void, usize, c_uint) -> CUresult,
     pub cuMemFreeHost: unsafe extern "C" fn(*mut c_void) -> CUresult,
 
     pub cuModuleLoadData: unsafe extern "C" fn(*mut CUmodule, *const c_void) -> CUresult,
     pub cuModuleUnload: unsafe extern "C" fn(CUmodule) -> CUresult,
-    pub cuModuleGetFunction: unsafe extern "C" fn(*mut CUfunction, CUmodule, *const c_char) -> CUresult,
+    pub cuModuleGetFunction:
+        unsafe extern "C" fn(*mut CUfunction, CUmodule, *const c_char) -> CUresult,
 
     pub cuLaunchKernel: unsafe extern "C" fn(
         CUfunction,
-        c_uint, c_uint, c_uint,        // grid
-        c_uint, c_uint, c_uint,        // block
-        c_uint,                        // shared mem bytes
+        c_uint,
+        c_uint,
+        c_uint, // grid
+        c_uint,
+        c_uint,
+        c_uint, // block
+        c_uint, // shared mem bytes
         CUstream,
-        *mut *mut c_void,              // kernel params
-        *mut *mut c_void,              // extra
+        *mut *mut c_void, // kernel params
+        *mut *mut c_void, // extra
     ) -> CUresult,
 
     pub cuStreamBeginCapture_v2: unsafe extern "C" fn(CUstream, CUstreamCaptureMode) -> CUresult,
     pub cuStreamEndCapture: unsafe extern "C" fn(CUstream, *mut CUgraph) -> CUresult,
     pub cuGraphDestroy: unsafe extern "C" fn(CUgraph) -> CUresult,
-    pub cuGraphInstantiateWithFlags: unsafe extern "C" fn(*mut CUgraphExec, CUgraph, u64) -> CUresult,
+    pub cuGraphInstantiateWithFlags:
+        unsafe extern "C" fn(*mut CUgraphExec, CUgraph, u64) -> CUresult,
     pub cuGraphExecDestroy: unsafe extern "C" fn(CUgraphExec) -> CUresult,
     pub cuGraphLaunch: unsafe extern "C" fn(CUgraphExec, CUstream) -> CUresult,
+
+    // ── Optional / CUDA 12.3+ additions. All loaded via sym_opt so the crate
+    // ── still links on older drivers; callers probe with `is_some()`.
+    /// Virtual-memory allocation — physical backing. Needed for encrypted
+    /// and multicast-bindable memory.
+    pub cuMemCreate: Option<
+        unsafe extern "C" fn(
+            *mut CUmemGenericAllocationHandle,
+            usize,
+            *const CUmemAllocationProp,
+            u64,
+        ) -> CUresult,
+    >,
+    pub cuMemRelease: Option<unsafe extern "C" fn(CUmemGenericAllocationHandle) -> CUresult>,
+    pub cuMemAddressReserve:
+        Option<unsafe extern "C" fn(*mut CUdeviceptr, usize, usize, CUdeviceptr, u64) -> CUresult>,
+    pub cuMemAddressFree: Option<unsafe extern "C" fn(CUdeviceptr, usize) -> CUresult>,
+    pub cuMemMap: Option<
+        unsafe extern "C" fn(
+            CUdeviceptr,
+            usize,
+            usize,
+            CUmemGenericAllocationHandle,
+            u64,
+        ) -> CUresult,
+    >,
+    pub cuMemUnmap: Option<unsafe extern "C" fn(CUdeviceptr, usize) -> CUresult>,
+    pub cuMemSetAccess:
+        Option<unsafe extern "C" fn(CUdeviceptr, usize, *const CUmemAccessDesc, usize) -> CUresult>,
+    pub cuMemGetAllocationGranularity:
+        Option<unsafe extern "C" fn(*mut usize, *const CUmemAllocationProp, u32) -> CUresult>,
+
+    /// Multicast (driver-initiated collectives). CUDA 12.3+.
+    pub cuMulticastCreate: Option<
+        unsafe extern "C" fn(*mut CUmemcastObjectHandle, *const CUmemcastObjectProp) -> CUresult,
+    >,
+    pub cuMulticastAddDevice:
+        Option<unsafe extern "C" fn(CUmemcastObjectHandle, CUdevice) -> CUresult>,
+    pub cuMulticastBindMem: Option<
+        unsafe extern "C" fn(
+            CUmemcastObjectHandle,
+            usize,
+            CUmemGenericAllocationHandle,
+            usize,
+            usize,
+            u64,
+        ) -> CUresult,
+    >,
+    pub cuMulticastBindAddr: Option<
+        unsafe extern "C" fn(CUmemcastObjectHandle, usize, CUdeviceptr, usize, u64) -> CUresult,
+    >,
+    pub cuMulticastUnbind:
+        Option<unsafe extern "C" fn(CUmemcastObjectHandle, CUdevice, usize, usize) -> CUresult>,
+    pub cuMulticastGetGranularity:
+        Option<unsafe extern "C" fn(*mut usize, *const CUmemcastObjectProp, u32) -> CUresult>,
+
+    /// Green contexts. CUDA 12.4+.
+    pub cuGreenCtxCreate:
+        Option<unsafe extern "C" fn(*mut CUgreenCtx, CUdevResource, CUdevice, u32) -> CUresult>,
+    pub cuGreenCtxDestroy: Option<unsafe extern "C" fn(CUgreenCtx) -> CUresult>,
+    pub cuGreenCtxRecordEvent: Option<unsafe extern "C" fn(CUgreenCtx, CUevent) -> CUresult>,
+    pub cuCtxFromGreenCtx: Option<unsafe extern "C" fn(*mut CUcontext, CUgreenCtx) -> CUresult>,
+    pub cuDeviceGetDevResource:
+        Option<unsafe extern "C" fn(CUdevice, *mut CUdevResource, u32) -> CUresult>,
+    pub cuDevResourceGenerateDesc:
+        Option<unsafe extern "C" fn(*mut CUdevResource, *mut CUdevResource, u32) -> CUresult>,
+    pub cuStreamCreateFromGreenCtx:
+        Option<unsafe extern "C" fn(*mut CUstream, CUgreenCtx, u32) -> CUresult>,
+
+    /// Graph conditional nodes. CUDA 12.4+.
+    pub cuGraphConditionalHandleCreate: Option<
+        unsafe extern "C" fn(
+            *mut CUgraphConditionalHandle,
+            CUgraph,
+            CUcontext,
+            u32,
+            u32,
+        ) -> CUresult,
+    >,
+    pub cuGraphAddNode: Option<
+        unsafe extern "C" fn(
+            *mut CUgraphNode,
+            CUgraph,
+            *const CUgraphNode,
+            usize,
+            *mut c_void,
+        ) -> CUresult,
+    >,
+}
+
+/// `CUmulticastObjectProp` — parameters for a multicast team. Placed here
+/// because the pointer-type appears in [`DriverFns`] fields.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct CUmemcastObjectProp {
+    pub num_devices: u32,
+    pub size: usize,
+    pub handle_types: u64, // bitfield of CUmemAllocationHandleType
+    pub flags: u64,
 }
 
 fn load_library() -> LoaderResult<Library> {
@@ -248,7 +542,11 @@ fn load_library() -> LoaderResult<Library> {
 }
 
 fn load_fns(lib: &Library) -> LoaderResult<DriverFns> {
-    macro_rules! g { ($sym:ident) => { sym(lib, "libcuda", stringify!($sym))? } }
+    macro_rules! g {
+        ($sym:ident) => {
+            sym(lib, "libcuda", stringify!($sym))?
+        };
+    }
     // Some driver versions (notably the Windows nvcuda.dll) export the
     // context-scoped alias `cuCtxGetStreamPriorityRange` instead of, or in
     // addition to, `cuStreamGetPriorityRange`. Signatures are identical. Fall
@@ -291,6 +589,7 @@ fn load_fns(lib: &Library) -> LoaderResult<DriverFns> {
             cuMemAllocAsync: g!(cuMemAllocAsync),
             cuMemFree_v2: g!(cuMemFree_v2),
             cuMemFreeAsync: g!(cuMemFreeAsync),
+            cuMemGetInfo_v2: g!(cuMemGetInfo_v2),
             cuMemsetD8Async: g!(cuMemsetD8Async),
             cuMemcpyHtoDAsync_v2: g!(cuMemcpyHtoDAsync_v2),
             cuMemcpyDtoHAsync_v2: g!(cuMemcpyDtoHAsync_v2),
@@ -307,6 +606,39 @@ fn load_fns(lib: &Library) -> LoaderResult<DriverFns> {
             cuGraphInstantiateWithFlags: g!(cuGraphInstantiateWithFlags),
             cuGraphExecDestroy: g!(cuGraphExecDestroy),
             cuGraphLaunch: g!(cuGraphLaunch),
+
+            cuMemCreate: crate::loader::sym_opt(lib, "cuMemCreate"),
+            cuMemRelease: crate::loader::sym_opt(lib, "cuMemRelease"),
+            cuMemAddressReserve: crate::loader::sym_opt(lib, "cuMemAddressReserve"),
+            cuMemAddressFree: crate::loader::sym_opt(lib, "cuMemAddressFree"),
+            cuMemMap: crate::loader::sym_opt(lib, "cuMemMap"),
+            cuMemUnmap: crate::loader::sym_opt(lib, "cuMemUnmap"),
+            cuMemSetAccess: crate::loader::sym_opt(lib, "cuMemSetAccess"),
+            cuMemGetAllocationGranularity: crate::loader::sym_opt(
+                lib,
+                "cuMemGetAllocationGranularity",
+            ),
+
+            cuMulticastCreate: crate::loader::sym_opt(lib, "cuMulticastCreate"),
+            cuMulticastAddDevice: crate::loader::sym_opt(lib, "cuMulticastAddDevice"),
+            cuMulticastBindMem: crate::loader::sym_opt(lib, "cuMulticastBindMem"),
+            cuMulticastBindAddr: crate::loader::sym_opt(lib, "cuMulticastBindAddr"),
+            cuMulticastUnbind: crate::loader::sym_opt(lib, "cuMulticastUnbind"),
+            cuMulticastGetGranularity: crate::loader::sym_opt(lib, "cuMulticastGetGranularity"),
+
+            cuGreenCtxCreate: crate::loader::sym_opt(lib, "cuGreenCtxCreate"),
+            cuGreenCtxDestroy: crate::loader::sym_opt(lib, "cuGreenCtxDestroy"),
+            cuGreenCtxRecordEvent: crate::loader::sym_opt(lib, "cuGreenCtxRecordEvent"),
+            cuCtxFromGreenCtx: crate::loader::sym_opt(lib, "cuCtxFromGreenCtx"),
+            cuDeviceGetDevResource: crate::loader::sym_opt(lib, "cuDeviceGetDevResource"),
+            cuDevResourceGenerateDesc: crate::loader::sym_opt(lib, "cuDevResourceGenerateDesc"),
+            cuStreamCreateFromGreenCtx: crate::loader::sym_opt(lib, "cuStreamCreateFromGreenCtx"),
+
+            cuGraphConditionalHandleCreate: crate::loader::sym_opt(
+                lib,
+                "cuGraphConditionalHandleCreate",
+            ),
+            cuGraphAddNode: crate::loader::sym_opt(lib, "cuGraphAddNode"),
         })
     }
 }
@@ -321,10 +653,35 @@ static FNS: LazyLock<Result<DriverFns, LoadError>> = LazyLock::new(|| {
 
 static INIT_DONE: OnceLock<CUresult> = OnceLock::new();
 
+/// Hot-path cache. After the first successful `fns()` call this holds a
+/// non-null pointer to the function table; subsequent calls become a single
+/// relaxed atomic load + null check, avoiding two `OnceLock` acquires per
+/// driver call (~30–50 ns saved on every wrapped op).
+static FNS_HOT: AtomicPtr<DriverFns> = AtomicPtr::new(std::ptr::null_mut());
+
 /// Resolve the driver function table. First call performs a `cuInit(0)`.
+#[inline]
 pub fn fns() -> Result<&'static DriverFns, &'static LoadError> {
+    // Fast path: pointer cached, library loaded, cuInit done. Acquire pairs
+    // with the Release store in `fns_slow` so we observe a fully-initialised
+    // `DriverFns` on weak-memory targets (ARM / Apple Silicon).
+    let cached = FNS_HOT.load(Ordering::Acquire);
+    if !cached.is_null() {
+        // SAFETY: only ever set to a `&'static DriverFns` reference below,
+        // and never cleared, so the pointer is valid for 'static.
+        return Ok(unsafe { &*cached });
+    }
+    fns_slow()
+}
+
+#[cold]
+#[inline(never)]
+fn fns_slow() -> Result<&'static DriverFns, &'static LoadError> {
     let f = FNS.as_ref()?;
     INIT_DONE.get_or_init(|| unsafe { (f.cuInit)(0) });
+    // Publish the static pointer for the hot path. `Release` so that the
+    // OnceLock writes happen-before the pointer becomes observable.
+    FNS_HOT.store(f as *const _ as *mut _, Ordering::Release);
     Ok(f)
 }
 
@@ -341,7 +698,9 @@ pub fn is_available() -> bool {
 
 /// Assert `CUresult::Success`, returning the `CUresult` on failure.
 #[inline]
-pub fn check(r: CUresult) -> Result<(), CUresult> { r.ok() }
+pub fn check(r: CUresult) -> Result<(), CUresult> {
+    r.ok()
+}
 
 #[cfg(test)]
 mod tests {
@@ -349,15 +708,21 @@ mod tests {
 
     #[test]
     fn result_enum_roundtrips_known_codes() {
-        assert_eq!(CUresult::from_raw(0),   CUresult::Success);
+        assert_eq!(CUresult::from_raw(0), CUresult::Success);
         assert_eq!(CUresult::from_raw(700), CUresult::LaunchFailed);
         assert_eq!(CUresult::from_raw(12345), CUresult::Other);
     }
 
     #[test]
     fn handles_are_zero_sized_newtypes() {
-        assert_eq!(std::mem::size_of::<CUcontext>(), std::mem::size_of::<*mut ()>());
-        assert_eq!(std::mem::size_of::<CUstream>(),  std::mem::size_of::<*mut ()>());
+        assert_eq!(
+            std::mem::size_of::<CUcontext>(),
+            std::mem::size_of::<*mut ()>()
+        );
+        assert_eq!(
+            std::mem::size_of::<CUstream>(),
+            std::mem::size_of::<*mut ()>()
+        );
     }
 
     #[test]

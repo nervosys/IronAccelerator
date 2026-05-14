@@ -46,11 +46,12 @@ impl Context {
 
     /// Upload initial data to a new read-write storage buffer.
     pub fn storage_buffer_init(&self, data: &[u8], usage: wgpu::BufferUsages) -> wgpu::Buffer {
-        self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("ia-storage"),
-            contents: data,
-            usage: usage | wgpu::BufferUsages::STORAGE,
-        })
+        self.device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("ia-storage"),
+                contents: data,
+                usage: usage | wgpu::BufferUsages::STORAGE,
+            })
     }
 
     /// Create an empty storage buffer of `size` bytes.
@@ -75,12 +76,7 @@ impl ComputePipeline {
     /// Build a pipeline from WGSL source with `buffer_count` storage
     /// bindings at slots `0..buffer_count`. `entry` is the shader entry
     /// point name.
-    pub fn from_wgsl(
-        ctx: &Context,
-        wgsl: &str,
-        entry: &str,
-        buffer_count: u32,
-    ) -> Self {
+    pub fn from_wgsl(ctx: &Context, wgsl: &str, entry: &str, buffer_count: u32) -> Self {
         let module = ctx
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -152,7 +148,9 @@ pub fn dispatch(
     });
     let mut encoder = ctx
         .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("ia-enc") });
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("ia-enc"),
+        });
     {
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: Some("ia-cp"),

@@ -1,9 +1,9 @@
 //! Legacy cuBLAS — used as a fallback path for BF16/F16/F32 GEMM when
 //! cuBLASLt's heuristic returns nothing (tiny matrices, odd strides).
 
-use crate::cublas_lt::{CublasOp, CublasStatus, CudaDataType, CublasComputeType};
+use crate::cublas_lt::{CublasComputeType, CublasOp, CublasStatus, CudaDataType};
 use crate::driver::CUstream;
-use crate::loader::{sym, try_load, LoadError};
+use crate::loader::{sym, sym_opt, try_load, LoadError};
 use libloading::Library;
 use std::ffi::{c_int, c_void};
 use std::sync::{LazyLock, OnceLock};
@@ -28,26 +28,84 @@ pub struct CublasFns {
     pub cublasGetVersion_v2: unsafe extern "C" fn(CublasHandle, *mut c_int) -> CublasStatus,
 
     pub cublasSgemm_v2: unsafe extern "C" fn(
-        CublasHandle, CublasOp, CublasOp, c_int, c_int, c_int,
-        *const f32, *const f32, c_int, *const f32, c_int,
-        *const f32, *mut f32, c_int,
+        CublasHandle,
+        CublasOp,
+        CublasOp,
+        c_int,
+        c_int,
+        c_int,
+        *const f32,
+        *const f32,
+        c_int,
+        *const f32,
+        c_int,
+        *const f32,
+        *mut f32,
+        c_int,
     ) -> CublasStatus,
 
     pub cublasGemmEx: unsafe extern "C" fn(
-        CublasHandle, CublasOp, CublasOp, c_int, c_int, c_int,
+        CublasHandle,
+        CublasOp,
+        CublasOp,
+        c_int,
+        c_int,
+        c_int,
         *const c_void,
-        *const c_void, CudaDataType, c_int,
-        *const c_void, CudaDataType, c_int,
         *const c_void,
-        *mut c_void, CudaDataType, c_int,
-        CublasComputeType, CublasGemmAlgo,
+        CudaDataType,
+        c_int,
+        *const c_void,
+        CudaDataType,
+        c_int,
+        *const c_void,
+        *mut c_void,
+        CudaDataType,
+        c_int,
+        CublasComputeType,
+        CublasGemmAlgo,
     ) -> CublasStatus,
+
+    /// `cublasGemmGroupedBatchedEx` (CUDA 12.4+). Fused dispatch of N GEMMs
+    /// with potentially different (M, N, K). Loaded optionally — older cuBLAS
+    /// versions don't export this symbol.
+    ///
+    /// Parameter arrays are indexed by group; `group_size[g]` gives the number
+    /// of matrices that share the parameters of group `g`.
+    pub cublasGemmGroupedBatchedEx: Option<
+        unsafe extern "C" fn(
+            CublasHandle,
+            *const CublasOp,      // transa_array[group_count]
+            *const CublasOp,      // transb_array[group_count]
+            *const c_int,         // m_array[group_count]
+            *const c_int,         // n_array[group_count]
+            *const c_int,         // k_array[group_count]
+            *const *const c_void, // alpha_array[group_count]
+            *const *const c_void, // Aarray[sum(group_size)]
+            CudaDataType,
+            *const c_int,         // lda_array[group_count]
+            *const *const c_void, // Barray[sum(group_size)]
+            CudaDataType,
+            *const c_int,         // ldb_array[group_count]
+            *const *const c_void, // beta_array[group_count]
+            *const *mut c_void,   // Carray[sum(group_size)]
+            CudaDataType,
+            *const c_int, // ldc_array[group_count]
+            c_int,        // group_count
+            *const c_int, // group_size[group_count]
+            CublasComputeType,
+        ) -> CublasStatus,
+    >,
 }
 
 fn candidates() -> &'static [&'static str] {
     &[
-        "libcublas.so.13", "libcublas.so.12", "libcublas.so",
-        "cublas64_13.dll", "cublas64_12.dll", "cublas64_11.dll",
+        "libcublas.so.13",
+        "libcublas.so.12",
+        "libcublas.so",
+        "cublas64_13.dll",
+        "cublas64_12.dll",
+        "cublas64_11.dll",
     ]
 }
 
@@ -63,9 +121,15 @@ static FNS: LazyLock<Result<CublasFns, LoadError>> = LazyLock::new(|| {
             cublasGetVersion_v2: sym(lib, "cublas", "cublasGetVersion_v2")?,
             cublasSgemm_v2: sym(lib, "cublas", "cublasSgemm_v2")?,
             cublasGemmEx: sym(lib, "cublas", "cublasGemmEx")?,
+            cublasGemmGroupedBatchedEx: sym_opt(lib, "cublasGemmGroupedBatchedEx"),
         })
     }
 });
 
-pub fn fns() -> Result<&'static CublasFns, &'static LoadError> { FNS.as_ref() }
-pub fn is_available() -> bool { FNS.is_ok() }
+#[inline]
+pub fn fns() -> Result<&'static CublasFns, &'static LoadError> {
+    FNS.as_ref()
+}
+pub fn is_available() -> bool {
+    FNS.is_ok()
+}

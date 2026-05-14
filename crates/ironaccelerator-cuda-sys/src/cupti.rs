@@ -17,21 +17,41 @@ unsafe impl Sync for CuptiSubscriber {}
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CuptiResult {
-    Success = 0, InvalidParameter = 1, InvalidDevice = 2, InvalidContext = 3,
-    InvalidEventDomainId = 4, InvalidEventId = 5, InvalidEventName = 6,
-    InvalidOperation = 7, OutOfMemory = 8, HardwareError = 9,
-    NotCompatible = 10, NotInitialized = 11, NotReady = 12,
-    NotSupported = 13, Other = 0xFFFF_FFFF,
+    Success = 0,
+    InvalidParameter = 1,
+    InvalidDevice = 2,
+    InvalidContext = 3,
+    InvalidEventDomainId = 4,
+    InvalidEventId = 5,
+    InvalidEventName = 6,
+    InvalidOperation = 7,
+    OutOfMemory = 8,
+    HardwareError = 9,
+    NotCompatible = 10,
+    NotInitialized = 11,
+    NotReady = 12,
+    NotSupported = 13,
+    Other = 0xFFFF_FFFF,
 }
 
 impl CuptiResult {
     pub fn from_raw(r: u32) -> Self {
-        if r <= 13 { unsafe { std::mem::transmute(r) } } else { Self::Other }
+        if r <= 13 {
+            unsafe { std::mem::transmute(r) }
+        } else {
+            Self::Other
+        }
     }
     pub fn ok(self) -> Result<(), Self> {
-        if self == Self::Success { Ok(()) } else { Err(self) }
+        if self == Self::Success {
+            Ok(())
+        } else {
+            Err(self)
+        }
     }
-    pub fn is_ok(self) -> bool { self == Self::Success }
+    pub fn is_ok(self) -> bool {
+        self == Self::Success
+    }
 }
 
 /// `CUpti_ActivityKind` — subset we care about.
@@ -61,35 +81,38 @@ pub enum CuptiActivityKind {
 }
 
 /// Callback for buffer allocation requests (first arg receives allocation).
-pub type CuptiBufferRequestedCb = unsafe extern "C" fn(
-    *mut *mut u8, *mut usize, *mut usize,
-);
+pub type CuptiBufferRequestedCb = unsafe extern "C" fn(*mut *mut u8, *mut usize, *mut usize);
 
 /// Callback for buffer completion — hand the filled activity buffer back.
 pub type CuptiBufferCompletedCb = unsafe extern "C" fn(
-    *mut c_void,     // ctx
-    u32,             // streamId
-    *mut u8,         // buffer
-    usize, usize,    // size, validSize
+    *mut c_void, // ctx
+    u32,         // streamId
+    *mut u8,     // buffer
+    usize,
+    usize, // size, validSize
 );
 
 pub struct CuptiFns {
     pub cuptiActivityEnable: unsafe extern "C" fn(CuptiActivityKind) -> CuptiResult,
     pub cuptiActivityDisable: unsafe extern "C" fn(CuptiActivityKind) -> CuptiResult,
-    pub cuptiActivityRegisterCallbacks: unsafe extern "C" fn(
-        CuptiBufferRequestedCb, CuptiBufferCompletedCb,
-    ) -> CuptiResult,
+    pub cuptiActivityRegisterCallbacks:
+        unsafe extern "C" fn(CuptiBufferRequestedCb, CuptiBufferCompletedCb) -> CuptiResult,
     pub cuptiActivityFlushAll: unsafe extern "C" fn(u32) -> CuptiResult,
-    pub cuptiActivityGetNextRecord: unsafe extern "C" fn(
-        *mut u8, usize, *mut *mut c_void,
-    ) -> CuptiResult,
+    pub cuptiActivityGetNextRecord:
+        unsafe extern "C" fn(*mut u8, usize, *mut *mut c_void) -> CuptiResult,
     pub cuptiGetVersion: unsafe extern "C" fn(*mut u32) -> CuptiResult,
     pub cuptiGetTimestamp: unsafe extern "C" fn(*mut u64) -> CuptiResult,
 }
 
 fn candidates() -> &'static [&'static str] {
-    &["libcupti.so.13", "libcupti.so.12", "libcupti.so",
-      "cupti64_2025.1.0.dll", "cupti64_2024.3.0.dll", "cupti.dll"]
+    &[
+        "libcupti.so.13",
+        "libcupti.so.12",
+        "libcupti.so",
+        "cupti64_2025.1.0.dll",
+        "cupti64_2024.3.0.dll",
+        "cupti.dll",
+    ]
 }
 
 static LIB: OnceLock<Library> = OnceLock::new();
@@ -109,5 +132,10 @@ static FNS: LazyLock<Result<CuptiFns, LoadError>> = LazyLock::new(|| {
     }
 });
 
-pub fn fns() -> Result<&'static CuptiFns, &'static LoadError> { FNS.as_ref() }
-pub fn is_available() -> bool { FNS.is_ok() }
+#[inline]
+pub fn fns() -> Result<&'static CuptiFns, &'static LoadError> {
+    FNS.as_ref()
+}
+pub fn is_available() -> bool {
+    FNS.is_ok()
+}

@@ -18,17 +18,14 @@ pub fn own_instance() -> Option<(&'static Entry, &'static Instance)> {
 }
 
 fn entry() -> Option<&'static Entry> {
-    ENTRY
-        .get_or_init(|| unsafe { Entry::load().ok() })
-        .as_ref()
+    ENTRY.get_or_init(|| unsafe { Entry::load().ok() }).as_ref()
 }
 
 fn instance() -> Option<&'static Instance> {
     INSTANCE
         .get_or_init(|| {
             let entry = entry()?;
-            let app = vk::ApplicationInfo::default()
-                .api_version(vk::make_api_version(0, 1, 3, 0));
+            let app = vk::ApplicationInfo::default().api_version(vk::make_api_version(0, 1, 3, 0));
             let ci = vk::InstanceCreateInfo::default().application_info(&app);
             unsafe { entry.create_instance(&ci, None).ok() }
         })
@@ -54,7 +51,9 @@ pub struct PhysicalDevice {
 }
 
 pub fn enumerate() -> Vec<PhysicalDevice> {
-    let Some(inst) = instance() else { return Vec::new() };
+    let Some(inst) = instance() else {
+        return Vec::new();
+    };
     let raw = match unsafe { inst.enumerate_physical_devices() } {
         Ok(v) => v,
         Err(_) => return Vec::new(),
@@ -72,8 +71,7 @@ fn describe(inst: &Instance, pd: vk::PhysicalDevice, ordinal: u32) -> PhysicalDe
 
     let mut f16i8 = vk::PhysicalDeviceShaderFloat16Int8Features::default();
     let (shader_int16, shader_int8, shader_float16) = {
-        let mut features2 =
-            vk::PhysicalDeviceFeatures2::default().push_next(&mut f16i8);
+        let mut features2 = vk::PhysicalDeviceFeatures2::default().push_next(&mut f16i8);
         unsafe { inst.get_physical_device_features2(pd, &mut features2) };
         (
             features2.features.shader_int16 != 0,
@@ -100,10 +98,13 @@ fn describe(inst: &Instance, pd: vk::PhysicalDevice, ordinal: u32) -> PhysicalDe
         .map(|i| i as u32);
 
     // Cooperative matrix is a KHR extension; probe by name.
-    let exts = unsafe { inst.enumerate_device_extension_properties(pd).unwrap_or_default() };
-    let cooperative_matrix = exts.iter().any(|e| {
-        raw_name_to_string(&e.extension_name) == "VK_KHR_cooperative_matrix"
-    });
+    let exts = unsafe {
+        inst.enumerate_device_extension_properties(pd)
+            .unwrap_or_default()
+    };
+    let cooperative_matrix = exts
+        .iter()
+        .any(|e| raw_name_to_string(&e.extension_name) == "VK_KHR_cooperative_matrix");
 
     PhysicalDevice {
         ordinal,
@@ -123,6 +124,10 @@ fn describe(inst: &Instance, pd: vk::PhysicalDevice, ordinal: u32) -> PhysicalDe
 }
 
 fn raw_name_to_string(raw: &[core::ffi::c_char]) -> String {
-    let bytes: Vec<u8> = raw.iter().take_while(|&&c| c != 0).map(|&c| c as u8).collect();
+    let bytes: Vec<u8> = raw
+        .iter()
+        .take_while(|&&c| c != 0)
+        .map(|&c| c as u8)
+        .collect();
     String::from_utf8_lossy(&bytes).into_owned()
 }

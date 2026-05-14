@@ -1,8 +1,8 @@
 //! AWS Neuron `Backend` impl. One descriptor per NeuronCore.
 
 use ironaccelerator_core::{
-    Backend, BackendKind, Capability, CapabilityFlags, ComputeTier, DeviceDescriptor,
-    DeviceId, Result, Strategy, Vendor, Workload,
+    Backend, BackendKind, Capability, CapabilityFlags, ComputeTier, DeviceDescriptor, DeviceId,
+    Result, Strategy, Vendor, Workload,
 };
 
 use crate::drv::NeuronGen;
@@ -74,11 +74,13 @@ fn capability_flags(gen: NeuronGen) -> CapabilityFlags {
             base | CapabilityFlags::FP8_E4M3 | CapabilityFlags::FP8_E5M2 | CapabilityFlags::INT4
         }
         NeuronGen::Trn1 => base | CapabilityFlags::FP8_E4M3 | CapabilityFlags::FP8_E5M2,
-        NeuronGen::Inf1 => CapabilityFlags::FP32
-            | CapabilityFlags::BF16
-            | CapabilityFlags::INT8
-            | CapabilityFlags::TENSOR_CORES
-            | CapabilityFlags::MULTI_STREAM,
+        NeuronGen::Inf1 => {
+            CapabilityFlags::FP32
+                | CapabilityFlags::BF16
+                | CapabilityFlags::INT8
+                | CapabilityFlags::TENSOR_CORES
+                | CapabilityFlags::MULTI_STREAM
+        }
         NeuronGen::Unknown => base,
     }
 }

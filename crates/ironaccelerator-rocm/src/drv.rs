@@ -12,9 +12,18 @@ use std::sync::{Arc, OnceLock};
 
 #[derive(Debug, Clone)]
 pub enum Error {
-    NotAvailable { lib: &'static str, detail: String },
-    Driver { op: &'static str, code: sys::HipResult },
-    Precondition { op: &'static str, msg: String },
+    NotAvailable {
+        lib: &'static str,
+        detail: String,
+    },
+    Driver {
+        op: &'static str,
+        code: sys::HipResult,
+    },
+    Precondition {
+        op: &'static str,
+        msg: String,
+    },
 }
 
 impl Error {
@@ -50,19 +59,51 @@ impl std::error::Error for Error {}
 
 impl From<&LoadError> for Error {
     fn from(e: &LoadError) -> Self {
-        Error::NotAvailable { lib: "hip", detail: format!("{e}") }
+        Error::NotAvailable {
+            lib: "hip",
+            detail: format!("{e}"),
+        }
     }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+#[inline(always)]
 fn hip() -> Result<&'static sys::HipFns> {
-    sys::fns().map_err(|e| Error::NotAvailable { lib: "hip", detail: format!("{e}") })
+    sys::fns().map_err(hip_load_err)
 }
 
-#[inline]
+#[cold]
+#[inline(never)]
+fn hip_load_err(e: &'static LoadError) -> Error {
+    Error::NotAvailable {
+        lib: "hip",
+        detail: format!("{e}"),
+    }
+}
+
+#[inline(always)]
 fn check(op: &'static str, r: sys::HipResult) -> Result<()> {
-    if r.is_ok() { Ok(()) } else { Err(Error::Driver { op, code: r }) }
+    if r.is_ok() {
+        Ok(())
+    } else {
+        check_err(op, r)
+    }
+}
+
+#[cold]
+#[inline(never)]
+fn check_err(op: &'static str, r: sys::HipResult) -> Result<()> {
+    Err(Error::Driver { op, code: r })
+}
+
+#[cold]
+#[inline(never)]
+fn alloc_overflow() -> Error {
+    Error::Precondition {
+        op: "DeviceBuf::alloc",
+        msg: "size overflow".into(),
+    }
 }
 
 static INIT: OnceLock<Result<()>> = OnceLock::new();
@@ -70,7 +111,8 @@ fn ensure_init() -> Result<()> {
     INIT.get_or_init(|| unsafe {
         let f = hip()?;
         check("hipInit", (f.hipInit)(0))
-    }).clone()
+    })
+    .clone()
 }
 
 // ── Device ─────────────────────────────────────────────────────────────────
@@ -78,6 +120,9 @@ fn ensure_init() -> Result<()> {
 pub struct Device {
     ordinal: i32,
     device: HipDevice,
+    /// Cached driver function table — set at construction so every method on
+    /// `Device` / `Stream` / `Event` skips the AtomicPtr load.
+    drv: &'static sys::HipFns,
 }
 
 impl Device {
@@ -85,51 +130,76 @@ impl Device {
         ensure_init()?;
         let f = hip()?;
         let mut d: HipDevice = 0;
-        unsafe { check("hipDeviceGet", (f.hipDeviceGet)(&mut d, ordinal as i32))?; }
-        unsafe { check("hipSetDevice", (f.hipSetDevice)(ordinal as i32))?; }
-        Ok(Arc::new(Self { ordinal: ordinal as i32, device: d }))
+        unsafe {
+            check("hipDeviceGet", (f.hipDeviceGet)(&mut d, ordinal as i32))?;
+        }
+        unsafe {
+            check("hipSetDevice", (f.hipSetDevice)(ordinal as i32))?;
+        }
+        Ok(Arc::new(Self {
+            ordinal: ordinal as i32,
+            device: d,
+            drv: f,
+        }))
     }
 
     pub fn count() -> Result<u32> {
         ensure_init()?;
         let f = hip()?;
         let mut n: i32 = 0;
-        unsafe { check("hipGetDeviceCount", (f.hipGetDeviceCount)(&mut n))?; }
+        unsafe {
+            check("hipGetDeviceCount", (f.hipGetDeviceCount)(&mut n))?;
+        }
         Ok(n.max(0) as u32)
     }
 
-    #[inline] pub fn ordinal(&self) -> u32 { self.ordinal as u32 }
-    #[inline] pub fn raw(&self) -> HipDevice { self.device }
+    #[inline]
+    pub fn ordinal(&self) -> u32 {
+        self.ordinal as u32
+    }
+    #[inline]
+    pub fn raw(&self) -> HipDevice {
+        self.device
+    }
 
+    #[inline]
     pub fn bind(&self) -> Result<()> {
-        let f = hip()?;
-        unsafe { check("hipSetDevice", (f.hipSetDevice)(self.ordinal)) }
+        unsafe { check("hipSetDevice", (self.drv.hipSetDevice)(self.ordinal)) }
     }
 
     pub fn name(&self) -> Result<String> {
-        let f = hip()?;
         let mut buf = vec![0 as c_char; 256];
         unsafe {
-            check("hipDeviceGetName",
-                  (f.hipDeviceGetName)(buf.as_mut_ptr(), buf.len() as i32, self.device))?;
+            check(
+                "hipDeviceGetName",
+                (self.drv.hipDeviceGetName)(buf.as_mut_ptr(), buf.len() as i32, self.device),
+            )?;
         }
         let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
         let bytes: Vec<u8> = buf[..end].iter().map(|&b| b as u8).collect();
         Ok(String::from_utf8_lossy(&bytes).into_owned())
     }
 
+    #[inline]
     pub fn attribute(&self, attr: sys::HipDeviceAttribute) -> Result<i32> {
-        let f = hip()?;
         let mut v: i32 = 0;
-        unsafe { check("hipDeviceGetAttribute",
-                       (f.hipDeviceGetAttribute)(&mut v, attr, self.device))?; }
+        unsafe {
+            check(
+                "hipDeviceGetAttribute",
+                (self.drv.hipDeviceGetAttribute)(&mut v, attr, self.device),
+            )?;
+        }
         Ok(v)
     }
 
     pub fn total_mem(&self) -> Result<usize> {
-        let f = hip()?;
         let mut b: usize = 0;
-        unsafe { check("hipDeviceTotalMem", (f.hipDeviceTotalMem)(&mut b, self.device))?; }
+        unsafe {
+            check(
+                "hipDeviceTotalMem",
+                (self.drv.hipDeviceTotalMem)(&mut b, self.device),
+            )?;
+        }
         Ok(b)
     }
 
@@ -140,55 +210,84 @@ impl Device {
     }
 
     pub fn can_access_peer(&self, other: &Device) -> Result<bool> {
-        let f = hip()?;
         let mut v: i32 = 0;
-        unsafe { check("hipDeviceCanAccessPeer",
-                       (f.hipDeviceCanAccessPeer)(&mut v, self.device, other.device))?; }
+        unsafe {
+            check(
+                "hipDeviceCanAccessPeer",
+                (self.drv.hipDeviceCanAccessPeer)(&mut v, self.device, other.device),
+            )?;
+        }
         Ok(v != 0)
     }
 }
 
-unsafe impl Send for Device {} unsafe impl Sync for Device {}
+unsafe impl Send for Device {}
+unsafe impl Sync for Device {}
 
 // ── Stream ─────────────────────────────────────────────────────────────────
 
 pub struct Stream {
     device: Arc<Device>,
     handle: HipStream,
+    drv: &'static sys::HipFns,
 }
 
 impl Stream {
     pub fn new(device: Arc<Device>) -> Result<Arc<Self>> {
         device.bind()?;
-        let f = hip()?;
+        let f = device.drv;
         let mut h = HipStream::default();
         unsafe {
-            check("hipStreamCreateWithPriority",
-                  (f.hipStreamCreateWithPriority)(&mut h, sys::HIP_STREAM_NON_BLOCKING, 0))?;
+            check(
+                "hipStreamCreateWithPriority",
+                (f.hipStreamCreateWithPriority)(&mut h, sys::HIP_STREAM_NON_BLOCKING, 0),
+            )?;
         }
-        Ok(Arc::new(Self { device, handle: h }))
+        Ok(Arc::new(Self {
+            device,
+            handle: h,
+            drv: f,
+        }))
     }
 
-    #[inline] pub fn device(&self) -> &Arc<Device> { &self.device }
-    #[inline] pub fn raw(&self) -> HipStream { self.handle }
+    #[inline]
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+    #[inline]
+    pub fn raw(&self) -> HipStream {
+        self.handle
+    }
 
+    #[inline]
     pub fn synchronize(&self) -> Result<()> {
-        let f = hip()?;
-        unsafe { check("hipStreamSynchronize", (f.hipStreamSynchronize)(self.handle)) }
+        unsafe {
+            check(
+                "hipStreamSynchronize",
+                (self.drv.hipStreamSynchronize)(self.handle),
+            )
+        }
     }
 
+    #[inline]
     pub fn wait_for(&self, event: &Event) -> Result<()> {
-        let f = hip()?;
-        unsafe { check("hipStreamWaitEvent", (f.hipStreamWaitEvent)(self.handle, event.handle, 0)) }
+        unsafe {
+            check(
+                "hipStreamWaitEvent",
+                (self.drv.hipStreamWaitEvent)(self.handle, event.handle, 0),
+            )
+        }
     }
 }
 
-unsafe impl Send for Stream {} unsafe impl Sync for Stream {}
+unsafe impl Send for Stream {}
+unsafe impl Sync for Stream {}
 
 impl Drop for Stream {
+    #[inline]
     fn drop(&mut self) {
-        if let Ok(f) = hip() {
-            unsafe { let _ = (f.hipStreamDestroy)(self.handle); }
+        unsafe {
+            let _ = (self.drv.hipStreamDestroy)(self.handle);
         }
     }
 }
@@ -199,6 +298,7 @@ pub struct Event {
     _device: Arc<Device>,
     handle: HipEvent,
     timing: bool,
+    drv: &'static sys::HipFns,
 }
 
 impl Event {
@@ -212,21 +312,40 @@ impl Event {
 
     fn new_flags(device: Arc<Device>, flags: u32, timing: bool) -> Result<Self> {
         device.bind()?;
-        let f = hip()?;
+        let f = device.drv;
         let mut h = HipEvent::default();
-        unsafe { check("hipEventCreateWithFlags",
-                       (f.hipEventCreateWithFlags)(&mut h, flags))?; }
-        Ok(Self { _device: device, handle: h, timing })
+        unsafe {
+            check(
+                "hipEventCreateWithFlags",
+                (f.hipEventCreateWithFlags)(&mut h, flags),
+            )?;
+        }
+        Ok(Self {
+            _device: device,
+            handle: h,
+            timing,
+            drv: f,
+        })
     }
 
+    #[inline]
     pub fn record(&self, stream: &Stream) -> Result<()> {
-        let f = hip()?;
-        unsafe { check("hipEventRecord", (f.hipEventRecord)(self.handle, stream.handle)) }
+        unsafe {
+            check(
+                "hipEventRecord",
+                (self.drv.hipEventRecord)(self.handle, stream.handle),
+            )
+        }
     }
 
+    #[inline]
     pub fn synchronize(&self) -> Result<()> {
-        let f = hip()?;
-        unsafe { check("hipEventSynchronize", (f.hipEventSynchronize)(self.handle)) }
+        unsafe {
+            check(
+                "hipEventSynchronize",
+                (self.drv.hipEventSynchronize)(self.handle),
+            )
+        }
     }
 
     pub fn elapsed_ms(start: &Event, end: &Event) -> Result<f32> {
@@ -236,30 +355,42 @@ impl Event {
                 msg: "both events must be created with timing enabled".into(),
             });
         }
-        let f = hip()?;
         let mut ms: f32 = 0.0;
-        unsafe { check("hipEventElapsedTime",
-                       (f.hipEventElapsedTime)(&mut ms, start.handle, end.handle))?; }
+        unsafe {
+            check(
+                "hipEventElapsedTime",
+                (start.drv.hipEventElapsedTime)(&mut ms, start.handle, end.handle),
+            )?;
+        }
         Ok(ms)
     }
 }
 
 impl Drop for Event {
+    #[inline]
     fn drop(&mut self) {
-        if let Ok(f) = hip() {
-            unsafe { let _ = (f.hipEventDestroy)(self.handle); }
+        unsafe {
+            let _ = (self.drv.hipEventDestroy)(self.handle);
         }
     }
 }
 
-unsafe impl Send for Event {} unsafe impl Sync for Event {}
+unsafe impl Send for Event {}
+unsafe impl Sync for Event {}
 
 // ── DeviceBuf ──────────────────────────────────────────────────────────────
 
 pub trait Repr: Copy + Send + Sync + 'static {}
-impl Repr for u8 {} impl Repr for u16 {} impl Repr for u32 {} impl Repr for u64 {}
-impl Repr for i8 {} impl Repr for i16 {} impl Repr for i32 {} impl Repr for i64 {}
-impl Repr for f32 {} impl Repr for f64 {}
+impl Repr for u8 {}
+impl Repr for u16 {}
+impl Repr for u32 {}
+impl Repr for u64 {}
+impl Repr for i8 {}
+impl Repr for i16 {}
+impl Repr for i32 {}
+impl Repr for i64 {}
+impl Repr for f32 {}
+impl Repr for f64 {}
 
 pub struct DeviceBuf<T: Repr> {
     stream: Arc<Stream>,
@@ -269,20 +400,36 @@ pub struct DeviceBuf<T: Repr> {
 }
 
 impl<T: Repr> DeviceBuf<T> {
+    #[inline]
     pub fn alloc(stream: Arc<Stream>, len: usize) -> Result<Self> {
         if len == 0 {
-            return Ok(Self { stream, ptr: 0, len: 0, _m: PhantomData });
+            return Ok(Self {
+                stream,
+                ptr: 0,
+                len: 0,
+                _m: PhantomData,
+            });
         }
-        let f = hip()?;
-        let bytes = len.checked_mul(std::mem::size_of::<T>()).ok_or(Error::Precondition {
-            op: "DeviceBuf::alloc", msg: "size overflow".into(),
-        })?;
+        // Cold-path the overflow error so the success path stays alloc-free.
+        let Some(bytes) = len.checked_mul(std::mem::size_of::<T>()) else {
+            return Err(alloc_overflow());
+        };
         let mut raw: *mut c_void = std::ptr::null_mut();
-        unsafe { check("hipMallocAsync",
-                       (f.hipMallocAsync)(&mut raw, bytes, stream.handle))?; }
-        Ok(Self { stream, ptr: raw as HipDeviceptr, len, _m: PhantomData })
+        unsafe {
+            check(
+                "hipMallocAsync",
+                (stream.drv.hipMallocAsync)(&mut raw, bytes, stream.handle),
+            )?;
+        }
+        Ok(Self {
+            stream,
+            ptr: raw as HipDeviceptr,
+            len,
+            _m: PhantomData,
+        })
     }
 
+    #[inline]
     pub fn copy_from_host(&mut self, src: &[T]) -> Result<()> {
         if src.len() != self.len {
             return Err(Error::Precondition {
@@ -290,16 +437,24 @@ impl<T: Repr> DeviceBuf<T> {
                 msg: format!("length mismatch: dst={} src={}", self.len, src.len()),
             });
         }
-        if self.len == 0 { return Ok(()); }
-        let f = hip()?;
+        if self.len == 0 {
+            return Ok(());
+        }
         let bytes = self.len * std::mem::size_of::<T>();
         unsafe {
-            check("hipMemcpyHtoDAsync",
-                  (f.hipMemcpyHtoDAsync)(self.ptr, src.as_ptr() as *const c_void,
-                                         bytes, self.stream.handle))
+            check(
+                "hipMemcpyHtoDAsync",
+                (self.stream.drv.hipMemcpyHtoDAsync)(
+                    self.ptr,
+                    src.as_ptr() as *const c_void,
+                    bytes,
+                    self.stream.handle,
+                ),
+            )
         }
     }
 
+    #[inline]
     pub fn copy_to_host(&self, dst: &mut [T]) -> Result<()> {
         if dst.len() != self.len {
             return Err(Error::Precondition {
@@ -307,76 +462,122 @@ impl<T: Repr> DeviceBuf<T> {
                 msg: format!("length mismatch: src={} dst={}", self.len, dst.len()),
             });
         }
-        if self.len == 0 { return Ok(()); }
-        let f = hip()?;
+        if self.len == 0 {
+            return Ok(());
+        }
         let bytes = self.len * std::mem::size_of::<T>();
         unsafe {
-            check("hipMemcpyDtoHAsync",
-                  (f.hipMemcpyDtoHAsync)(dst.as_mut_ptr() as *mut c_void,
-                                         self.ptr, bytes, self.stream.handle))
+            check(
+                "hipMemcpyDtoHAsync",
+                (self.stream.drv.hipMemcpyDtoHAsync)(
+                    dst.as_mut_ptr() as *mut c_void,
+                    self.ptr,
+                    bytes,
+                    self.stream.handle,
+                ),
+            )
         }
     }
 
-    #[inline] pub fn len(&self) -> usize { self.len }
-    #[inline] pub fn is_empty(&self) -> bool { self.len == 0 }
-    #[inline] pub fn byte_len(&self) -> usize { self.len * std::mem::size_of::<T>() }
-    #[inline] pub fn device_ptr(&self) -> HipDeviceptr { self.ptr }
-    #[inline] pub fn stream(&self) -> &Arc<Stream> { &self.stream }
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+    #[inline]
+    pub fn byte_len(&self) -> usize {
+        self.len * std::mem::size_of::<T>()
+    }
+    #[inline]
+    pub fn device_ptr(&self) -> HipDeviceptr {
+        self.ptr
+    }
+    #[inline]
+    pub fn stream(&self) -> &Arc<Stream> {
+        &self.stream
+    }
 }
 
 impl<T: Repr> Drop for DeviceBuf<T> {
+    #[inline]
     fn drop(&mut self) {
-        if self.len == 0 { return; }
-        if let Ok(f) = hip() {
-            unsafe { let _ = (f.hipFreeAsync)(self.ptr as *mut c_void, self.stream.handle); }
+        if self.len == 0 {
+            return;
+        }
+        unsafe {
+            let _ = (self.stream.drv.hipFreeAsync)(self.ptr as *mut c_void, self.stream.handle);
         }
     }
 }
 
-unsafe impl<T: Repr> Send for DeviceBuf<T> {} unsafe impl<T: Repr> Sync for DeviceBuf<T> {}
+unsafe impl<T: Repr> Send for DeviceBuf<T> {}
+unsafe impl<T: Repr> Sync for DeviceBuf<T> {}
 
 // ── Module + kernel launch ─────────────────────────────────────────────────
 
 pub struct Module {
     _device: Arc<Device>,
     handle: HipModule,
+    drv: &'static sys::HipFns,
 }
 
 impl Module {
     pub fn load(device: Arc<Device>, image: &[u8]) -> Result<Arc<Self>> {
         device.bind()?;
-        let f = hip()?;
+        let f = device.drv;
         let mut h = HipModule::default();
-        unsafe { check("hipModuleLoadData",
-                       (f.hipModuleLoadData)(&mut h, image.as_ptr() as *const c_void))?; }
-        Ok(Arc::new(Self { _device: device, handle: h }))
+        unsafe {
+            check(
+                "hipModuleLoadData",
+                (f.hipModuleLoadData)(&mut h, image.as_ptr() as *const c_void),
+            )?;
+        }
+        Ok(Arc::new(Self {
+            _device: device,
+            handle: h,
+            drv: f,
+        }))
     }
 
     pub fn function(self: &Arc<Self>, name: &str) -> Result<Function> {
-        let f = hip()?;
         let cname = CString::new(name).map_err(|_| Error::Precondition {
-            op: "Module::function", msg: "name contains NUL".into(),
+            op: "Module::function",
+            msg: "name contains NUL".into(),
         })?;
         let mut fun = HipFunction::default();
-        unsafe { check("hipModuleGetFunction",
-                       (f.hipModuleGetFunction)(&mut fun, self.handle, cname.as_ptr()))?; }
-        Ok(Function { _module: self.clone(), handle: fun })
+        unsafe {
+            check(
+                "hipModuleGetFunction",
+                (self.drv.hipModuleGetFunction)(&mut fun, self.handle, cname.as_ptr()),
+            )?;
+        }
+        Ok(Function {
+            _module: self.clone(),
+            handle: fun,
+            drv: self.drv,
+        })
     }
 }
 
 impl Drop for Module {
+    #[inline]
     fn drop(&mut self) {
-        if let Ok(f) = hip() {
-            unsafe { let _ = (f.hipModuleUnload)(self.handle); }
+        unsafe {
+            let _ = (self.drv.hipModuleUnload)(self.handle);
         }
     }
 }
 
-unsafe impl Send for Module {} unsafe impl Sync for Module {}
+unsafe impl Send for Module {}
+unsafe impl Sync for Module {}
 
 pub struct Function {
     _module: Arc<Module>,
     handle: HipFunction,
+    drv: &'static sys::HipFns,
 }
 
 pub struct LaunchCfg {
@@ -386,7 +587,11 @@ pub struct LaunchCfg {
 }
 impl LaunchCfg {
     pub fn linear(grid: u32, block: u32) -> Self {
-        Self { grid: (grid, 1, 1), block: (block, 1, 1), shared_mem: 0 }
+        Self {
+            grid: (grid, 1, 1),
+            block: (block, 1, 1),
+            shared_mem: 0,
+        }
     }
 }
 
@@ -397,27 +602,42 @@ impl Function {
     ///
     /// # Safety
     /// `argv` must point to valid argument slots for the kernel.
+    #[inline]
     pub unsafe fn launch_raw(
-        &self, cfg: LaunchCfg, stream: &Stream, argv: *mut *mut c_void,
+        &self,
+        cfg: LaunchCfg,
+        stream: &Stream,
+        argv: *mut *mut c_void,
     ) -> Result<()> {
-        let f = hip()?;
         unsafe {
-            check("hipModuleLaunchKernel", (f.hipModuleLaunchKernel)(
-                self.handle,
-                cfg.grid.0, cfg.grid.1, cfg.grid.2,
-                cfg.block.0, cfg.block.1, cfg.block.2,
-                cfg.shared_mem, stream.raw(),
-                argv, std::ptr::null_mut(),
-            ))
+            check(
+                "hipModuleLaunchKernel",
+                (self.drv.hipModuleLaunchKernel)(
+                    self.handle,
+                    cfg.grid.0,
+                    cfg.grid.1,
+                    cfg.grid.2,
+                    cfg.block.0,
+                    cfg.block.1,
+                    cfg.block.2,
+                    cfg.shared_mem,
+                    stream.raw(),
+                    argv,
+                    std::ptr::null_mut(),
+                ),
+            )
         }
     }
 }
 
-unsafe impl Send for Function {} unsafe impl Sync for Function {}
+unsafe impl Send for Function {}
+unsafe impl Sync for Function {}
 
 // ── availability probe ────────────────────────────────────────────────────
 
-pub fn is_available() -> bool { sys::is_available() }
+pub fn is_available() -> bool {
+    sys::is_available()
+}
 
 impl From<Error> for ironaccelerator_core::Error {
     fn from(e: Error) -> Self {

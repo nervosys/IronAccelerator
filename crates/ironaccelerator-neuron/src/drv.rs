@@ -1,6 +1,11 @@
 //! `libnrt` loader. We need three symbols — `nrt_init`,
 //! `nrt_get_total_nc_count`, and `nrt_get_version` — and a best-effort
 //! read of the Neuron-specific env vars that AWS containers set.
+//!
+//! `drop(sym)` on a `libloading::Symbol` ends the borrow on its Library;
+//! Symbol doesn't impl Drop but the lifetime parameter does the work.
+
+#![allow(clippy::drop_non_drop)]
 
 use core::ffi::c_void;
 
@@ -38,10 +43,7 @@ pub type NrtAddTensorToSetFn = unsafe extern "C" fn(
 type NrtInitFn =
     unsafe extern "C" fn(framework: u32, framework_version: *const core::ffi::c_char) -> NrtStatus;
 type NrtGetTotalNcCountFn = unsafe extern "C" fn(count: *mut u32) -> NrtStatus;
-type NrtGetVersionFn = unsafe extern "C" fn(
-    out: *mut core::ffi::c_char,
-    out_len: u32,
-) -> NrtStatus;
+type NrtGetVersionFn = unsafe extern "C" fn(out: *mut core::ffi::c_char, out_len: u32) -> NrtStatus;
 
 static LIB: OnceCell<Option<Loaded>> = OnceCell::new();
 
@@ -90,11 +92,11 @@ fn load() -> Option<Loaded> {
             if init(0, tag) != NRT_SUCCESS {
                 continue;
             }
-            let count_fn: Symbol<NrtGetTotalNcCountFn> =
-                match lib.get(b"nrt_get_total_nc_count\0") {
-                    Ok(s) => s,
-                    Err(_) => continue,
-                };
+            let count_fn: Symbol<NrtGetTotalNcCountFn> = match lib.get(b"nrt_get_total_nc_count\0")
+            {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
             let mut count: u32 = 0;
             if count_fn(&mut count) != NRT_SUCCESS {
                 continue;
@@ -148,7 +150,11 @@ unsafe fn read_version(f: NrtGetVersionFn) -> Option<String> {
     if status != NRT_SUCCESS {
         return None;
     }
-    let bytes: Vec<u8> = buf.iter().take_while(|&&c| c != 0).map(|&c| c as u8).collect();
+    let bytes: Vec<u8> = buf
+        .iter()
+        .take_while(|&&c| c != 0)
+        .map(|&c| c as u8)
+        .collect();
     String::from_utf8(bytes).ok()
 }
 
@@ -191,7 +197,10 @@ pub fn detect_generation() -> NeuronGen {
             return NeuronGen::Inf1;
         }
     }
-    match version().and_then(|v| v.split('.').next()).and_then(|m| m.parse::<u32>().ok()) {
+    match version()
+        .and_then(|v| v.split('.').next())
+        .and_then(|m| m.parse::<u32>().ok())
+    {
         Some(n) if n >= 3 => NeuronGen::Trn2,
         Some(2) => NeuronGen::Trn1,
         Some(1) => NeuronGen::Inf1,

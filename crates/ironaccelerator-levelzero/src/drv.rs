@@ -2,8 +2,15 @@
 //! `zeDeviceGetProperties`. Enough for the planner; kernel launch lives
 //! in higher layers.
 //!
+//! `drop(sym)` on a `libloading::Symbol` is intentional — it releases the
+//! borrow on the Library so the next `lib.get(...)` can proceed. Symbol is
+//! `Copy` and doesn't impl `Drop`, but the borrow lives in its lifetime
+//! parameter, which `drop` does end. We silence the spurious lint module-wide.
+//!
 //! Everything is loaded via `libloading` so the crate compiles on hosts
 //! without Level Zero installed; the backend simply reports unavailable.
+
+#![allow(clippy::drop_non_drop)] // see module docs above
 
 use core::ffi::c_void;
 use libloading::{Library, Symbol};
@@ -160,16 +167,14 @@ pub type ZeCommandQueueCreateFn = unsafe extern "C" fn(
     desc: *const ZeCommandQueueDesc,
     ph_queue: *mut ZeCommandQueueHandle,
 ) -> ZeResult;
-pub type ZeCommandQueueDestroyFn =
-    unsafe extern "C" fn(h_queue: ZeCommandQueueHandle) -> ZeResult;
+pub type ZeCommandQueueDestroyFn = unsafe extern "C" fn(h_queue: ZeCommandQueueHandle) -> ZeResult;
 pub type ZeCommandListCreateFn = unsafe extern "C" fn(
     h_context: ZeContextHandle,
     h_device: ZeDeviceHandle,
     desc: *const ZeCommandListDesc,
     ph_list: *mut ZeCommandListHandle,
 ) -> ZeResult;
-pub type ZeCommandListDestroyFn =
-    unsafe extern "C" fn(h_list: ZeCommandListHandle) -> ZeResult;
+pub type ZeCommandListDestroyFn = unsafe extern "C" fn(h_list: ZeCommandListHandle) -> ZeResult;
 type ZeDriverGetFn =
     unsafe extern "C" fn(p_count: *mut u32, ph_drivers: *mut ZeDriverHandle) -> ZeResult;
 type ZeDeviceGetFn = unsafe extern "C" fn(
@@ -215,12 +220,8 @@ pub type ZeKernelCreateFn = unsafe extern "C" fn(
     ph_kernel: *mut ZeKernelHandle,
 ) -> ZeResult;
 pub type ZeKernelDestroyFn = unsafe extern "C" fn(h_kernel: ZeKernelHandle) -> ZeResult;
-pub type ZeKernelSetGroupSizeFn = unsafe extern "C" fn(
-    h_kernel: ZeKernelHandle,
-    gx: u32,
-    gy: u32,
-    gz: u32,
-) -> ZeResult;
+pub type ZeKernelSetGroupSizeFn =
+    unsafe extern "C" fn(h_kernel: ZeKernelHandle, gx: u32, gy: u32, gz: u32) -> ZeResult;
 pub type ZeKernelSetArgumentValueFn = unsafe extern "C" fn(
     h_kernel: ZeKernelHandle,
     arg_index: u32,
@@ -252,10 +253,8 @@ pub type ZeCommandQueueExecuteCommandListsFn = unsafe extern "C" fn(
     ph_lists: *const ZeCommandListHandle,
     h_fence: *mut c_void,
 ) -> ZeResult;
-pub type ZeCommandQueueSynchronizeFn = unsafe extern "C" fn(
-    h_queue: ZeCommandQueueHandle,
-    timeout: u64,
-) -> ZeResult;
+pub type ZeCommandQueueSynchronizeFn =
+    unsafe extern "C" fn(h_queue: ZeCommandQueueHandle, timeout: u64) -> ZeResult;
 
 // ── Loader ─────────────────────────────────────────────────────────────────
 
@@ -325,8 +324,7 @@ fn load() -> Option<Loaded> {
                 Ok(s) => s,
                 Err(_) => continue,
             };
-            let devp: Symbol<ZeDeviceGetPropertiesFn> = match lib.get(b"zeDeviceGetProperties\0")
-            {
+            let devp: Symbol<ZeDeviceGetPropertiesFn> = match lib.get(b"zeDeviceGetProperties\0") {
                 Ok(s) => s,
                 Err(_) => continue,
             };
@@ -338,18 +336,33 @@ fn load() -> Option<Loaded> {
             drop(devp);
             drop(init);
 
-            let ctx_create: Symbol<ZeContextCreateFn> =
-                match lib.get(b"zeContextCreate\0") { Ok(s) => s, Err(_) => continue };
-            let ctx_destroy: Symbol<ZeContextDestroyFn> =
-                match lib.get(b"zeContextDestroy\0") { Ok(s) => s, Err(_) => continue };
-            let q_create: Symbol<ZeCommandQueueCreateFn> =
-                match lib.get(b"zeCommandQueueCreate\0") { Ok(s) => s, Err(_) => continue };
+            let ctx_create: Symbol<ZeContextCreateFn> = match lib.get(b"zeContextCreate\0") {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            let ctx_destroy: Symbol<ZeContextDestroyFn> = match lib.get(b"zeContextDestroy\0") {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            let q_create: Symbol<ZeCommandQueueCreateFn> = match lib.get(b"zeCommandQueueCreate\0")
+            {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
             let q_destroy: Symbol<ZeCommandQueueDestroyFn> =
-                match lib.get(b"zeCommandQueueDestroy\0") { Ok(s) => s, Err(_) => continue };
-            let l_create: Symbol<ZeCommandListCreateFn> =
-                match lib.get(b"zeCommandListCreate\0") { Ok(s) => s, Err(_) => continue };
-            let l_destroy: Symbol<ZeCommandListDestroyFn> =
-                match lib.get(b"zeCommandListDestroy\0") { Ok(s) => s, Err(_) => continue };
+                match lib.get(b"zeCommandQueueDestroy\0") {
+                    Ok(s) => s,
+                    Err(_) => continue,
+                };
+            let l_create: Symbol<ZeCommandListCreateFn> = match lib.get(b"zeCommandListCreate\0") {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            let l_destroy: Symbol<ZeCommandListDestroyFn> = match lib.get(b"zeCommandListDestroy\0")
+            {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
 
             let ze_context_create = *ctx_create;
             let ze_context_destroy = *ctx_destroy;
@@ -366,7 +379,10 @@ fn load() -> Option<Loaded> {
 
             macro_rules! sym {
                 ($ty:ty, $name:literal) => {{
-                    let s: Symbol<$ty> = match lib.get($name) { Ok(s) => s, Err(_) => continue };
+                    let s: Symbol<$ty> = match lib.get($name) {
+                        Ok(s) => s,
+                        Err(_) => continue,
+                    };
                     let f = *s;
                     drop(s);
                     f
@@ -379,8 +395,7 @@ fn load() -> Option<Loaded> {
             let ze_module_destroy = sym!(ZeModuleDestroyFn, b"zeModuleDestroy\0");
             let ze_kernel_create = sym!(ZeKernelCreateFn, b"zeKernelCreate\0");
             let ze_kernel_destroy = sym!(ZeKernelDestroyFn, b"zeKernelDestroy\0");
-            let ze_kernel_set_group_size =
-                sym!(ZeKernelSetGroupSizeFn, b"zeKernelSetGroupSize\0");
+            let ze_kernel_set_group_size = sym!(ZeKernelSetGroupSizeFn, b"zeKernelSetGroupSize\0");
             let ze_kernel_set_argument_value =
                 sym!(ZeKernelSetArgumentValueFn, b"zeKernelSetArgumentValue\0");
             let ze_command_list_append_launch_kernel = sym!(
@@ -397,10 +412,8 @@ fn load() -> Option<Loaded> {
                 ZeCommandQueueExecuteCommandListsFn,
                 b"zeCommandQueueExecuteCommandLists\0"
             );
-            let ze_command_queue_synchronize = sym!(
-                ZeCommandQueueSynchronizeFn,
-                b"zeCommandQueueSynchronize\0"
-            );
+            let ze_command_queue_synchronize =
+                sym!(ZeCommandQueueSynchronizeFn, b"zeCommandQueueSynchronize\0");
 
             return Some(Loaded {
                 _lib: lib,
@@ -471,15 +484,13 @@ pub fn enumerate() -> Vec<EnumeratedDevice> {
         }
         for driver in drivers.into_iter().take(driver_count as usize) {
             let mut dev_count: u32 = 0;
-            if (l.ze_device_get)(driver, &mut dev_count, core::ptr::null_mut())
-                != ZE_RESULT_SUCCESS
+            if (l.ze_device_get)(driver, &mut dev_count, core::ptr::null_mut()) != ZE_RESULT_SUCCESS
                 || dev_count == 0
             {
                 continue;
             }
             let mut devs = vec![core::ptr::null_mut::<c_void>(); dev_count as usize];
-            if (l.ze_device_get)(driver, &mut dev_count, devs.as_mut_ptr()) != ZE_RESULT_SUCCESS
-            {
+            if (l.ze_device_get)(driver, &mut dev_count, devs.as_mut_ptr()) != ZE_RESULT_SUCCESS {
                 continue;
             }
             for dev in devs.into_iter().take(dev_count as usize) {
@@ -508,7 +519,11 @@ pub fn enumerate() -> Vec<EnumeratedDevice> {
 }
 
 fn c_name_to_string(raw: &[core::ffi::c_char]) -> String {
-    let bytes: Vec<u8> = raw.iter().take_while(|&&c| c != 0).map(|&c| c as u8).collect();
+    let bytes: Vec<u8> = raw
+        .iter()
+        .take_while(|&&c| c != 0)
+        .map(|&c| c as u8)
+        .collect();
     String::from_utf8_lossy(&bytes).into_owned()
 }
 

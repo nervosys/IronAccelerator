@@ -18,7 +18,10 @@ pub enum Error {
     InvalidArgument(&'static str),
     /// Backend-specific error wrapped as a code so we don't allocate on hot
     /// paths. Backends keep their own decode tables.
-    Backend { backend: crate::BackendKind, code: i64 },
+    Backend {
+        backend: crate::BackendKind,
+        code: i64,
+    },
     /// Anything else.
     Other(&'static str),
 }

@@ -19,9 +19,9 @@
 pub mod backend;
 
 #[cfg(target_vendor = "apple")]
-pub mod drv;
-#[cfg(target_vendor = "apple")]
 pub mod blas;
+#[cfg(target_vendor = "apple")]
+pub mod drv;
 
 pub use backend::{MetalBackend, METAL_BACKEND};
 

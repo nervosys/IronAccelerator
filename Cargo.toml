@@ -27,8 +27,8 @@ license = "AGPL-3.0-or-later"
 authors = ["Nervosys"]
 repository = "https://github.com/nervosys/IronAccelerator"
 homepage = "https://github.com/nervosys/IronAccelerator"
-description = "High-performance, agentic-first Rust acceleration library spanning CUDA, ROCm, Metal, and Qualcomm NPUs"
-keywords = ["cuda", "rocm", "metal", "npu", "accelerator"]
+description = "Low-level, hardware-agnostic Rust interface over CUDA, ROCm, Metal, and other accelerators. Includes a faster drop-in replacement for cudarc."
+keywords = ["cuda", "rocm", "gpu", "cudarc", "accelerator"]
 categories = ["api-bindings", "hardware-support", "science"]
 
 [workspace.dependencies]

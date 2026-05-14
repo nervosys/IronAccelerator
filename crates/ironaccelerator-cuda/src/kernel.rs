@@ -51,7 +51,10 @@ static CACHE: Lazy<RwLock<HashMap<CacheKey, CacheEntry>>> =
 #[inline]
 fn fnv1a(s: &str) -> u64 {
     let mut h: u64 = 0xcbf29ce484222325;
-    for b in s.as_bytes() { h ^= *b as u64; h = h.wrapping_mul(0x100000001b3); }
+    for b in s.as_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
     h
 }
 
@@ -77,7 +80,9 @@ fn default_cuda_include_paths() -> Vec<String> {
     };
     if let Ok(p) = std::env::var("IRON_CUDA_INCLUDE") {
         for part in p.split(if cfg!(windows) { ';' } else { ':' }) {
-            if !part.is_empty() { push(part.to_string()); }
+            if !part.is_empty() {
+                push(part.to_string());
+            }
         }
     }
     if let Ok(p) = std::env::var("CUDA_PATH") {
@@ -92,7 +97,9 @@ fn default_cuda_include_paths() -> Vec<String> {
     }
     if cfg!(target_os = "windows") {
         for v in ["v13.2", "v13.1", "v13.0", "v12.9", "v12.8", "v12.5"] {
-            push(format!("C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/{v}/include"));
+            push(format!(
+                "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/{v}/include"
+            ));
         }
     }
     out
@@ -106,7 +113,10 @@ pub fn get_or_compile(
     opts: &CompileOptions,
 ) -> Result<CompiledKernel> {
     let (maj, min) = device.compute_capability()?;
-    let arch = opts.arch.clone().unwrap_or_else(|| format!("compute_{maj}{min}"));
+    let arch = opts
+        .arch
+        .clone()
+        .unwrap_or_else(|| format!("compute_{maj}{min}"));
     let key = CacheKey {
         src_hash: fnv1a(src),
         arch: arch.clone(),
@@ -116,23 +126,101 @@ pub fn get_or_compile(
 
     if let Some(e) = CACHE.read().get(&key) {
         let f = e.module.function(fn_name)?;
-        return Ok(CompiledKernel { module: e.module.clone(), function: f });
+        return Ok(CompiledKernel {
+            module: e.module.clone(),
+            function: f,
+        });
     }
 
-    let ptx = compile(src, &arch, opts)?;
+    // Persistent on-disk PTX cache. A hit here skips NVRTC entirely (the 10-100ms
+    // compile) while still rebinding the function fresh per process.
+    let ptx = match disk_cache_load(&key) {
+        Some(bytes) => bytes,
+        None => {
+            let bytes = compile(src, &arch, opts)?;
+            disk_cache_store(&key, &bytes);
+            bytes
+        }
+    };
     let module = Module::load(device.clone(), &ptx)?;
     let function = module.function(fn_name)?;
 
-    CACHE.write().insert(key, CacheEntry {
-        module: module.clone(),
-        _fn_name: CString::new(fn_name).map_err(|_| nvrtc_err("fn_name: NUL in string"))?,
-    });
+    CACHE.write().insert(
+        key,
+        CacheEntry {
+            module: module.clone(),
+            _fn_name: CString::new(fn_name).map_err(|_| nvrtc_err("fn_name: NUL in string"))?,
+        },
+    );
     Ok(CompiledKernel { module, function })
 }
 
-fn compile(src: &str, arch: &str, opts: &CompileOptions) -> Result<Vec<u8>> {
+// ────────────────────────────────────────────────────────────────────────────
+// On-disk PTX cache
+// ────────────────────────────────────────────────────────────────────────────
+//
+// A second-level cache survives the process so restarts don't re-compile the
+// same kernels. Disabled by setting `IRON_CUDA_PTX_CACHE=0`.
+//
+// Layout: `<root>/<arch>/<16-hex src_hash>_<16-hex opts_hash>.ptx`
+// The fn_name is intentionally NOT part of the filename — a single PTX image
+// typically exports multiple kernels, so two keys that differ only by fn_name
+// can share the compiled image. The in-memory `CACHE` is still keyed by
+// fn_name so different `Function` objects stay distinct.
+
+fn disk_cache_disabled() -> bool {
+    matches!(
+        std::env::var("IRON_CUDA_PTX_CACHE").as_deref(),
+        Ok("0") | Ok("off") | Ok("false")
+    )
+}
+
+fn disk_cache_root() -> Option<std::path::PathBuf> {
+    if disk_cache_disabled() {
+        return None;
+    }
+    if let Ok(p) = std::env::var("IRON_CUDA_PTX_CACHE_DIR") {
+        if !p.is_empty() {
+            return Some(std::path::PathBuf::from(p));
+        }
+    }
+    let mut p = std::env::temp_dir();
+    p.push("ironaccelerator");
+    p.push("ptx");
+    Some(p)
+}
+
+fn disk_cache_path(key: &CacheKey) -> Option<std::path::PathBuf> {
+    let mut p = disk_cache_root()?;
+    p.push(&key.arch);
+    let _ = std::fs::create_dir_all(&p);
+    p.push(format!("{:016x}_{:016x}.ptx", key.src_hash, key.opts_hash));
+    Some(p)
+}
+
+fn disk_cache_load(key: &CacheKey) -> Option<Vec<u8>> {
+    let path = disk_cache_path(key)?;
+    std::fs::read(&path).ok()
+}
+
+fn disk_cache_store(key: &CacheKey, ptx: &[u8]) {
+    let Some(path) = disk_cache_path(key) else {
+        return;
+    };
+    // Best-effort: atomically rename from a temp sibling so a crash mid-write
+    // doesn't leave a truncated .ptx that future runs would try to load.
+    let tmp = path.with_extension("ptx.tmp");
+    if std::fs::write(&tmp, ptx).is_ok() {
+        let _ = std::fs::rename(&tmp, &path);
+    }
+}
+
+/// Compile CUDA C++ source to PTX. Arch defaults to `compute_80` if not
+/// supplied via `opts.arch`.
+pub fn compile(src: &str, arch: &str, opts: &CompileOptions) -> Result<Vec<u8>> {
     let n = nvrtc::fns().map_err(|_| Error::Backend {
-        backend: BackendKind::Cuda, code: -1,
+        backend: BackendKind::Cuda,
+        code: -1,
     })?;
 
     let c_src = CString::new(src).map_err(|_| nvrtc_err("src contains NUL"))?;
@@ -141,9 +229,15 @@ fn compile(src: &str, arch: &str, opts: &CompileOptions) -> Result<Vec<u8>> {
     let mut prog = NvrtcProgram::default();
     unsafe {
         (n.nvrtcCreateProgram)(
-            &mut prog, c_src.as_ptr(), c_name.as_ptr(),
-            0, std::ptr::null(), std::ptr::null(),
-        ).ok().map_err(|_| nvrtc_err("nvrtcCreateProgram"))?;
+            &mut prog,
+            c_src.as_ptr(),
+            c_name.as_ptr(),
+            0,
+            std::ptr::null(),
+            std::ptr::null(),
+        )
+        .ok()
+        .map_err(|_| nvrtc_err("nvrtcCreateProgram"))?;
     }
 
     // Build options.
@@ -158,35 +252,47 @@ fn compile(src: &str, arch: &str, opts: &CompileOptions) -> Result<Vec<u8>> {
     for inc in default_cuda_include_paths() {
         flags.push(CString::new(format!("-I{inc}")).unwrap());
     }
-    for ex in &opts.extras { flags.push(CString::new(ex.as_str()).unwrap()); }
+    for ex in &opts.extras {
+        flags.push(CString::new(ex.as_str()).unwrap());
+    }
     let ptrs: Vec<*const std::ffi::c_char> = flags.iter().map(|c| c.as_ptr()).collect();
 
-    let compile_res = unsafe {
-        (n.nvrtcCompileProgram)(prog, ptrs.len() as i32, ptrs.as_ptr())
-    };
+    let compile_res = unsafe { (n.nvrtcCompileProgram)(prog, ptrs.len() as i32, ptrs.as_ptr()) };
 
     if !compile_res.is_ok() {
         // Pull compile log for diagnostics, then destroy.
         let mut sz: usize = 0;
-        unsafe { let _ = (n.nvrtcGetProgramLogSize)(prog, &mut sz); }
+        unsafe {
+            let _ = (n.nvrtcGetProgramLogSize)(prog, &mut sz);
+        }
         let mut buf = vec![0u8; sz.max(1)];
-        unsafe { let _ = (n.nvrtcGetProgramLog)(prog, buf.as_mut_ptr() as *mut i8); }
-        unsafe { let _ = (n.nvrtcDestroyProgram)(&mut prog); }
-        let log = String::from_utf8_lossy(&buf).trim_end_matches('\0').to_string();
+        unsafe {
+            let _ = (n.nvrtcGetProgramLog)(prog, buf.as_mut_ptr() as *mut i8);
+        }
+        unsafe {
+            let _ = (n.nvrtcDestroyProgram)(&mut prog);
+        }
+        let log = String::from_utf8_lossy(&buf)
+            .trim_end_matches('\0')
+            .to_string();
         eprintln!("[nvrtc] compile log:\n{log}");
         return Err(nvrtc_err("nvrtcCompileProgram failed"));
     }
 
     let mut sz: usize = 0;
     unsafe {
-        (n.nvrtcGetPTXSize)(prog, &mut sz).ok().map_err(|_| nvrtc_err("nvrtcGetPTXSize"))?;
+        (n.nvrtcGetPTXSize)(prog, &mut sz)
+            .ok()
+            .map_err(|_| nvrtc_err("nvrtcGetPTXSize"))?;
     }
     let mut ptx = vec![0u8; sz];
     unsafe {
         (n.nvrtcGetPTX)(prog, ptx.as_mut_ptr() as *mut i8)
-            .ok().map_err(|_| nvrtc_err("nvrtcGetPTX"))?;
+            .ok()
+            .map_err(|_| nvrtc_err("nvrtcGetPTX"))?;
     }
-    unsafe { let _ = (n.nvrtcDestroyProgram)(&mut prog); }
+    unsafe {
+        let _ = (n.nvrtcDestroyProgram)(&mut prog);
+    }
     Ok(ptx)
 }
-

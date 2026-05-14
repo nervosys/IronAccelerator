@@ -1,7 +1,6 @@
 //! Pinned (page-locked) host memory pool, built on [`crate::drv::PinnedBuf`].
 
 use crate::drv::{Device, PinnedBuf};
-use crate::Session;
 use ironaccelerator_core::Result;
 use parking_lot::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -22,18 +21,19 @@ impl PinnedPool {
     pub fn new(device: Arc<Device>) -> Self {
         let buckets = (0..NUM_BUCKETS).map(|_| Mutex::new(Vec::new())).collect();
         Self {
-            device, buckets,
+            device,
+            buckets,
             allocated_bytes: AtomicU64::new(0),
             live_slabs: AtomicU64::new(0),
         }
     }
 
-    pub fn from_session(session: &Session) -> Self {
-        Self::new(session.device().clone())
+    pub fn allocated_bytes(&self) -> u64 {
+        self.allocated_bytes.load(Ordering::Relaxed)
     }
-
-    pub fn allocated_bytes(&self) -> u64 { self.allocated_bytes.load(Ordering::Relaxed) }
-    pub fn live_slabs(&self) -> u64 { self.live_slabs.load(Ordering::Relaxed) }
+    pub fn live_slabs(&self) -> u64 {
+        self.live_slabs.load(Ordering::Relaxed)
+    }
 
     pub fn acquire(self: &Arc<Self>, bytes: usize) -> Result<PinnedSlab> {
         let (bucket_idx, cap) = bucket_of(bytes);
@@ -42,7 +42,8 @@ impl PinnedPool {
             Some(s) => s,
             None => {
                 let s = PinnedBuf::<u8>::alloc(self.device.clone(), cap)?;
-                self.allocated_bytes.fetch_add(cap as u64, Ordering::Relaxed);
+                self.allocated_bytes
+                    .fetch_add(cap as u64, Ordering::Relaxed);
                 self.live_slabs.fetch_add(1, Ordering::Relaxed);
                 s
             }
@@ -64,13 +65,24 @@ pub struct PinnedSlab {
 }
 
 impl PinnedSlab {
-    #[inline] pub fn requested(&self) -> usize { self.requested }
-    #[inline] pub fn capacity(&self) -> usize { self.slab.as_ref().map(|s| s.len()).unwrap_or(0) }
-    #[inline] pub fn as_slice(&self) -> &[u8] {
+    #[inline]
+    pub fn requested(&self) -> usize {
+        self.requested
+    }
+    #[inline]
+    pub fn capacity(&self) -> usize {
+        self.slab.as_ref().map(|s| s.len()).unwrap_or(0)
+    }
+    #[inline]
+    pub fn as_slice(&self) -> &[u8] {
         self.slab.as_ref().expect("slab not released").as_slice()
     }
-    #[inline] pub fn as_mut_slice(&mut self) -> &mut [u8] {
-        self.slab.as_mut().expect("slab not released").as_mut_slice()
+    #[inline]
+    pub fn as_mut_slice(&mut self) -> &mut [u8] {
+        self.slab
+            .as_mut()
+            .expect("slab not released")
+            .as_mut_slice()
     }
 }
 
@@ -106,7 +118,7 @@ mod tests {
     #[test]
     fn buckets_grow_monotonically() {
         let (i_small, _) = bucket_of(4096);
-        let (i_big, _)   = bucket_of(1 << 24);
+        let (i_big, _) = bucket_of(1 << 24);
         assert!(i_big > i_small);
     }
     #[test]

@@ -2,8 +2,8 @@
 //! Vulkan 1.3 instance; reports unavailable when `libvulkan` cannot be loaded.
 
 use ironaccelerator_core::{
-    Backend, BackendKind, Capability, CapabilityFlags, ComputeTier, DeviceDescriptor,
-    DeviceId, Result, Strategy, Vendor, Workload,
+    Backend, BackendKind, Capability, CapabilityFlags, ComputeTier, DeviceDescriptor, DeviceId,
+    Result, Strategy, Vendor, Workload,
 };
 
 pub struct VulkanBackend;
@@ -42,7 +42,9 @@ impl Backend for VulkanBackend {
     }
 
     fn plan(&self, _device: u32, _w: &Workload) -> Result<Strategy> {
-        Ok(Strategy::SpirvCompute { workgroup: (64, 1, 1) })
+        Ok(Strategy::SpirvCompute {
+            workgroup: (64, 1, 1),
+        })
     }
 }
 

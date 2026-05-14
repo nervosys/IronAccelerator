@@ -7,6 +7,111 @@ versions may break API.
 
 ## [Unreleased]
 
+### Highlights
+
+- **Drop-in replacement for `cudarc` 0.19**, with measurably lower wrapper
+  overhead on every host-side hot path (~2× faster alloc/free, ~1.3–1.9×
+  faster stream sync). See README and `cudarc_compat` module docs for the
+  migration map and bench numbers.
+- **Scope tightened** to a pure driver substrate. The CUDA crate no longer
+  ships kernels, planners, FP8 recipes, attention/MoE implementations, or
+  workload autotuners — they belong to downstream libraries. The surface is
+  small enough that an LLM agent can hold the whole API in context.
+
+### Added (cudarc compatibility)
+
+- `cudarc_compat::CudaDevice::mem_get_info()` — `(free, total)` device-memory
+  bytes via new `cuMemGetInfo_v2` FFI binding.
+- `cudarc_compat::CudaDevice::compute_capability()` and `::device_count()`
+  aliases for cudarc parity.
+- `cudarc_compat::CudaStreamExt::record_event()` — combines `Event::new + record`
+  in a single call, mirroring cudarc's `stream.record_event(None)`.
+- `cudarc_compat::CudaStreamExt::wait(&event)` — explicit fence helper.
+- `cudarc_compat::CudaStreamExt::join(&other)` — cross-stream sync via
+  auto-recorded event.
+- Module docs in `cudarc_compat` rewritten as a side-by-side API coverage map
+  (cudarc 0.19 → IronAccelerator) plus an explicit "differences worth knowing"
+  list, agent-readable in one screenful.
+- 3 new live-GPU tests in `tests/cudarc_compat.rs` covering the new methods.
+- Kernel-launch micro-benchmark added to `benches/vs_cudarc.rs`.
+- Runnable end-to-end example at `examples/saxpy_cudarc_style.rs` —
+  NVRTC compile + kernel launch + H↔D copy + verification, written to be
+  byte-identical to what a cudarc user would write.
+
+### Performance
+
+- **`AtomicPtr<DriverFns>` hot-path cache** in `iron_cuda_sys::driver::fns()`
+  collapses two `OnceLock` acquires into one Acquire atomic load + null check;
+  the cold first-call path keeps the existing init logic.
+- **Cached `&'static DriverFns` on every handle** — `Device`, `Stream`,
+  `Event`, `Module`, `Function`, `PinnedBuf`, `CapturedGraph`, `GraphExec`
+  each store the function-table reference resolved once at construction.
+  Hot ops reach the table via a struct-field load, not an atomic.
+- **Cached stream priority range** on `Device` (`OnceCell<(i32, i32)>`)
+  amortises `cuStreamGetPriorityRange` across every `Stream::new`.
+- **Cold-path error construction** — `check()` is `#[inline(always)]` with a
+  `#[cold] #[inline(never)] check_err()` companion; the success branch
+  compiles to load/test/branch with no Error-enum materialisation.
+  `alloc_overflow()` / `pinned_alloc_overflow()` follow the same pattern.
+- **Killed an eager `String` allocation** in `DeviceBuf::alloc` — the
+  `ok_or(Error { msg: "size overflow".into() })` pattern heap-allocated on
+  every successful call. Replaced with `let-else` + a cold helper. **64 KB
+  alloc dropped from 491 ns → 340 ns.**
+- `#[inline]` on every hot driver call: `Stream::{synchronize, wait_for}`,
+  `DeviceBuf::{alloc, alloc_zeros, from_host, copy_from_host, copy_to_host,
+  copy_from_device}`, `DeviceBuf::Drop`, `Stream::Drop`, `Event::{record,
+  synchronize, Drop}`, `Function::launch`, and every `CudaStreamExt` method.
+- `#[inline]` on all 12 vendor library `fns()` accessors in
+  `iron_cuda_sys` so cublas / cudnn / nvrtc / etc. lookups inline at the
+  call site.
+
+### Removed (scope cleanup)
+
+- `ironaccelerator-cuda::attention`, `flash_attention`, `moe`, `fp8`,
+  `fp8_gemm`, `grouped_gemm`, `tune`, `tensor`, `session`, `backend`,
+  `memcpy` modules deleted — domain code that belongs in downstream
+  libraries. The `Backend` trait registration for CUDA is gone; use the
+  CUDA crate directly via `ironaccelerator_cuda::drv` or
+  `cudarc_compat`.
+- `tests/moe_smoke.rs` deleted.
+
+### Internal
+
+- `Device`/`Stream`/`Event`/etc. methods that took `&Session` now take
+  `Device`/`Stream` references directly (Session was a workload-level
+  abstraction).
+- `fft`, `nccl`, `pinned`, `rng`, `streams`, `graph` modules refactored to
+  take their hardware handles explicitly.
+
+### ROCm
+
+Brought the ROCm crate up to the same performance bar as CUDA:
+
+- `iron_rocm_sys::hip::fns()` now uses an `AtomicPtr<HipFns>` hot-path cache
+  matching the CUDA pattern (one acquire load + null check on the success
+  path; cold first-call goes through the `OnceLock`).
+- `Device`, `Stream`, `Event`, `Module`, `Function` each cache
+  `&'static HipFns` at construction. Hot ops reach the function table via a
+  struct-field load.
+- `check()` and `hip()` are `#[inline(always)]` with `#[cold]` error helpers
+  (`check_err`, `hip_load_err`).
+- `DeviceBuf::alloc` no longer heap-allocates a `String` on every success —
+  same eager-`ok_or` fix as CUDA, with a cold `alloc_overflow()` helper.
+- `#[inline]` on every hot path: `Stream::{synchronize, wait_for, Drop}`,
+  `Event::{record, synchronize, Drop}`, `Device::{bind, attribute}`,
+  `Module::Drop`, `Function::launch_raw`, `DeviceBuf::{alloc,
+  copy_from_host, copy_to_host, Drop}`.
+
+### Reference benchmarks (RTX 3090 Ti, CUDA 13.2, release build)
+
+| op | Iron | cudarc 0.19 | Δ |
+|---|---|---|---|
+| stream synchronize empty | ~85 ns | ~109 ns | **1.29×** |
+| stream create+destroy | ~888 ns | ~999 ns | **11%** |
+| async alloc+free (all sizes) | ~430 ns | ~960 ns | **~2.0×** |
+| kernel launch (noop) | ~5.5 µs | ~5.5 µs | parity (FFI-bound) |
+| bulk memcpy | parity | parity | PCIe-bound |
+
 ## [1.1.0] - 2026-04-18
 
 ### Added

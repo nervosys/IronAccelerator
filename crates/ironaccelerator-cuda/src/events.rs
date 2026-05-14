@@ -36,9 +36,7 @@ impl Timer {
         TimingEvent::elapsed_ms(&self.start, &self.stop).map_err(Into::into)
     }
 
-    pub fn time<R, F: FnOnce() -> Result<R>>(
-        stream: &Arc<Stream>, f: F,
-    ) -> Result<(R, f32)> {
+    pub fn time<R, F: FnOnce() -> Result<R>>(stream: &Arc<Stream>, f: F) -> Result<(R, f32)> {
         let t = Self::new(stream)?;
         t.begin(stream)?;
         let r = f()?;

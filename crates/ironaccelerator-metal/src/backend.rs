@@ -2,8 +2,8 @@
 //! non-Apple hosts the backend reports unavailable and enumerates nothing.
 
 use ironaccelerator_core::{
-    Backend, BackendKind, CapabilityFlags, DeviceDescriptor, Result, Strategy,
-    Workload, WorkloadKind,
+    Backend, BackendKind, CapabilityFlags, DeviceDescriptor, Result, Strategy, Workload,
+    WorkloadKind,
 };
 #[cfg(target_vendor = "apple")]
 use ironaccelerator_core::{Capability, ComputeTier, DeviceId, Vendor};
@@ -12,13 +12,19 @@ pub struct MetalBackend;
 pub static METAL_BACKEND: MetalBackend = MetalBackend;
 
 impl Backend for MetalBackend {
-    fn kind(&self) -> BackendKind { BackendKind::Metal }
+    fn kind(&self) -> BackendKind {
+        BackendKind::Metal
+    }
 
     fn is_available(&self) -> bool {
         #[cfg(target_vendor = "apple")]
-        { !crate::drv::Device::all().is_empty() }
+        {
+            !crate::drv::Device::all().is_empty()
+        }
         #[cfg(not(target_vendor = "apple"))]
-        { false }
+        {
+            false
+        }
     }
 
     fn enumerate(&self) -> Result<Vec<DeviceDescriptor>> {
@@ -35,7 +41,10 @@ impl Backend for MetalBackend {
                     "metal-discrete".to_string()
                 };
                 out.push(DeviceDescriptor {
-                    id: DeviceId { backend: BackendKind::Metal, ordinal: ord as u32 },
+                    id: DeviceId {
+                        backend: BackendKind::Metal,
+                        ordinal: ord as u32,
+                    },
                     vendor: Vendor::Apple,
                     name: d.name(),
                     arch,
@@ -43,20 +52,28 @@ impl Backend for MetalBackend {
                     multiprocessor_count: 0,
                     clock_khz: 0,
                     capability: Capability {
-                        flags, tier,
-                        fp16_tflops: None, fp8_tflops: None, mem_bandwidth_gbs: None,
+                        flags,
+                        tier,
+                        fp16_tflops: None,
+                        fp8_tflops: None,
+                        mem_bandwidth_gbs: None,
                     },
                 });
             }
             Ok(out)
         }
         #[cfg(not(target_vendor = "apple"))]
-        { Ok(Vec::new()) }
+        {
+            Ok(Vec::new())
+        }
     }
 
     fn capabilities(&self, _device: u32) -> Result<CapabilityFlags> {
-        Ok(CapabilityFlags::FP32 | CapabilityFlags::FP16 | CapabilityFlags::BF16
-            | CapabilityFlags::UNIFIED_MEMORY | CapabilityFlags::ANE
+        Ok(CapabilityFlags::FP32
+            | CapabilityFlags::FP16
+            | CapabilityFlags::BF16
+            | CapabilityFlags::UNIFIED_MEMORY
+            | CapabilityFlags::ANE
             | CapabilityFlags::MULTI_STREAM)
     }
 
@@ -73,15 +90,20 @@ impl Backend for MetalBackend {
 /// Family 9 is M3/M4, 8 is M2, 7 is M1/A14+, 6 is A13.
 #[cfg(target_vendor = "apple")]
 fn capability_for(family: u32) -> (CapabilityFlags, ComputeTier) {
-    let base = CapabilityFlags::FP32 | CapabilityFlags::FP16
-        | CapabilityFlags::UNIFIED_MEMORY | CapabilityFlags::ANE
+    let base = CapabilityFlags::FP32
+        | CapabilityFlags::FP16
+        | CapabilityFlags::UNIFIED_MEMORY
+        | CapabilityFlags::ANE
         | CapabilityFlags::MULTI_STREAM;
     match family {
-        9 | 8 => (base | CapabilityFlags::BF16 | CapabilityFlags::INT8
-                 | CapabilityFlags::INT4,
-                 ComputeTier::Workstation),
-        7 => (base | CapabilityFlags::BF16 | CapabilityFlags::INT8,
-              ComputeTier::Consumer),
+        9 | 8 => (
+            base | CapabilityFlags::BF16 | CapabilityFlags::INT8 | CapabilityFlags::INT4,
+            ComputeTier::Workstation,
+        ),
+        7 => (
+            base | CapabilityFlags::BF16 | CapabilityFlags::INT8,
+            ComputeTier::Consumer,
+        ),
         _ => (base, ComputeTier::Mobile),
     }
 }

@@ -2,8 +2,8 @@
 //! host, driven by `TPU_ACCELERATOR_TYPE` + `TPU_NUM_DEVICES`.
 
 use ironaccelerator_core::{
-    Backend, BackendKind, Capability, CapabilityFlags, ComputeTier, DeviceDescriptor,
-    DeviceId, Result, Strategy, Vendor, Workload,
+    Backend, BackendKind, Capability, CapabilityFlags, ComputeTier, DeviceDescriptor, DeviceId,
+    Result, Strategy, Vendor, Workload,
 };
 
 pub struct TpuBackend;

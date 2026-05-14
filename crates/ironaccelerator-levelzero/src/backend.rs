@@ -2,8 +2,8 @@
 //! returns; `ze_device_type_t` distinguishes the two.
 
 use ironaccelerator_core::{
-    Backend, BackendKind, Capability, CapabilityFlags, ComputeTier, DeviceDescriptor,
-    DeviceId, Result, Strategy, Vendor, Workload,
+    Backend, BackendKind, Capability, CapabilityFlags, ComputeTier, DeviceDescriptor, DeviceId,
+    Result, Strategy, Vendor, Workload,
 };
 
 use crate::drv::{EnumeratedDevice, ZE_DEVICE_TYPE_GPU, ZE_DEVICE_TYPE_VPU};
@@ -25,12 +25,16 @@ impl Backend for LevelZeroBackend {
     }
 
     fn capabilities(&self, _device: u32) -> Result<CapabilityFlags> {
-        Ok(CapabilityFlags::FP32 | CapabilityFlags::FP16 | CapabilityFlags::INT8
+        Ok(CapabilityFlags::FP32
+            | CapabilityFlags::FP16
+            | CapabilityFlags::INT8
             | CapabilityFlags::MULTI_STREAM)
     }
 
     fn plan(&self, _device: u32, _w: &Workload) -> Result<Strategy> {
-        Ok(Strategy::LevelZero { device_type: "auto" })
+        Ok(Strategy::LevelZero {
+            device_type: "auto",
+        })
     }
 }
 

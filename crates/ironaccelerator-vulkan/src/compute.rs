@@ -50,10 +50,9 @@ impl Context {
         let physical = *physicals.get(ordinal as usize)?;
 
         let qfp = unsafe { instance.get_physical_device_queue_family_properties(physical) };
-        let queue_family = qfp
-            .iter()
-            .position(|q| q.queue_flags.contains(vk::QueueFlags::COMPUTE))?
-            as u32;
+        let queue_family =
+            qfp.iter()
+                .position(|q| q.queue_flags.contains(vk::QueueFlags::COMPUTE))? as u32;
 
         let priorities = [1.0f32];
         let qci = vk::DeviceQueueCreateInfo::default()

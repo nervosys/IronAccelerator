@@ -5,7 +5,13 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "CUDA backend for IronAccelerator, targeting CUDA Toolkit 13.2 via iron_cuda_sys"
+repository.workspace = true
+homepage.workspace = true
+description = "Safe CUDA driver wrappers + a faster, drop-in replacement for cudarc. Targets CUDA Toolkit 13.2 via libloading."
+keywords = ["cuda", "gpu", "cudarc", "nvidia", "driver"]
+categories = ["api-bindings", "hardware-support", "science"]
+documentation = "https://docs.rs/ironaccelerator-cuda"
+readme = "../../README.md"
 
 [dependencies]
 ironaccelerator-core     = { workspace = true }
@@ -16,6 +22,7 @@ half = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+cudarc    = { version = "0.19", default-features = false, features = ["driver", "nvrtc", "cuda-13020", "fallback-dynamic-loading"] }
 
 [[bench]]
 name = "host_hot_path"
@@ -23,6 +30,10 @@ harness = false
 
 [[bench]]
 name = "gpu_vs_cudart"
+harness = false
+
+[[bench]]
+name = "vs_cudarc"
 harness = false
 
 [features]

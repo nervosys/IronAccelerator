@@ -6,10 +6,10 @@
 
 use crate::{backend::BackendKind, dtype::DType};
 
-#[cfg(feature = "std")]
-use std::{string::String, vec::Vec};
 #[cfg(not(feature = "std"))]
 use alloc::{string::String, vec::Vec};
+#[cfg(feature = "std")]
+use std::{string::String, vec::Vec};
 
 #[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

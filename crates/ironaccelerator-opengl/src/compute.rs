@@ -22,11 +22,7 @@ impl Ssbo {
         unsafe {
             let id = gl.create_buffer().map_err(|e| e.to_string())?;
             gl.bind_buffer(glow::SHADER_STORAGE_BUFFER, Some(id));
-            gl.buffer_data_size(
-                glow::SHADER_STORAGE_BUFFER,
-                size as i32,
-                glow::STREAM_COPY,
-            );
+            gl.buffer_data_size(glow::SHADER_STORAGE_BUFFER, size as i32, glow::STREAM_COPY);
             gl.bind_buffer(glow::SHADER_STORAGE_BUFFER, None);
             Ok(Ssbo { id, size })
         }
@@ -37,11 +33,7 @@ impl Ssbo {
         unsafe {
             let id = gl.create_buffer().map_err(|e| e.to_string())?;
             gl.bind_buffer(glow::SHADER_STORAGE_BUFFER, Some(id));
-            gl.buffer_data_u8_slice(
-                glow::SHADER_STORAGE_BUFFER,
-                data,
-                glow::STREAM_COPY,
-            );
+            gl.buffer_data_u8_slice(glow::SHADER_STORAGE_BUFFER, data, glow::STREAM_COPY);
             gl.bind_buffer(glow::SHADER_STORAGE_BUFFER, None);
             Ok(Ssbo {
                 id,
@@ -102,11 +94,7 @@ impl Program {
 /// Dispatch `num_groups` workgroups and issue a shader-storage memory
 /// barrier so the following read sees the writes. The caller is
 /// responsible for binding SSBOs via [`Ssbo::bind`] first.
-pub fn dispatch(
-    gl: &glow::Context,
-    program: &Program,
-    num_groups: [u32; 3],
-) {
+pub fn dispatch(gl: &glow::Context, program: &Program, num_groups: [u32; 3]) {
     unsafe {
         gl.use_program(Some(program.id));
         gl.dispatch_compute(num_groups[0], num_groups[1], num_groups[2]);

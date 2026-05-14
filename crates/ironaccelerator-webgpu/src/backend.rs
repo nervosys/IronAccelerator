@@ -1,8 +1,8 @@
 //! WebGPU `Backend` impl via `wgpu`. One descriptor per adapter.
 
 use ironaccelerator_core::{
-    Backend, BackendKind, Capability, CapabilityFlags, ComputeTier, DeviceDescriptor,
-    DeviceId, Result, Strategy, Vendor, Workload,
+    Backend, BackendKind, Capability, CapabilityFlags, ComputeTier, DeviceDescriptor, DeviceId,
+    Result, Strategy, Vendor, Workload,
 };
 
 use crate::drv::AdapterInfo;
@@ -32,7 +32,9 @@ impl Backend for WebGpuBackend {
     }
 
     fn plan(&self, _device: u32, _w: &Workload) -> Result<Strategy> {
-        Ok(Strategy::Wgsl { workgroup: (64, 1, 1) })
+        Ok(Strategy::Wgsl {
+            workgroup: (64, 1, 1),
+        })
     }
 }
 

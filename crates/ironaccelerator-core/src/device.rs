@@ -2,10 +2,10 @@
 
 use crate::{backend::BackendKind, capability::Capability};
 
-#[cfg(feature = "std")]
-use std::string::String;
 #[cfg(not(feature = "std"))]
 use alloc::string::String;
+#[cfg(feature = "std")]
+use std::string::String;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

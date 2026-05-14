@@ -20,7 +20,7 @@
 #![allow(
     clippy::missing_safety_doc,
     clippy::too_many_arguments,
-    clippy::type_complexity,
+    clippy::type_complexity
 )]
 
 pub mod backend;

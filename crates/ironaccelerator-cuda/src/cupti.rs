@@ -8,17 +8,22 @@ use iron_cuda_sys::cupti as sys;
 use ironaccelerator_core::{Error, Result};
 
 pub use sys::{
-    CuptiActivityKind as ActivityKind, CuptiBufferCompletedCb, CuptiBufferRequestedCb,
-    CuptiResult, CuptiSubscriber,
+    CuptiActivityKind as ActivityKind, CuptiBufferCompletedCb, CuptiBufferRequestedCb, CuptiResult,
+    CuptiSubscriber,
 };
 
 fn fns() -> Result<&'static sys::CuptiFns> {
-    sys::fns().map_err(|e| Error::Other(Box::leak(
-        format!("cupti not available: {e}").into_boxed_str())))
+    sys::fns().map_err(|e| {
+        Error::Other(Box::leak(
+            format!("cupti not available: {e}").into_boxed_str(),
+        ))
+    })
 }
 
 fn check(_op: &'static str, s: CuptiResult) -> Result<()> {
-    if s.is_ok() { Ok(()) } else {
+    if s.is_ok() {
+        Ok(())
+    } else {
         Err(Error::Backend {
             backend: ironaccelerator_core::BackendKind::Cuda,
             code: (s as u32) as i64,
@@ -35,22 +40,32 @@ pub fn disable(kind: ActivityKind) -> Result<()> {
 }
 
 pub fn register_callbacks(
-    requested: CuptiBufferRequestedCb, completed: CuptiBufferCompletedCb,
+    requested: CuptiBufferRequestedCb,
+    completed: CuptiBufferCompletedCb,
 ) -> Result<()> {
     unsafe {
-        check("cuptiActivityRegisterCallbacks",
-              (fns()?.cuptiActivityRegisterCallbacks)(requested, completed))
+        check(
+            "cuptiActivityRegisterCallbacks",
+            (fns()?.cuptiActivityRegisterCallbacks)(requested, completed),
+        )
     }
 }
 
 /// Flush all pending activity records. `flag=0` flushes everything.
 pub fn flush_all(flag: u32) -> Result<()> {
-    unsafe { check("cuptiActivityFlushAll", (fns()?.cuptiActivityFlushAll)(flag)) }
+    unsafe {
+        check(
+            "cuptiActivityFlushAll",
+            (fns()?.cuptiActivityFlushAll)(flag),
+        )
+    }
 }
 
 pub fn version() -> Result<u32> {
     let mut v: u32 = 0;
-    unsafe { check("cuptiGetVersion", (fns()?.cuptiGetVersion)(&mut v))?; }
+    unsafe {
+        check("cuptiGetVersion", (fns()?.cuptiGetVersion)(&mut v))?;
+    }
     Ok(v)
 }
 
@@ -58,11 +73,15 @@ pub fn version() -> Result<u32> {
 /// Pairs with [`crate::drv::TimingEvent`] when you need device+host correlation.
 pub fn timestamp_ns() -> Result<u64> {
     let mut t: u64 = 0;
-    unsafe { check("cuptiGetTimestamp", (fns()?.cuptiGetTimestamp)(&mut t))?; }
+    unsafe {
+        check("cuptiGetTimestamp", (fns()?.cuptiGetTimestamp)(&mut t))?;
+    }
     Ok(t)
 }
 
-pub fn is_available() -> bool { sys::is_available() }
+pub fn is_available() -> bool {
+    sys::is_available()
+}
 
 // ─── Activity record decoder ────────────────────────────────────────────────
 //
@@ -152,7 +171,10 @@ pub enum Activity {
     Kernel(ActivityKernel),
     Memcpy(ActivityMemcpy),
     /// Unknown kind. Callers can fall back to their own decoder.
-    Other { kind: u32, ptr: *const c_void },
+    Other {
+        kind: u32,
+        ptr: *const c_void,
+    },
 }
 
 /// Pull-style decoder over a completed activity buffer.
@@ -170,7 +192,11 @@ impl ActivityDecoder {
     /// # Safety
     /// See [`ActivityDecoder`].
     pub unsafe fn new(buffer: *mut u8, valid_size: usize) -> Self {
-        Self { buffer, valid_size, cursor: ptr::null_mut() }
+        Self {
+            buffer,
+            valid_size,
+            cursor: ptr::null_mut(),
+        }
     }
 }
 
@@ -193,7 +219,10 @@ impl Iterator for ActivityDecoder {
             3 | 10 => Activity::Kernel(unsafe { *(self.cursor as *const ActivityKernel) }),
             // CUpti_ActivityKind::Memcpy (1)
             1 => Activity::Memcpy(unsafe { *(self.cursor as *const ActivityMemcpy) }),
-            k => Activity::Other { kind: k, ptr: self.cursor },
+            k => Activity::Other {
+                kind: k,
+                ptr: self.cursor,
+            },
         })
     }
 }

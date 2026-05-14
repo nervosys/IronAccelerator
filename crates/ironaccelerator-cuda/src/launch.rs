@@ -11,16 +11,26 @@ use ironaccelerator_core::{kernel::LaunchDims, Result};
 /// 1-D launch over `n` elements with `block` threads per block.
 #[inline(always)]
 pub fn launch_1d<A: LaunchArgs>(
-    stream: &Stream, func: &Function, n: u32, block: u32, args: A,
+    stream: &Stream,
+    func: &Function,
+    n: u32,
+    block: u32,
+    args: A,
 ) -> Result<()> {
-    func.launch(LaunchCfg::for_elements(n, block), stream, args).map_err(Into::into)
+    func.launch(LaunchCfg::for_elements(n, block), stream, args)
+        .map_err(Into::into)
 }
 
 /// 2-D launch over `(rows, cols)` with `(by, bx)` block dims.
 #[inline(always)]
 pub fn launch_2d<A: LaunchArgs>(
-    stream: &Stream, func: &Function,
-    rows: u32, cols: u32, by: u32, bx: u32, args: A,
+    stream: &Stream,
+    func: &Function,
+    rows: u32,
+    cols: u32,
+    by: u32,
+    bx: u32,
+    args: A,
 ) -> Result<()> {
     let cfg = LaunchCfg {
         grid: (cols.div_ceil(bx), rows.div_ceil(by), 1),
@@ -33,7 +43,10 @@ pub fn launch_2d<A: LaunchArgs>(
 /// Take a fully-described [`LaunchDims`] and dispatch.
 #[inline(always)]
 pub fn launch_dims<A: LaunchArgs>(
-    stream: &Stream, func: &Function, dims: LaunchDims, args: A,
+    stream: &Stream,
+    func: &Function,
+    dims: LaunchDims,
+    args: A,
 ) -> Result<()> {
     let cfg = LaunchCfg {
         grid: dims.grid,
@@ -46,7 +59,10 @@ pub fn launch_dims<A: LaunchArgs>(
 /// Lowest-level launch — pass a fully-formed [`LaunchCfg`].
 #[inline(always)]
 pub fn raw_launch<A: LaunchArgs>(
-    stream: &Stream, func: &Function, cfg: LaunchCfg, args: A,
+    stream: &Stream,
+    func: &Function,
+    cfg: LaunchCfg,
+    args: A,
 ) -> Result<()> {
     func.launch(cfg, stream, args).map_err(Into::into)
 }

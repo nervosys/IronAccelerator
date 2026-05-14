@@ -15,7 +15,8 @@ pub fn enable(src: &Arc<Device>, peer: &Arc<Device>) -> Result<()> {
 }
 
 pub fn enable_bidirectional(a: &Arc<Device>, b: &Arc<Device>) -> Result<()> {
-    enable(a, b)?; enable(b, a)
+    enable(a, b)?;
+    enable(b, a)
 }
 
 /// `N×N` connectivity matrix.
@@ -24,7 +25,11 @@ pub fn topology(devs: &[Arc<Device>]) -> Result<Vec<Vec<bool>>> {
     let mut m = vec![vec![false; n]; n];
     for i in 0..n {
         for j in 0..n {
-            m[i][j] = if i == j { true } else { can_access(&devs[i], &devs[j])? };
+            m[i][j] = if i == j {
+                true
+            } else {
+                can_access(&devs[i], &devs[j])?
+            };
         }
     }
     Ok(m)

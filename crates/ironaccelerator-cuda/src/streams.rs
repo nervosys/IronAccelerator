@@ -6,7 +6,6 @@
 //! hands out the next stream in round-robin order via a relaxed atomic
 //! counter; concurrent producers are safe.
 
-use crate::Session;
 use crate::drv::{Device, Priority, Stream};
 use ironaccelerator_core::Result;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -23,28 +22,46 @@ impl StreamPool {
     pub fn new(device: Arc<Device>, n: usize) -> Result<Self> {
         assert!(n > 0, "stream pool size must be > 0");
         let mut streams = Vec::with_capacity(n);
-        for _ in 0..n { streams.push(Stream::new(device.clone())?); }
-        Ok(Self { device, streams, cursor: AtomicUsize::new(0) })
+        for _ in 0..n {
+            streams.push(Stream::new(device.clone())?);
+        }
+        Ok(Self {
+            device,
+            streams,
+            cursor: AtomicUsize::new(0),
+        })
     }
 
     /// Pool where even indices get `low`, odd indices get `high` priority.
     pub fn new_interleaved_priority(device: Arc<Device>, n: usize) -> Result<Self> {
         let mut streams = Vec::with_capacity(n);
         for i in 0..n {
-            let p = if i % 2 == 0 { Priority::Low } else { Priority::High };
+            let p = if i % 2 == 0 {
+                Priority::Low
+            } else {
+                Priority::High
+            };
             streams.push(Stream::with_priority(device.clone(), p)?);
         }
-        Ok(Self { device, streams, cursor: AtomicUsize::new(0) })
+        Ok(Self {
+            device,
+            streams,
+            cursor: AtomicUsize::new(0),
+        })
     }
 
-    /// Build a pool attached to `session`'s device.
-    pub fn from_session(session: &Session, n: usize) -> Result<Self> {
-        Self::new(session.device().clone(), n)
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.streams.len()
     }
-
-    #[inline] pub fn len(&self) -> usize { self.streams.len() }
-    #[inline] pub fn is_empty(&self) -> bool { self.streams.is_empty() }
-    #[inline] pub fn device(&self) -> &Arc<Device> { &self.device }
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.streams.is_empty()
+    }
+    #[inline]
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
 
     /// Get a stream by logical index (wraps).
     #[inline]
@@ -61,11 +78,15 @@ impl StreamPool {
 
     /// Wait for every stream in the pool to drain.
     pub fn synchronize_all(&self) -> Result<()> {
-        for s in &self.streams { s.synchronize()?; }
+        for s in &self.streams {
+            s.synchronize()?;
+        }
         Ok(())
     }
 
-    pub fn streams(&self) -> &[Arc<Stream>] { &self.streams }
+    pub fn streams(&self) -> &[Arc<Stream>] {
+        &self.streams
+    }
 }
 
 #[cfg(test)]
@@ -77,7 +98,9 @@ mod tests {
         let cursor = AtomicUsize::new(0);
         let n = 4;
         let idx = |c: &AtomicUsize| c.fetch_add(1, Ordering::Relaxed) % n;
-        for _ in 0..8 { let _ = idx(&cursor); }
+        for _ in 0..8 {
+            let _ = idx(&cursor);
+        }
         assert!(cursor.load(Ordering::Relaxed) >= 8);
     }
 }

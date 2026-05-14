@@ -2,7 +2,7 @@
 //!
 //! # Design
 //!
-//! The profiler is a per-[`crate::Session`] object. It is **off by default**;
+//! The profiler is a stand-alone object owning its CUDA events. It is **off by default**;
 //! flipping it on is a single [`Profiler::enable`] / `disable` call that
 //! toggles an `AtomicBool`. Every hot-path helper starts with:
 //!
@@ -41,11 +41,24 @@ use std::time::Instant;
 #[derive(Clone)]
 pub enum Event {
     /// CPU-side span `[start_ns, end_ns)` relative to profiler epoch.
-    Cpu { name: String, start_ns: u64, end_ns: u64, tid: u32 },
+    Cpu {
+        name: String,
+        start_ns: u64,
+        end_ns: u64,
+        tid: u32,
+    },
     /// GPU span still awaiting resolution.
-    GpuPending { name: String, start: Arc<TimingEvent>, stop: Arc<TimingEvent> },
+    GpuPending {
+        name: String,
+        start: Arc<TimingEvent>,
+        stop: Arc<TimingEvent>,
+    },
     /// Resolved GPU span (`μs` since profiler epoch — converted at flush).
-    Gpu { name: String, start_us: u64, end_us: u64 },
+    Gpu {
+        name: String,
+        start_us: u64,
+        end_us: u64,
+    },
     /// Instant marker — no duration.
     Mark { name: String, at_ns: u64 },
 }
@@ -61,7 +74,9 @@ pub struct Profiler {
 }
 
 impl Default for Profiler {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Profiler {
@@ -75,24 +90,46 @@ impl Profiler {
         }
     }
 
-    #[inline(always)] pub fn is_enabled(&self) -> bool { self.enabled.load(Ordering::Relaxed) }
-    #[inline(always)] pub fn enable(&self)  { self.enabled.store(true, Ordering::Relaxed); }
-    #[inline(always)] pub fn disable(&self) { self.enabled.store(false, Ordering::Relaxed); }
+    #[inline(always)]
+    pub fn is_enabled(&self) -> bool {
+        self.enabled.load(Ordering::Relaxed)
+    }
+    #[inline(always)]
+    pub fn enable(&self) {
+        self.enabled.store(true, Ordering::Relaxed);
+    }
+    #[inline(always)]
+    pub fn disable(&self) {
+        self.enabled.store(false, Ordering::Relaxed);
+    }
 
     /// Cap on retained events. When the buffer is full, new events are
     /// dropped — the `dropped` counter tracks the loss.
-    pub fn set_capacity(&self, n: u64) { self.capacity.store(n, Ordering::Relaxed); }
+    pub fn set_capacity(&self, n: u64) {
+        self.capacity.store(n, Ordering::Relaxed);
+    }
 
-    pub fn dropped(&self) -> u64 { self.dropped.load(Ordering::Relaxed) }
-    pub fn len(&self) -> usize { self.events.lock().len() }
-    pub fn is_empty(&self) -> bool { self.events.lock().is_empty() }
-    pub fn clear(&self) { self.events.lock().clear(); self.dropped.store(0, Ordering::Relaxed); }
+    pub fn dropped(&self) -> u64 {
+        self.dropped.load(Ordering::Relaxed)
+    }
+    pub fn len(&self) -> usize {
+        self.events.lock().len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.events.lock().is_empty()
+    }
+    pub fn clear(&self) {
+        self.events.lock().clear();
+        self.dropped.store(0, Ordering::Relaxed);
+    }
 
     /// Begin a CPU span. Returns `None` if profiling is disabled — the call
     /// site incurs only the atomic load + predicted branch.
     #[inline]
     pub fn cpu_span<'a, S: Into<String>>(&'a self, name: S) -> Option<CpuSpan<'a>> {
-        if !self.is_enabled() { return None; }
+        if !self.is_enabled() {
+            return None;
+        }
         Some(CpuSpan {
             profiler: self,
             name: name.into(),
@@ -105,11 +142,17 @@ impl Profiler {
     /// The `stop` event fires on drop; resolution (event elapsed time) is
     /// deferred to [`Profiler::flush_gpu`].
     #[inline]
-    pub fn gpu_span<'a, S: Into<String>>(&'a self, stream: &Arc<Stream>, name: S)
-        -> Option<GpuSpan<'a>>
-    {
-        if !self.is_enabled() { return None; }
-        let start = TimingEvent::new(stream.device().clone()).ok().map(Arc::new)?;
+    pub fn gpu_span<'a, S: Into<String>>(
+        &'a self,
+        stream: &Arc<Stream>,
+        name: S,
+    ) -> Option<GpuSpan<'a>> {
+        if !self.is_enabled() {
+            return None;
+        }
+        let start = TimingEvent::new(stream.device().clone())
+            .ok()
+            .map(Arc::new)?;
         start.record(stream).ok()?;
         Some(GpuSpan {
             profiler: self,
@@ -122,9 +165,14 @@ impl Profiler {
     /// Record an instant marker.
     #[inline]
     pub fn mark<S: Into<String>>(&self, name: S) {
-        if !self.is_enabled() { return; }
+        if !self.is_enabled() {
+            return;
+        }
         let at_ns = self.epoch.elapsed().as_nanos() as u64;
-        self.push(Event::Mark { name: name.into(), at_ns });
+        self.push(Event::Mark {
+            name: name.into(),
+            at_ns,
+        });
     }
 
     /// Resolve every pending GPU span that has completed. Safe to call after
@@ -132,7 +180,9 @@ impl Profiler {
     /// on any event that hasn't fired, so you should prefer to call it after
     /// a sync boundary.
     pub fn flush_gpu(&self) {
-        if !self.is_enabled() { return; }
+        if !self.is_enabled() {
+            return;
+        }
         let mut guard = self.events.lock();
         // partition_point style: walk and replace GpuPending in place.
         for slot in guard.iter_mut() {
@@ -160,7 +210,10 @@ impl Profiler {
         // as a non-overlapping track in the trace viewer.
         let mut cursor: u64 = 0;
         for slot in guard.iter_mut() {
-            if let Event::Gpu { start_us, end_us, .. } = slot {
+            if let Event::Gpu {
+                start_us, end_us, ..
+            } = slot
+            {
                 let dur = *end_us - *start_us;
                 *start_us = cursor;
                 *end_us = cursor + dur;
@@ -185,10 +238,17 @@ impl Profiler {
         let mut out = String::from("{\"traceEvents\":[");
         let mut first = true;
         for ev in guard.iter() {
-            if !first { out.push(','); }
+            if !first {
+                out.push(',');
+            }
             first = false;
             match ev {
-                Event::Cpu { name, start_ns, end_ns, tid } => {
+                Event::Cpu {
+                    name,
+                    start_ns,
+                    end_ns,
+                    tid,
+                } => {
                     let dur_us = (end_ns - start_ns) / 1000;
                     let ts_us = start_ns / 1000;
                     out.push_str(&format!(
@@ -196,7 +256,11 @@ impl Profiler {
                         json_str(name)
                     ));
                 }
-                Event::Gpu { name, start_us, end_us } => {
+                Event::Gpu {
+                    name,
+                    start_us,
+                    end_us,
+                } => {
                     let dur = end_us - start_us;
                     out.push_str(&format!(
                         "{{\"ph\":\"X\",\"cat\":\"gpu\",\"name\":{},\"pid\":1,\"tid\":0,\"ts\":{start_us},\"dur\":{dur}}}",
@@ -210,7 +274,9 @@ impl Profiler {
                         json_str(name)
                     ));
                 }
-                Event::GpuPending { .. } => { first = true; /* suppress */ }
+                Event::GpuPending { .. } => {
+                    first = true; /* suppress */
+                }
             }
         }
         out.push_str("]}");
@@ -225,22 +291,68 @@ impl Profiler {
         let p = prefix.trim_end_matches('_');
         macro_rules! gauge {
             ($name:expr, $help:expr, $val:expr) => {{
-                out.push_str(&format!("# HELP {p}_{} {}\n# TYPE {p}_{} gauge\n{p}_{} {}\n",
-                    $name, $help, $name, $name, $val));
+                out.push_str(&format!(
+                    "# HELP {p}_{} {}\n# TYPE {p}_{} gauge\n{p}_{} {}\n",
+                    $name, $help, $name, $name, $val
+                ));
             }};
         }
-        gauge!("alloc_bytes_total",     "Device memory allocated via tensor factories", metrics.alloc_bytes);
-        gauge!("free_bytes_total",      "Device memory released",                        metrics.free_bytes);
-        gauge!("resident_bytes",        "alloc minus free",                              metrics.resident_bytes());
-        gauge!("htod_bytes_total",      "Host-to-device bytes copied",                   metrics.htod_bytes);
-        gauge!("dtoh_bytes_total",      "Device-to-host bytes copied",                   metrics.dtoh_bytes);
-        gauge!("kernels_launched_total","Kernel launches",                               metrics.kernels_launched);
-        gauge!("blas_calls_total",      "cuBLASLt calls",                                metrics.blas_calls);
-        gauge!("nvrtc_hit_ratio",       "NVRTC cache hit ratio [0,1]",                   metrics.nvrtc_hit_ratio());
-        gauge!("fft_hit_ratio",         "cuFFT plan cache hit ratio [0,1]",              metrics.fft_hit_ratio());
-        gauge!("collectives_total",     "NCCL collectives invoked",                      metrics.collectives);
-        gauge!("profiler_events",       "Profiler events currently buffered",            self.len());
-        gauge!("profiler_dropped_total","Profiler events dropped (buffer full)",         self.dropped());
+        gauge!(
+            "alloc_bytes_total",
+            "Device memory allocated via tensor factories",
+            metrics.alloc_bytes
+        );
+        gauge!(
+            "free_bytes_total",
+            "Device memory released",
+            metrics.free_bytes
+        );
+        gauge!(
+            "resident_bytes",
+            "alloc minus free",
+            metrics.resident_bytes()
+        );
+        gauge!(
+            "htod_bytes_total",
+            "Host-to-device bytes copied",
+            metrics.htod_bytes
+        );
+        gauge!(
+            "dtoh_bytes_total",
+            "Device-to-host bytes copied",
+            metrics.dtoh_bytes
+        );
+        gauge!(
+            "kernels_launched_total",
+            "Kernel launches",
+            metrics.kernels_launched
+        );
+        gauge!("blas_calls_total", "cuBLASLt calls", metrics.blas_calls);
+        gauge!(
+            "nvrtc_hit_ratio",
+            "NVRTC cache hit ratio [0,1]",
+            metrics.nvrtc_hit_ratio()
+        );
+        gauge!(
+            "fft_hit_ratio",
+            "cuFFT plan cache hit ratio [0,1]",
+            metrics.fft_hit_ratio()
+        );
+        gauge!(
+            "collectives_total",
+            "NCCL collectives invoked",
+            metrics.collectives
+        );
+        gauge!(
+            "profiler_events",
+            "Profiler events currently buffered",
+            self.len()
+        );
+        gauge!(
+            "profiler_dropped_total",
+            "Profiler events dropped (buffer full)",
+            self.dropped()
+        );
         out
     }
 }
@@ -256,10 +368,14 @@ pub struct CpuSpan<'a> {
 impl<'a> Drop for CpuSpan<'a> {
     fn drop(&mut self) {
         let start_ns = self.start.duration_since(self.profiler.epoch).as_nanos() as u64;
-        let end_ns = Instant::now().duration_since(self.profiler.epoch).as_nanos() as u64;
+        let end_ns = Instant::now()
+            .duration_since(self.profiler.epoch)
+            .as_nanos() as u64;
         self.profiler.push(Event::Cpu {
             name: std::mem::take(&mut self.name),
-            start_ns, end_ns, tid: self.tid,
+            start_ns,
+            end_ns,
+            tid: self.tid,
         });
     }
 }
@@ -279,7 +395,9 @@ impl<'a> Drop for GpuSpan<'a> {
             Ok(s) => s,
             Err(_) => return,
         };
-        if stop.record(&self.stream).is_err() { return; }
+        if stop.record(&self.stream).is_err() {
+            return;
+        }
         self.profiler.push(Event::GpuPending {
             name: std::mem::take(&mut self.name),
             start: self.start.clone(),
@@ -363,7 +481,9 @@ mod tests {
         let p = Profiler::new();
         p.enable();
         p.set_capacity(3);
-        for i in 0..10 { p.mark(format!("m{i}")); }
+        for i in 0..10 {
+            p.mark(format!("m{i}"));
+        }
         assert_eq!(p.len(), 3);
         assert_eq!(p.dropped(), 7);
     }
@@ -373,7 +493,9 @@ mod tests {
         let p = Profiler::new();
         p.enable();
         p.mark("m");
-        { let _ = p.cpu_span("c"); }
+        {
+            let _ = p.cpu_span("c");
+        }
         let t = p.chrome_trace();
         assert!(t.starts_with("{\"traceEvents\":["));
         assert!(t.ends_with("]}"));
@@ -385,7 +507,9 @@ mod tests {
     fn prometheus_exports_all_counters() {
         let p = Profiler::new();
         let mut m = MetricsSnapshot::default();
-        m.alloc_bytes = 1024; m.free_bytes = 256; m.kernels_launched = 3;
+        m.alloc_bytes = 1024;
+        m.free_bytes = 256;
+        m.kernels_launched = 3;
         let out = p.prometheus("iron", &m);
         assert!(out.contains("iron_alloc_bytes_total 1024"));
         assert!(out.contains("iron_resident_bytes 768"));
@@ -398,7 +522,9 @@ mod tests {
         let p = Profiler::new();
         p.enable();
         p.set_capacity(1);
-        p.mark("a"); p.mark("b"); p.mark("c");
+        p.mark("a");
+        p.mark("b");
+        p.mark("c");
         assert!(p.dropped() > 0);
         p.clear();
         assert_eq!(p.dropped(), 0);
@@ -408,7 +534,9 @@ mod tests {
     #[test]
     fn enable_disable_toggles() {
         let p = Profiler::new();
-        p.enable(); assert!(p.is_enabled());
-        p.disable(); assert!(!p.is_enabled());
+        p.enable();
+        assert!(p.is_enabled());
+        p.disable();
+        assert!(!p.is_enabled());
     }
 }

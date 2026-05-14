@@ -48,15 +48,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 /// the command buffer is submitted; the queue is polled by the caller.
 /// `x`, `y`, `params` are storage buffers the caller has already filled
 /// via [`Context::storage_buffer_init`] / [`Context::storage_buffer`].
-pub fn axpy_f32(
-    ctx: &Context,
-    x: &wgpu::Buffer,
-    y: &wgpu::Buffer,
-    params: &wgpu::Buffer,
-    n: u32,
-) {
+pub fn axpy_f32(ctx: &Context, x: &wgpu::Buffer, y: &wgpu::Buffer, params: &wgpu::Buffer, n: u32) {
     let pipeline = ComputePipeline::from_wgsl(ctx, SAXPY_WGSL, "main", 3);
-    let groups = [(n + 63) / 64, 1, 1];
+    let groups = [n.div_ceil(64), 1, 1];
     dispatch(ctx, &pipeline, &[x, y, params], groups);
 }
 
@@ -72,6 +66,6 @@ pub fn gemm_f32(
     n: u32,
 ) {
     let pipeline = ComputePipeline::from_wgsl(ctx, GEMM_F32_WGSL, "main", 4);
-    let groups = [(n + 15) / 16, (m + 15) / 16, 1];
+    let groups = [n.div_ceil(16), m.div_ceil(16), 1];
     dispatch(ctx, &pipeline, &[a, b, c, dims], groups);
 }

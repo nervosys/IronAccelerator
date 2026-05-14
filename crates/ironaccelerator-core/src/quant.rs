@@ -34,7 +34,10 @@ pub enum QuantGranularity {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum QuantSymmetry { Symmetric, Asymmetric }
+pub enum QuantSymmetry {
+    Symmetric,
+    Asymmetric,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -70,10 +73,10 @@ impl QuantScheme {
     /// Range `[qmin, qmax]` of the stored integer type for this scheme.
     pub const fn qrange(&self) -> (i32, i32) {
         match (self.storage, self.symmetry) {
-            (DType::I8, QuantSymmetry::Symmetric)  => (-127, 127),
+            (DType::I8, QuantSymmetry::Symmetric) => (-127, 127),
             (DType::I8, QuantSymmetry::Asymmetric) => (-128, 127),
-            (DType::U8, _)                         => (0, 255),
-            (DType::U4, _)                         => (0, 15),
+            (DType::U8, _) => (0, 255),
+            (DType::U4, _) => (0, 15),
             (DType::I16, QuantSymmetry::Symmetric) => (-32767, 32767),
             _ => (0, 0),
         }
@@ -92,11 +95,17 @@ pub struct CalibStats {
 
 impl CalibStats {
     pub fn new_scalar(min: f32, max: f32) -> Self {
-        Self { min: vec![min], max: vec![max] }
+        Self {
+            min: vec![min],
+            max: vec![max],
+        }
     }
 
     pub fn per_channel(c: usize) -> Self {
-        Self { min: vec![f32::INFINITY; c], max: vec![f32::NEG_INFINITY; c] }
+        Self {
+            min: vec![f32::INFINITY; c],
+            max: vec![f32::NEG_INFINITY; c],
+        }
     }
 
     /// Merge a row's observations into channel-wise stats (axis 0 = rows,
@@ -104,8 +113,12 @@ impl CalibStats {
     pub fn absorb_row(&mut self, row: &[f32]) {
         assert_eq!(row.len(), self.min.len());
         for (i, &v) in row.iter().enumerate() {
-            if v < self.min[i] { self.min[i] = v; }
-            if v > self.max[i] { self.max[i] = v; }
+            if v < self.min[i] {
+                self.min[i] = v;
+            }
+            if v > self.max[i] {
+                self.max[i] = v;
+            }
         }
     }
 }
@@ -131,7 +144,8 @@ impl QuantParams {
         }
         Self {
             scheme: QuantScheme::int8_per_channel_sym(),
-            scales, zero_points: Vec::new(),
+            scales,
+            zero_points: Vec::new(),
         }
     }
 
@@ -161,7 +175,11 @@ fn sat_u4(v: f32) -> u8 {
 /// Quantize an FP32 row-major matrix `[rows, cols]` to INT8 with per-channel
 /// symmetric scales (channels along `cols`). Output is row-major INT8.
 pub fn quant_i8_per_channel_sym(
-    src: &[f32], rows: usize, cols: usize, params: &QuantParams, dst: &mut [i8],
+    src: &[f32],
+    rows: usize,
+    cols: usize,
+    params: &QuantParams,
+    dst: &mut [i8],
 ) {
     debug_assert_eq!(src.len(), rows * cols);
     debug_assert_eq!(dst.len(), rows * cols);
@@ -179,7 +197,11 @@ pub fn quant_i8_per_channel_sym(
 
 /// Dequantize INT8 (per-channel symmetric) back to FP32.
 pub fn dequant_i8_per_channel_sym(
-    src: &[i8], rows: usize, cols: usize, params: &QuantParams, dst: &mut [f32],
+    src: &[i8],
+    rows: usize,
+    cols: usize,
+    params: &QuantParams,
+    dst: &mut [f32],
 ) {
     debug_assert_eq!(src.len(), rows * cols);
     debug_assert_eq!(dst.len(), rows * cols);
@@ -200,11 +222,18 @@ pub fn dequant_i8_per_channel_sym(
 /// lower nibble = column `2i`, upper nibble = column `2i + 1`. Scales: one
 /// per `(row, group)` in row-major `[rows, cols / group_size]`.
 pub fn quant_u4_per_group_sym(
-    src: &[f32], rows: usize, cols: usize, group_size: usize,
-    packed_out: &mut [u8], scales_out: &mut [f32],
+    src: &[f32],
+    rows: usize,
+    cols: usize,
+    group_size: usize,
+    packed_out: &mut [u8],
+    scales_out: &mut [f32],
 ) {
     assert!(cols % 2 == 0, "quant_u4: cols must be even");
-    assert!(cols % group_size == 0, "quant_u4: group_size must divide cols");
+    assert!(
+        cols % group_size == 0,
+        "quant_u4: group_size must divide cols"
+    );
     let gpr = cols / group_size;
     assert_eq!(scales_out.len(), rows * gpr);
     assert_eq!(packed_out.len(), rows * cols / 2);
@@ -216,7 +245,10 @@ pub fn quant_u4_per_group_sym(
         for g in 0..gpr {
             let group = &row[g * group_size..(g + 1) * group_size];
             // Symmetric: centre on 7.5; scale = amax / 7.5
-            let amax = group.iter().fold(0.0f32, |a, &v| a.max(v.abs())).max(f32::EPSILON);
+            let amax = group
+                .iter()
+                .fold(0.0f32, |a, &v| a.max(v.abs()))
+                .max(f32::EPSILON);
             let scale = amax / 7.5;
             scales_row[g] = scale;
             let inv = 1.0 / scale;
@@ -305,8 +337,12 @@ pub fn fp8_scale_from_history(history: &[f32], format: Fp8Format) -> f32 {
 
 /// Dequantize U4 packed weights (per-group symmetric) back to FP32.
 pub fn dequant_u4_per_group_sym(
-    packed: &[u8], rows: usize, cols: usize, group_size: usize,
-    scales: &[f32], dst: &mut [f32],
+    packed: &[u8],
+    rows: usize,
+    cols: usize,
+    group_size: usize,
+    scales: &[f32],
+    dst: &mut [f32],
 ) {
     let gpr = cols / group_size;
     for r in 0..rows {
@@ -330,7 +366,9 @@ mod tests {
     fn int8_roundtrip_matches_within_scale() {
         let src: Vec<f32> = (0..32).map(|i| (i as f32 - 16.0) * 0.1).collect();
         let mut stats = CalibStats::per_channel(8);
-        for row in src.chunks(8) { stats.absorb_row(row); }
+        for row in src.chunks(8) {
+            stats.absorb_row(row);
+        }
         let params = QuantParams::int8_per_channel_sym(&stats);
         let mut q = vec![0i8; 32];
         quant_i8_per_channel_sym(&src, 4, 8, &params, &mut q);
@@ -373,7 +411,10 @@ mod tests {
         quant_u4_per_group_sym(&src, 2, 32, 8, &mut packed, &mut scales);
         let mut back = vec![0f32; 64];
         dequant_u4_per_group_sym(&packed, 2, 32, 8, &scales, &mut back);
-        let max_err = src.iter().zip(&back).map(|(a, b)| (a - b).abs())
+        let max_err = src
+            .iter()
+            .zip(&back)
+            .map(|(a, b)| (a - b).abs())
             .fold(0.0f32, f32::max);
         assert!(max_err < 0.2, "u4 error {max_err} too large");
     }

@@ -17,3 +17,7 @@ once_cell  = { workspace = true }
 default = ["embed"]
 # Embed the JSON knowledge base into the binary.
 embed = []
+
+[[bin]]
+name = "ironaccelerator-ontology-dump"
+path = "src/bin/dump.rs"

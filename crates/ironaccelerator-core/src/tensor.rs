@@ -7,10 +7,10 @@
 
 use crate::dtype::DType;
 
-#[cfg(feature = "std")]
-use std::vec::Vec;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
+#[cfg(feature = "std")]
+use std::vec::Vec;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -39,7 +39,12 @@ pub struct TensorDesc {
 
 impl TensorDesc {
     pub fn dense(dtype: DType, shape: impl Into<Vec<u32>>) -> Self {
-        Self { dtype, shape: shape.into(), strides: None, layout: Layout::RowMajor }
+        Self {
+            dtype,
+            shape: shape.into(),
+            strides: None,
+            layout: Layout::RowMajor,
+        }
     }
 
     /// Number of elements (product of shape).
@@ -51,10 +56,16 @@ impl TensorDesc {
     pub fn bytes(&self) -> u64 {
         let bits = self.dtype.bits() as u64;
         // Round up to byte boundary; quant-block (bits == 0) returns 0.
-        if bits == 0 { 0 } else { (self.numel() * bits).div_ceil(8) }
+        if bits == 0 {
+            0
+        } else {
+            (self.numel() * bits).div_ceil(8)
+        }
     }
 
-    pub fn rank(&self) -> usize { self.shape.len() }
+    pub fn rank(&self) -> usize {
+        self.shape.len()
+    }
 
     /// Compute the dense row-major / col-major strides for this descriptor.
     pub fn dense_strides(&self) -> Vec<i32> {
@@ -62,7 +73,9 @@ impl TensorDesc {
         let mut s = vec![1i32; r];
         match self.layout {
             Layout::ColMajor => {
-                for i in 1..r { s[i] = s[i - 1] * self.shape[i - 1] as i32; }
+                for i in 1..r {
+                    s[i] = s[i - 1] * self.shape[i - 1] as i32;
+                }
             }
             _ => {
                 for i in (0..r.saturating_sub(1)).rev() {

@@ -69,10 +69,10 @@ fn dequant_i8_row_scalar(src: &[i8], scales: &[f32], dst: &mut [f32]) {
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "avx2")]
 unsafe fn quant_i8_row_avx2(src: &[f32], scales: &[f32], dst: &mut [i8]) {
-    #[cfg(target_arch = "x86_64")]
-    use std::arch::x86_64::*;
     #[cfg(target_arch = "x86")]
     use std::arch::x86::*;
+    #[cfg(target_arch = "x86_64")]
+    use std::arch::x86_64::*;
 
     let n = src.len();
     let mut i = 0;
@@ -107,10 +107,10 @@ unsafe fn quant_i8_row_avx2(src: &[f32], scales: &[f32], dst: &mut [i8]) {
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "avx2")]
 unsafe fn dequant_i8_row_avx2(src: &[i8], scales: &[f32], dst: &mut [f32]) {
-    #[cfg(target_arch = "x86_64")]
-    use std::arch::x86_64::*;
     #[cfg(target_arch = "x86")]
     use std::arch::x86::*;
+    #[cfg(target_arch = "x86_64")]
+    use std::arch::x86_64::*;
 
     let n = src.len();
     let mut i = 0;

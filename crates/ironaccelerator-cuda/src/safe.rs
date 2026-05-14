@@ -4,9 +4,9 @@
 //! downstream callers a single stable import path.
 
 pub use crate::drv::{
-    CapturedGraph, Device, DeviceBuf, DeviceView, DeviceViewMut, Event, Function,
-    GraphExec, KernelArg, LaunchArgs, LaunchCfg, Module, PinnedBuf, Priority, Repr,
-    Stream, TimingEvent, ZeroBits,
+    CapturedGraph, Device, DeviceBuf, DeviceView, DeviceViewMut, Event, Function, GraphExec,
+    KernelArg, LaunchArgs, LaunchCfg, Module, PinnedBuf, Priority, Repr, Stream, TimingEvent,
+    ZeroBits,
 };
 
 pub use crate::alloc::{alloc, alloc_zeros, from_host};

@@ -71,14 +71,14 @@ pub struct QnnInterfaceV2 {
         *mut Qnn_BackendHandle_t,
     ) -> Qnn_ErrorHandle_t,
     pub backend_setConfig: unsafe extern "C" fn(
-        Qnn_BackendHandle_t, *const *const QnnBackendConfig,
+        Qnn_BackendHandle_t,
+        *const *const QnnBackendConfig,
     ) -> Qnn_ErrorHandle_t,
     pub backend_getApiVersion: unsafe extern "C" fn(*mut QnnApiVersion) -> Qnn_ErrorHandle_t,
     pub backend_free: unsafe extern "C" fn(Qnn_BackendHandle_t) -> Qnn_ErrorHandle_t,
 
     // ── Device ─────────────────────────────────────────────────────────────
-    pub device_getInfrastructure:
-        unsafe extern "C" fn(*mut *const c_void) -> Qnn_ErrorHandle_t,
+    pub device_getInfrastructure: unsafe extern "C" fn(*mut *const c_void) -> Qnn_ErrorHandle_t,
     pub device_create: unsafe extern "C" fn(
         Qnn_LogHandle_t,
         *const *const c_void,
@@ -96,19 +96,22 @@ pub struct QnnInterfaceV2 {
     pub context_getBinarySize:
         unsafe extern "C" fn(Qnn_ContextHandle_t, *mut usize) -> Qnn_ErrorHandle_t,
     pub context_getBinary: unsafe extern "C" fn(
-        Qnn_ContextHandle_t, *mut c_void, usize, *mut usize,
+        Qnn_ContextHandle_t,
+        *mut c_void,
+        usize,
+        *mut usize,
     ) -> Qnn_ErrorHandle_t,
     pub context_createFromBinary: unsafe extern "C" fn(
         Qnn_BackendHandle_t,
         Qnn_DeviceHandle_t,
         *const *const c_void,
-        *const c_void, usize,
+        *const c_void,
+        usize,
         *mut Qnn_ContextHandle_t,
         Qnn_ProfileHandle_t,
     ) -> Qnn_ErrorHandle_t,
-    pub context_free: unsafe extern "C" fn(
-        Qnn_ContextHandle_t, Qnn_ProfileHandle_t,
-    ) -> Qnn_ErrorHandle_t,
+    pub context_free:
+        unsafe extern "C" fn(Qnn_ContextHandle_t, Qnn_ProfileHandle_t) -> Qnn_ErrorHandle_t,
 
     // ── Graph ──────────────────────────────────────────────────────────────
     pub graph_create: unsafe extern "C" fn(
@@ -117,9 +120,8 @@ pub struct QnnInterfaceV2 {
         *const *const c_void,
         *mut Qnn_GraphHandle_t,
     ) -> Qnn_ErrorHandle_t,
-    pub graph_addNode: unsafe extern "C" fn(
-        Qnn_GraphHandle_t, *const QnnOpConfig,
-    ) -> Qnn_ErrorHandle_t,
+    pub graph_addNode:
+        unsafe extern "C" fn(Qnn_GraphHandle_t, *const QnnOpConfig) -> Qnn_ErrorHandle_t,
     pub graph_finalize: unsafe extern "C" fn(
         Qnn_GraphHandle_t,
         Qnn_ProfileHandle_t,
@@ -127,15 +129,19 @@ pub struct QnnInterfaceV2 {
     ) -> Qnn_ErrorHandle_t,
     pub graph_execute: unsafe extern "C" fn(
         Qnn_GraphHandle_t,
-        *const QnnTensor, u32,
-        *mut QnnTensor, u32,
+        *const QnnTensor,
+        u32,
+        *mut QnnTensor,
+        u32,
         Qnn_ProfileHandle_t,
         *mut c_void,
     ) -> Qnn_ErrorHandle_t,
     pub graph_executeAsync: unsafe extern "C" fn(
         Qnn_GraphHandle_t,
-        *const QnnTensor, u32,
-        *mut QnnTensor, u32,
+        *const QnnTensor,
+        u32,
+        *mut QnnTensor,
+        u32,
         Qnn_ProfileHandle_t,
         *mut c_void,
         *const c_void,
@@ -143,12 +149,10 @@ pub struct QnnInterfaceV2 {
     ) -> Qnn_ErrorHandle_t,
 
     // ── Tensor ─────────────────────────────────────────────────────────────
-    pub tensor_createContextTensor: unsafe extern "C" fn(
-        Qnn_ContextHandle_t, *mut QnnTensor,
-    ) -> Qnn_ErrorHandle_t,
-    pub tensor_createGraphTensor: unsafe extern "C" fn(
-        Qnn_GraphHandle_t, *mut QnnTensor,
-    ) -> Qnn_ErrorHandle_t,
+    pub tensor_createContextTensor:
+        unsafe extern "C" fn(Qnn_ContextHandle_t, *mut QnnTensor) -> Qnn_ErrorHandle_t,
+    pub tensor_createGraphTensor:
+        unsafe extern "C" fn(Qnn_GraphHandle_t, *mut QnnTensor) -> Qnn_ErrorHandle_t,
 }
 
 impl QnnInterfaceV2 {
@@ -157,7 +161,9 @@ impl QnnInterfaceV2 {
     /// interface struct whose first fields match this layout.
     #[inline]
     pub unsafe fn from_iface(iface: &QnnInterface_t) -> Option<&'static QnnInterfaceV2> {
-        if iface.core_api.is_null() { None } else {
+        if iface.core_api.is_null() {
+            None
+        } else {
             unsafe { Some(&*iface.core_api) }
         }
     }
@@ -168,31 +174,44 @@ impl QnnInterfaceV2 {
 /// Opaque pointer-to-config; the SDK exposes nested unions for each sub-area
 /// (backend, context, graph). We pass through as `*const c_void` at the
 /// safe-wrapper boundary and only bind the pieces IronAccelerator constructs.
-#[repr(C)] pub struct QnnBackendConfig { _private: [u8; 0] }
+#[repr(C)]
+pub struct QnnBackendConfig {
+    _private: [u8; 0],
+}
 
 /// `Qnn_OpConfig_t` header. Rust-side callers build the full struct as a
 /// byte buffer and pass a pointer; we intentionally don't model the union.
-#[repr(C)] pub struct QnnOpConfig { _private: [u8; 0] }
+#[repr(C)]
+pub struct QnnOpConfig {
+    _private: [u8; 0],
+}
 
 /// `Qnn_Tensor_t` — versioned tagged union. Same strategy: callers build
 /// the buffer with the right layout for the SDK version on their machine.
-#[repr(C)] pub struct QnnTensor { _private: [u8; 0] }
+#[repr(C)]
+pub struct QnnTensor {
+    _private: [u8; 0],
+}
 
 // ── entry point ─────────────────────────────────────────────────────────────
 
 /// `QnnInterface_getProviders`. Sole exported symbol from every QNN backend
 /// library; everything else comes from the returned function table.
-pub type QnnInterface_getProviders_t = unsafe extern "C" fn(
-    *mut *const *const QnnInterface_t,
-    *mut u32,
-) -> Qnn_ErrorHandle_t;
+pub type QnnInterface_getProviders_t =
+    unsafe extern "C" fn(*mut *const *const QnnInterface_t, *mut u32) -> Qnn_ErrorHandle_t;
 
 // ── per-target lazy loaders ─────────────────────────────────────────────────
 
 /// Which QNN backend to load. Caller picks; IronAccelerator's safe wrapper
 /// defaults to `Htp` with fallback to `Cpu` when no NPU is present.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum Target { Htp, Gpu, Cpu, Dsp, Saver }
+pub enum Target {
+    Htp,
+    Gpu,
+    Cpu,
+    Dsp,
+    Saver,
+}
 
 impl Target {
     pub fn libs(self) -> &'static [&'static str] {
@@ -219,46 +238,51 @@ unsafe impl Sync for QnnFns {}
 
 fn load_for(target: Target) -> LoaderResult<(Library, QnnFns)> {
     let lib = try_load(target.libs())?;
-    let get_providers: QnnInterface_getProviders_t = unsafe {
-        sym(&lib, "qnn", "QnnInterface_getProviders")?
-    };
+    let get_providers: QnnInterface_getProviders_t =
+        unsafe { sym(&lib, "qnn", "QnnInterface_getProviders")? };
 
     let mut providers: *const *const QnnInterface_t = std::ptr::null();
     let mut n: u32 = 0;
     let err = unsafe { get_providers(&mut providers, &mut n) };
     if err != QNN_SUCCESS || providers.is_null() || n == 0 {
         return Err(LoadError::SymbolMissing {
-            lib: "qnn", symbol: "QnnInterface_getProviders",
+            lib: "qnn",
+            symbol: "QnnInterface_getProviders",
             err: format!("returned error {err} or empty provider list"),
         });
     }
     let iface_ptr = unsafe { *providers };
     if iface_ptr.is_null() {
         return Err(LoadError::SymbolMissing {
-            lib: "qnn", symbol: "providers[0]",
+            lib: "qnn",
+            symbol: "providers[0]",
             err: "null first provider".into(),
         });
     }
     let iface: &'static QnnInterface_t = unsafe { &*iface_ptr };
-    let v2 = unsafe { QnnInterfaceV2::from_iface(iface) }.ok_or(
-        LoadError::SymbolMissing {
-            lib: "qnn", symbol: "core_api",
-            err: "provider returned null function table".into(),
-        })?;
+    let v2 = unsafe { QnnInterfaceV2::from_iface(iface) }.ok_or(LoadError::SymbolMissing {
+        lib: "qnn",
+        symbol: "core_api",
+        err: "provider returned null function table".into(),
+    })?;
 
     let name = if iface.provider_name.is_null() {
         String::from("unknown")
     } else {
         unsafe { std::ffi::CStr::from_ptr(iface.provider_name) }
-            .to_string_lossy().into_owned()
+            .to_string_lossy()
+            .into_owned()
     };
 
-    Ok((lib, QnnFns {
-        get_providers,
-        iface: v2,
-        provider_name: name,
-        api_version: iface.api_version,
-    }))
+    Ok((
+        lib,
+        QnnFns {
+            get_providers,
+            iface: v2,
+            provider_name: name,
+            api_version: iface.api_version,
+        },
+    ))
 }
 
 // Keep each target's Library alive for the process lifetime.
@@ -272,10 +296,10 @@ static GPU_FNS: OnceLock<Result<&'static QnnFns, LoadError>> = OnceLock::new();
 static CPU_FNS: OnceLock<Result<&'static QnnFns, LoadError>> = OnceLock::new();
 static DSP_FNS: OnceLock<Result<&'static QnnFns, LoadError>> = OnceLock::new();
 
-fn pick(slot: &'static OnceLock<Result<&'static QnnFns, LoadError>>,
-        lib: &'static LazyLock<LoaderResult<(Library, QnnFns)>>)
-    -> Result<&'static QnnFns, &'static LoadError>
-{
+fn pick(
+    slot: &'static OnceLock<Result<&'static QnnFns, LoadError>>,
+    lib: &'static LazyLock<LoaderResult<(Library, QnnFns)>>,
+) -> Result<&'static QnnFns, &'static LoadError> {
     match slot.get_or_init(|| match lib.as_ref() {
         Ok((_, fns)) => Ok(fns),
         Err(e) => Err(e.clone()),
@@ -298,8 +322,11 @@ pub fn fns(target: Target) -> Result<&'static QnnFns, &'static LoadError> {
 fn saver_err() -> &'static LoadError {
     static E: OnceLock<LoadError> = OnceLock::new();
     E.get_or_init(|| LoadError::LibraryNotFound {
-        tried: vec!["saver".into()], last: "Saver target is offline-only".into(),
+        tried: vec!["saver".into()],
+        last: "Saver target is offline-only".into(),
     })
 }
 
-pub fn is_available(target: Target) -> bool { fns(target).is_ok() }
+pub fn is_available(target: Target) -> bool {
+    fns(target).is_ok()
+}

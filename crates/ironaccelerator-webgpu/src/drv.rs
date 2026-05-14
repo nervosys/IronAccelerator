@@ -53,7 +53,11 @@ pub fn enumerate() -> Vec<AdapterInfo> {
     {
         BOUND
             .get()
-            .and_then(|m| m.lock().ok().and_then(|g| g.as_ref().map(|b| b.info.clone())))
+            .and_then(|m| {
+                m.lock()
+                    .ok()
+                    .and_then(|g| g.as_ref().map(|b| b.info.clone()))
+            })
             .map(|i| vec![i])
             .unwrap_or_default()
     }
@@ -82,5 +86,9 @@ pub(crate) fn describe(a: &wgpu::Adapter) -> AdapterInfo {
 /// backend can enumerate without redoing adapter negotiation.
 pub fn bind_device(device: wgpu::Device, queue: wgpu::Queue, info: AdapterInfo) {
     let slot = BOUND.get_or_init(|| Mutex::new(None));
-    *slot.lock().unwrap() = Some(BoundDevice { device, queue, info });
+    *slot.lock().unwrap() = Some(BoundDevice {
+        device,
+        queue,
+        info,
+    });
 }

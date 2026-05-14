@@ -2,8 +2,8 @@
 //! context has been bound via [`crate::bind_current_context`].
 
 use ironaccelerator_core::{
-    Backend, BackendKind, Capability, CapabilityFlags, ComputeTier, DeviceDescriptor,
-    DeviceId, Result, Strategy, Vendor, Workload,
+    Backend, BackendKind, Capability, CapabilityFlags, ComputeTier, DeviceDescriptor, DeviceId,
+    Result, Strategy, Vendor, Workload,
 };
 
 pub struct OpenGlBackend;
@@ -59,7 +59,9 @@ impl Backend for OpenGlBackend {
     }
 
     fn plan(&self, _device: u32, _w: &Workload) -> Result<Strategy> {
-        Ok(Strategy::GlslCompute { workgroup: (64, 1, 1) })
+        Ok(Strategy::GlslCompute {
+            workgroup: (64, 1, 1),
+        })
     }
 }
 

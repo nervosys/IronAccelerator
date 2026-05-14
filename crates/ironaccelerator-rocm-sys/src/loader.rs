@@ -7,17 +7,26 @@ pub type LoaderResult<T> = Result<T, LoadError>;
 
 #[derive(Debug)]
 pub enum LoadError {
-    LibraryNotFound { tried: Vec<String>, last: String },
-    SymbolMissing { lib: &'static str, symbol: &'static str, err: String },
+    LibraryNotFound {
+        tried: Vec<String>,
+        last: String,
+    },
+    SymbolMissing {
+        lib: &'static str,
+        symbol: &'static str,
+        err: String,
+    },
 }
 
 impl std::fmt::Display for LoadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::LibraryNotFound { tried, last } =>
-                write!(f, "could not load any of {tried:?}: last error = {last}"),
-            Self::SymbolMissing { lib, symbol, err } =>
-                write!(f, "{lib}: missing symbol `{symbol}`: {err}"),
+            Self::LibraryNotFound { tried, last } => {
+                write!(f, "could not load any of {tried:?}: last error = {last}")
+            }
+            Self::SymbolMissing { lib, symbol, err } => {
+                write!(f, "{lib}: missing symbol `{symbol}`: {err}")
+            }
         }
     }
 }
@@ -54,7 +63,9 @@ pub fn try_load(candidates: &[&str]) -> LoaderResult<Library> {
 /// # Safety
 /// Caller asserts the symbol has the declared signature.
 pub unsafe fn sym<T: Copy>(
-    lib: &Library, library_name: &'static str, symbol: &'static str,
+    lib: &Library,
+    library_name: &'static str,
+    symbol: &'static str,
 ) -> LoaderResult<T> {
     let mut c = Vec::with_capacity(symbol.len() + 1);
     c.extend_from_slice(symbol.as_bytes());
@@ -64,7 +75,9 @@ pub unsafe fn sym<T: Copy>(
         match r {
             Ok(s) => Ok(*s),
             Err(e) => Err(LoadError::SymbolMissing {
-                lib: library_name, symbol, err: format!("{e}"),
+                lib: library_name,
+                symbol,
+                err: format!("{e}"),
             }),
         }
     }

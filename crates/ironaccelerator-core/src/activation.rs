@@ -13,7 +13,9 @@ pub fn silu(x: f32) -> f32 {
 
 /// Apply SiLU element-wise in place.
 pub fn silu_inplace(xs: &mut [f32]) {
-    for v in xs { *v = silu(*v); }
+    for v in xs {
+        *v = silu(*v);
+    }
 }
 
 /// SwiGLU gated activation as used by LLaMA-family FFNs and most
@@ -77,8 +79,7 @@ mod tests {
     fn swiglu_interleaved_matches_split() {
         let gate = vec![0.1, 0.3, -0.7, 1.2];
         let up = vec![0.9, 2.1, -0.4, 0.8];
-        let interleaved: Vec<f32> =
-            gate.iter().zip(&up).flat_map(|(g, u)| [*g, *u]).collect();
+        let interleaved: Vec<f32> = gate.iter().zip(&up).flat_map(|(g, u)| [*g, *u]).collect();
         let mut a = vec![0.0; 4];
         let mut b = vec![0.0; 4];
         swiglu(&gate, &up, &mut a);

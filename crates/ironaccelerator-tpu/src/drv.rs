@@ -9,6 +9,8 @@
 //! running a real `PJRT_Client_Create` is a heavier operation than a
 //! planner-level enumerate ought to do.
 
+#![allow(clippy::drop_non_drop)] // releasing libloading::Symbol borrows
+
 use libloading::{Library, Symbol};
 use once_cell::sync::OnceCell;
 

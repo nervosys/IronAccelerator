@@ -78,20 +78,62 @@ impl std::error::Error for Error {}
 
 impl From<&LoadError> for Error {
     fn from(e: &LoadError) -> Self {
-        Error::NotAvailable { lib: "cuda-driver", detail: format!("{e}") }
+        Error::NotAvailable {
+            lib: "cuda-driver",
+            detail: format!("{e}"),
+        }
     }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[inline]
+#[inline(always)]
 fn driver() -> Result<&'static sys::DriverFns> {
-    sys::fns().map_err(|e| Error::NotAvailable { lib: "cuda-driver", detail: format!("{e}") })
+    sys::fns().map_err(driver_load_err)
 }
 
-#[inline]
+// Cold error path kept out of line so the hot driver() path stays tiny.
+#[cold]
+#[inline(never)]
+fn driver_load_err(e: &'static iron_cuda_sys::LoadError) -> Error {
+    Error::NotAvailable {
+        lib: "cuda-driver",
+        detail: format!("{e}"),
+    }
+}
+
+#[inline(always)]
 fn check(op: &'static str, code: CUresult) -> Result<()> {
-    if code.is_ok() { Ok(()) } else { Err(Error::Driver { op, code }) }
+    if code.is_ok() {
+        Ok(())
+    } else {
+        check_err(op, code)
+    }
+}
+
+// Out-of-line error construction so the hot branch is just `test/jne/ret`.
+#[cold]
+#[inline(never)]
+fn check_err(op: &'static str, code: CUresult) -> Result<()> {
+    Err(Error::Driver { op, code })
+}
+
+#[cold]
+#[inline(never)]
+fn alloc_overflow() -> Error {
+    Error::Precondition {
+        op: "DeviceBuf::alloc",
+        msg: "size overflow".into(),
+    }
+}
+
+#[cold]
+#[inline(never)]
+fn pinned_alloc_overflow() -> Error {
+    Error::Precondition {
+        op: "PinnedBuf::alloc",
+        msg: "size overflow".into(),
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -104,7 +146,8 @@ fn ensure_init() -> Result<()> {
     INIT.get_or_init(|| unsafe {
         let d = driver()?;
         check("cuInit", (d.cuInit)(0))
-    }).clone()
+    })
+    .clone()
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -119,6 +162,13 @@ pub struct Device {
     ordinal: i32,
     device: CUdevice,
     ctx: CUcontext,
+    /// Cached driver function table — set at construction so every method on
+    /// `Device` skips the AtomicPtr load (`bind`, `attribute`, `total_mem`,
+    /// `name`, etc., plus every `Stream::with_priority` that reuses it).
+    drv: &'static sys::DriverFns,
+    /// Cached `(min, max)` stream priority range, populated lazily on first
+    /// use. Saves a `cuStreamGetPriorityRange` FFI per `Stream::new`.
+    priority_range: once_cell::sync::OnceCell<(i32, i32)>,
 }
 
 impl Device {
@@ -127,56 +177,87 @@ impl Device {
         ensure_init()?;
         let d = driver()?;
         let mut device: CUdevice = 0;
-        unsafe { check("cuDeviceGet", (d.cuDeviceGet)(&mut device, ordinal as i32))?; }
+        unsafe {
+            check("cuDeviceGet", (d.cuDeviceGet)(&mut device, ordinal as i32))?;
+        }
         let mut ctx = CUcontext::default();
-        unsafe { check("cuDevicePrimaryCtxRetain", (d.cuDevicePrimaryCtxRetain)(&mut ctx, device))?; }
-        Ok(Arc::new(Self { ordinal: ordinal as i32, device, ctx }))
+        unsafe {
+            check(
+                "cuDevicePrimaryCtxRetain",
+                (d.cuDevicePrimaryCtxRetain)(&mut ctx, device),
+            )?;
+        }
+        Ok(Arc::new(Self {
+            ordinal: ordinal as i32,
+            device,
+            ctx,
+            drv: d,
+            priority_range: once_cell::sync::OnceCell::new(),
+        }))
     }
 
     pub fn count() -> Result<u32> {
         ensure_init()?;
         let d = driver()?;
         let mut n: i32 = 0;
-        unsafe { check("cuDeviceGetCount", (d.cuDeviceGetCount)(&mut n))?; }
+        unsafe {
+            check("cuDeviceGetCount", (d.cuDeviceGetCount)(&mut n))?;
+        }
         Ok(n.max(0) as u32)
     }
 
-    #[inline] pub fn ordinal(&self) -> u32 { self.ordinal as u32 }
-    #[inline] pub fn raw_ctx(&self) -> CUcontext { self.ctx }
-    #[inline] pub fn raw_device(&self) -> CUdevice { self.device }
-
+    #[inline]
+    pub fn ordinal(&self) -> u32 {
+        self.ordinal as u32
+    }
+    #[inline]
+    pub fn raw_ctx(&self) -> CUcontext {
+        self.ctx
+    }
+    #[inline]
+    pub fn raw_device(&self) -> CUdevice {
+        self.device
+    }
     /// Bind this primary context to the calling thread. Required before any
     /// call that reads the "current context" (most driver functions do).
+    #[inline]
     pub fn bind(&self) -> Result<()> {
-        let d = driver()?;
-        unsafe { check("cuCtxSetCurrent", (d.cuCtxSetCurrent)(self.ctx)) }
+        unsafe { check("cuCtxSetCurrent", (self.drv.cuCtxSetCurrent)(self.ctx)) }
     }
 
     pub fn name(&self) -> Result<String> {
-        let d = driver()?;
         let mut buf = vec![0i8; 256];
         unsafe {
-            check("cuDeviceGetName",
-                  (d.cuDeviceGetName)(buf.as_mut_ptr(), buf.len() as i32, self.device))?;
+            check(
+                "cuDeviceGetName",
+                (self.drv.cuDeviceGetName)(buf.as_mut_ptr(), buf.len() as i32, self.device),
+            )?;
         }
         let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
         let bytes: Vec<u8> = buf[..end].iter().map(|&b| b as u8).collect();
         Ok(String::from_utf8_lossy(&bytes).into_owned())
     }
 
+    #[inline]
     pub fn attribute(&self, attr: sys::CUdevice_attribute) -> Result<i32> {
-        let d = driver()?;
         let mut v: i32 = 0;
-        unsafe { check("cuDeviceGetAttribute",
-                       (d.cuDeviceGetAttribute)(&mut v, attr, self.device))?; }
+        unsafe {
+            check(
+                "cuDeviceGetAttribute",
+                (self.drv.cuDeviceGetAttribute)(&mut v, attr, self.device),
+            )?;
+        }
         Ok(v)
     }
 
     pub fn total_mem(&self) -> Result<usize> {
-        let d = driver()?;
         let mut bytes: usize = 0;
-        unsafe { check("cuDeviceTotalMem_v2",
-                       (d.cuDeviceTotalMem_v2)(&mut bytes, self.device))?; }
+        unsafe {
+            check(
+                "cuDeviceTotalMem_v2",
+                (self.drv.cuDeviceTotalMem_v2)(&mut bytes, self.device),
+            )?;
+        }
         Ok(bytes)
     }
 
@@ -187,22 +268,27 @@ impl Device {
     }
 
     pub fn can_access_peer(&self, other: &Device) -> Result<bool> {
-        let d = driver()?;
         let mut v: i32 = 0;
-        unsafe { check("cuDeviceCanAccessPeer",
-                       (d.cuDeviceCanAccessPeer)(&mut v, self.device, other.device))?; }
+        unsafe {
+            check(
+                "cuDeviceCanAccessPeer",
+                (self.drv.cuDeviceCanAccessPeer)(&mut v, self.device, other.device),
+            )?;
+        }
         Ok(v != 0)
     }
 
     pub fn enable_peer_access(&self, other: &Device) -> Result<()> {
         self.bind()?;
-        let d = driver()?;
-        let code = unsafe { (d.cuCtxEnablePeerAccess)(other.ctx, 0) };
+        let code = unsafe { (self.drv.cuCtxEnablePeerAccess)(other.ctx, 0) };
         // Already-enabled is not an error for us.
         if code == CUresult::Success || code == CUresult::PeerAccessAlreadyEnabled {
             Ok(())
         } else {
-            Err(Error::Driver { op: "cuCtxEnablePeerAccess", code })
+            Err(Error::Driver {
+                op: "cuCtxEnablePeerAccess",
+                code,
+            })
         }
     }
 }
@@ -211,9 +297,10 @@ unsafe impl Send for Device {}
 unsafe impl Sync for Device {}
 
 impl Drop for Device {
+    #[inline]
     fn drop(&mut self) {
-        if let Ok(d) = driver() {
-            unsafe { let _ = (d.cuDevicePrimaryCtxRelease_v2)(self.device); }
+        unsafe {
+            let _ = (self.drv.cuDevicePrimaryCtxRelease_v2)(self.device);
         }
     }
 }
@@ -238,6 +325,11 @@ pub struct Stream {
     device: Arc<Device>,
     handle: CUstream,
     priority: i32,
+    /// Cached driver function table — avoids the AtomicPtr load on every
+    /// `synchronize` / `cuMemAllocAsync` / `cuMemFreeAsync` etc. through this
+    /// stream. Safe because the driver is fully initialised before any
+    /// `Stream` exists, and `&'static DriverFns` outlives every stream.
+    drv: &'static sys::DriverFns,
 }
 
 impl Stream {
@@ -247,13 +339,22 @@ impl Stream {
 
     pub fn with_priority(device: Arc<Device>, pri: Priority) -> Result<Arc<Self>> {
         device.bind()?;
-        let d = driver()?;
-        let (lo, hi) = {
-            let mut lo = 0i32; let mut hi = 0i32;
-            unsafe { check("cuStreamGetPriorityRange",
-                           (d.cuStreamGetPriorityRange)(&mut lo, &mut hi))?; }
-            (lo, hi)
-        };
+        let d = device.drv;
+        // Cached on `Device`: the priority range is a device-static property,
+        // so we ask the driver at most once per Device instead of per Stream.
+        let (lo, hi) = *device
+            .priority_range
+            .get_or_try_init(|| -> Result<(i32, i32)> {
+                let mut lo = 0i32;
+                let mut hi = 0i32;
+                unsafe {
+                    check(
+                        "cuStreamGetPriorityRange",
+                        (d.cuStreamGetPriorityRange)(&mut lo, &mut hi),
+                    )?;
+                }
+                Ok((lo, hi))
+            })?;
         let priority = match pri {
             Priority::Default => 0,
             Priority::High => lo,
@@ -262,27 +363,52 @@ impl Stream {
         };
         let mut handle = CUstream::default();
         unsafe {
-            check("cuStreamCreateWithPriority",
-                  (d.cuStreamCreateWithPriority)(&mut handle, sys::CU_STREAM_NON_BLOCKING, priority))?;
+            check(
+                "cuStreamCreateWithPriority",
+                (d.cuStreamCreateWithPriority)(&mut handle, sys::CU_STREAM_NON_BLOCKING, priority),
+            )?;
         }
-        Ok(Arc::new(Self { device, handle, priority }))
+        Ok(Arc::new(Self {
+            device,
+            handle,
+            priority,
+            drv: d,
+        }))
     }
 
-    #[inline] pub fn device(&self) -> &Arc<Device> { &self.device }
-    #[inline] pub fn raw(&self) -> CUstream { self.handle }
-    #[inline] pub fn priority(&self) -> i32 { self.priority }
+    #[inline]
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+    #[inline]
+    pub fn raw(&self) -> CUstream {
+        self.handle
+    }
+    #[inline]
+    pub fn priority(&self) -> i32 {
+        self.priority
+    }
 
+    #[inline]
     pub fn synchronize(&self) -> Result<()> {
-        let d = driver()?;
-        unsafe { check("cuStreamSynchronize", (d.cuStreamSynchronize)(self.handle)) }
+        unsafe {
+            check(
+                "cuStreamSynchronize",
+                (self.drv.cuStreamSynchronize)(self.handle),
+            )
+        }
     }
 
     /// Make this stream block until `event` completes on whatever stream
     /// recorded it.
+    #[inline]
     pub fn wait_for(&self, event: &Event) -> Result<()> {
-        let d = driver()?;
-        unsafe { check("cuStreamWaitEvent",
-                       (d.cuStreamWaitEvent)(self.handle, event.handle, 0)) }
+        unsafe {
+            check(
+                "cuStreamWaitEvent",
+                (self.drv.cuStreamWaitEvent)(self.handle, event.handle, 0),
+            )
+        }
     }
 }
 
@@ -290,9 +416,10 @@ unsafe impl Send for Stream {}
 unsafe impl Sync for Stream {}
 
 impl Drop for Stream {
+    #[inline]
     fn drop(&mut self) {
-        if let Ok(d) = driver() {
-            unsafe { let _ = (d.cuStreamDestroy_v2)(self.handle); }
+        unsafe {
+            let _ = (self.drv.cuStreamDestroy_v2)(self.handle);
         }
     }
 }
@@ -306,6 +433,7 @@ pub struct Event {
     _device: Arc<Device>,
     handle: CUevent,
     timing: bool,
+    drv: &'static sys::DriverFns,
 }
 
 impl Event {
@@ -314,33 +442,60 @@ impl Event {
     }
     fn new_impl(device: Arc<Device>, flags: CUevent_flags, timing: bool) -> Result<Self> {
         device.bind()?;
-        let d = driver()?;
+        let d = device.drv;
         let mut handle = CUevent::default();
-        unsafe { check("cuEventCreate", (d.cuEventCreate)(&mut handle, flags as u32))?; }
-        Ok(Self { _device: device, handle, timing })
+        unsafe {
+            check(
+                "cuEventCreate",
+                (d.cuEventCreate)(&mut handle, flags as u32),
+            )?;
+        }
+        Ok(Self {
+            _device: device,
+            handle,
+            timing,
+            drv: d,
+        })
     }
 
+    #[inline]
     pub fn record(&self, stream: &Stream) -> Result<()> {
-        let d = driver()?;
-        unsafe { check("cuEventRecord", (d.cuEventRecord)(self.handle, stream.handle)) }
+        unsafe {
+            check(
+                "cuEventRecord",
+                (self.drv.cuEventRecord)(self.handle, stream.handle),
+            )
+        }
     }
 
+    #[inline]
     pub fn synchronize(&self) -> Result<()> {
-        let d = driver()?;
-        unsafe { check("cuEventSynchronize", (d.cuEventSynchronize)(self.handle)) }
+        unsafe {
+            check(
+                "cuEventSynchronize",
+                (self.drv.cuEventSynchronize)(self.handle),
+            )
+        }
     }
 
-    #[inline] pub fn raw(&self) -> CUevent { self.handle }
-    #[inline] pub fn supports_timing(&self) -> bool { self.timing }
+    #[inline]
+    pub fn raw(&self) -> CUevent {
+        self.handle
+    }
+    #[inline]
+    pub fn supports_timing(&self) -> bool {
+        self.timing
+    }
 }
 
 unsafe impl Send for Event {}
 unsafe impl Sync for Event {}
 
 impl Drop for Event {
+    #[inline]
     fn drop(&mut self) {
-        if let Ok(d) = driver() {
-            unsafe { let _ = (d.cuEventDestroy_v2)(self.handle); }
+        unsafe {
+            let _ = (self.drv.cuEventDestroy_v2)(self.handle);
         }
     }
 }
@@ -353,17 +508,29 @@ impl TimingEvent {
     pub fn new(device: Arc<Device>) -> Result<Self> {
         Event::new_impl(device, CUevent_flags::Default, true).map(Self)
     }
-    #[inline] pub fn record(&self, stream: &Stream) -> Result<()> { self.0.record(stream) }
-    #[inline] pub fn synchronize(&self) -> Result<()> { self.0.synchronize() }
-    #[inline] pub fn as_event(&self) -> &Event { &self.0 }
+    #[inline]
+    pub fn record(&self, stream: &Stream) -> Result<()> {
+        self.0.record(stream)
+    }
+    #[inline]
+    pub fn synchronize(&self) -> Result<()> {
+        self.0.synchronize()
+    }
+    #[inline]
+    pub fn as_event(&self) -> &Event {
+        &self.0
+    }
 
     /// Milliseconds elapsed between `start` and `end`. Both events must have
     /// completed (call `.synchronize()` on the later one first).
     pub fn elapsed_ms(start: &TimingEvent, end: &TimingEvent) -> Result<f32> {
-        let d = driver()?;
         let mut ms: f32 = 0.0;
-        unsafe { check("cuEventElapsedTime",
-                       (d.cuEventElapsedTime)(&mut ms, start.0.handle, end.0.handle))?; }
+        unsafe {
+            check(
+                "cuEventElapsedTime",
+                (start.0.drv.cuEventElapsedTime)(&mut ms, start.0.handle, end.0.handle),
+            )?;
+        }
         Ok(ms)
     }
 }
@@ -384,6 +551,11 @@ macro_rules! impl_repr {
 }
 impl_repr!(u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, usize, isize);
 
+#[cfg(feature = "f16")]
+unsafe impl Repr for half::f16 {}
+#[cfg(feature = "f16")]
+unsafe impl Repr for half::bf16 {}
+
 /// Marker: the all-zero bit pattern is a valid value of `T`. Required for
 /// `alloc_zeros`.
 ///
@@ -394,6 +566,11 @@ macro_rules! impl_zb {
     ($($t:ty),*) => { $(unsafe impl ZeroBits for $t {})* };
 }
 impl_zb!(u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, usize, isize);
+
+#[cfg(feature = "f16")]
+unsafe impl ZeroBits for half::f16 {}
+#[cfg(feature = "f16")]
+unsafe impl ZeroBits for half::bf16 {}
 
 /// Owned device buffer. Allocated on a stream's async-alloc pool; freed on the
 /// same stream when dropped.
@@ -406,38 +583,63 @@ pub struct DeviceBuf<T: Repr> {
 
 impl<T: Repr> DeviceBuf<T> {
     /// Allocate `len` elements, leaving the memory uninitialised.
+    #[inline]
     pub fn alloc(stream: Arc<Stream>, len: usize) -> Result<Self> {
         if len == 0 {
-            return Ok(Self { stream, ptr: 0, len: 0, _marker: PhantomData });
+            return Ok(Self {
+                stream,
+                ptr: 0,
+                len: 0,
+                _marker: PhantomData,
+            });
         }
-        let d = driver()?;
-        let bytes = len.checked_mul(std::mem::size_of::<T>()).ok_or(Error::Precondition {
-            op: "DeviceBuf::alloc", msg: "size overflow".into(),
-        })?;
+        // checked_mul + cold-path error construction. Using `ok_or(Error { msg: _.into() })`
+        // here would heap-allocate the message on every successful alloc.
+        let Some(bytes) = len.checked_mul(std::mem::size_of::<T>()) else {
+            return Err(alloc_overflow());
+        };
         let mut ptr: CUdeviceptr = 0;
-        unsafe { check("cuMemAllocAsync",
-                       (d.cuMemAllocAsync)(&mut ptr, bytes, stream.handle))?; }
-        Ok(Self { stream, ptr, len, _marker: PhantomData })
+        unsafe {
+            check(
+                "cuMemAllocAsync",
+                (stream.drv.cuMemAllocAsync)(&mut ptr, bytes, stream.handle),
+            )?;
+        }
+        Ok(Self {
+            stream,
+            ptr,
+            len,
+            _marker: PhantomData,
+        })
     }
 
-    pub fn alloc_zeros(stream: Arc<Stream>, len: usize) -> Result<Self> where T: ZeroBits {
+    #[inline]
+    pub fn alloc_zeros(stream: Arc<Stream>, len: usize) -> Result<Self>
+    where
+        T: ZeroBits,
+    {
         let buf = Self::alloc(stream, len)?;
         if buf.len > 0 {
-            let d = driver()?;
             let bytes = buf.len * std::mem::size_of::<T>();
-            unsafe { check("cuMemsetD8Async",
-                           (d.cuMemsetD8Async)(buf.ptr, 0, bytes, buf.stream.handle))?; }
+            unsafe {
+                check(
+                    "cuMemsetD8Async",
+                    (buf.stream.drv.cuMemsetD8Async)(buf.ptr, 0, bytes, buf.stream.handle),
+                )?;
+            }
         }
         Ok(buf)
     }
 
     /// Allocate and copy a host slice in one stream-ordered operation.
+    #[inline]
     pub fn from_host(stream: Arc<Stream>, src: &[T]) -> Result<Self> {
         let mut buf = Self::alloc(stream, src.len())?;
         buf.copy_from_host(src)?;
         Ok(buf)
     }
 
+    #[inline]
     pub fn copy_from_host(&mut self, src: &[T]) -> Result<()> {
         if src.len() != self.len {
             return Err(Error::Precondition {
@@ -445,15 +647,25 @@ impl<T: Repr> DeviceBuf<T> {
                 msg: format!("length mismatch: dst={} src={}", self.len, src.len()),
             });
         }
-        if self.len == 0 { return Ok(()); }
-        let d = driver()?;
+        if self.len == 0 {
+            return Ok(());
+        }
         let bytes = self.len * std::mem::size_of::<T>();
-        unsafe { check("cuMemcpyHtoDAsync_v2",
-                       (d.cuMemcpyHtoDAsync_v2)(self.ptr, src.as_ptr() as *const c_void,
-                                                bytes, self.stream.handle))?; }
+        unsafe {
+            check(
+                "cuMemcpyHtoDAsync_v2",
+                (self.stream.drv.cuMemcpyHtoDAsync_v2)(
+                    self.ptr,
+                    src.as_ptr() as *const c_void,
+                    bytes,
+                    self.stream.handle,
+                ),
+            )?;
+        }
         Ok(())
     }
 
+    #[inline]
     pub fn copy_to_host(&self, dst: &mut [T]) -> Result<()> {
         if dst.len() != self.len {
             return Err(Error::Precondition {
@@ -461,17 +673,27 @@ impl<T: Repr> DeviceBuf<T> {
                 msg: format!("length mismatch: src={} dst={}", self.len, dst.len()),
             });
         }
-        if self.len == 0 { return Ok(()); }
-        let d = driver()?;
+        if self.len == 0 {
+            return Ok(());
+        }
         let bytes = self.len * std::mem::size_of::<T>();
-        unsafe { check("cuMemcpyDtoHAsync_v2",
-                       (d.cuMemcpyDtoHAsync_v2)(dst.as_mut_ptr() as *mut c_void, self.ptr,
-                                                bytes, self.stream.handle))?; }
+        unsafe {
+            check(
+                "cuMemcpyDtoHAsync_v2",
+                (self.stream.drv.cuMemcpyDtoHAsync_v2)(
+                    dst.as_mut_ptr() as *mut c_void,
+                    self.ptr,
+                    bytes,
+                    self.stream.handle,
+                ),
+            )?;
+        }
         Ok(())
     }
 
     /// Device-to-device copy. Both buffers must be on the same device; we pick
     /// `self`'s stream for ordering.
+    #[inline]
     pub fn copy_from_device(&mut self, src: &DeviceBuf<T>) -> Result<()> {
         if src.len != self.len {
             return Err(Error::Precondition {
@@ -479,25 +701,58 @@ impl<T: Repr> DeviceBuf<T> {
                 msg: format!("length mismatch: dst={} src={}", self.len, src.len),
             });
         }
-        if self.len == 0 { return Ok(()); }
-        let d = driver()?;
+        if self.len == 0 {
+            return Ok(());
+        }
         let bytes = self.len * std::mem::size_of::<T>();
-        unsafe { check("cuMemcpyDtoDAsync_v2",
-                       (d.cuMemcpyDtoDAsync_v2)(self.ptr, src.ptr, bytes, self.stream.handle))?; }
+        unsafe {
+            check(
+                "cuMemcpyDtoDAsync_v2",
+                (self.stream.drv.cuMemcpyDtoDAsync_v2)(
+                    self.ptr,
+                    src.ptr,
+                    bytes,
+                    self.stream.handle,
+                ),
+            )?;
+        }
         Ok(())
     }
 
-    #[inline] pub fn len(&self) -> usize { self.len }
-    #[inline] pub fn is_empty(&self) -> bool { self.len == 0 }
-    #[inline] pub fn byte_len(&self) -> usize { self.len * std::mem::size_of::<T>() }
-    #[inline] pub fn device_ptr(&self) -> CUdeviceptr { self.ptr }
-    #[inline] pub fn stream(&self) -> &Arc<Stream> { &self.stream }
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+    #[inline]
+    pub fn byte_len(&self) -> usize {
+        self.len * std::mem::size_of::<T>()
+    }
+    #[inline]
+    pub fn device_ptr(&self) -> CUdeviceptr {
+        self.ptr
+    }
+    #[inline]
+    pub fn stream(&self) -> &Arc<Stream> {
+        &self.stream
+    }
 
     pub fn view(&self) -> DeviceView<'_, T> {
-        DeviceView { ptr: self.ptr, len: self.len, _marker: PhantomData }
+        DeviceView {
+            ptr: self.ptr,
+            len: self.len,
+            _marker: PhantomData,
+        }
     }
     pub fn view_mut(&mut self) -> DeviceViewMut<'_, T> {
-        DeviceViewMut { ptr: self.ptr, len: self.len, _marker: PhantomData }
+        DeviceViewMut {
+            ptr: self.ptr,
+            len: self.len,
+            _marker: PhantomData,
+        }
     }
 
     /// Reinterpret the byte payload as a different POD element type. The caller
@@ -527,10 +782,12 @@ impl<T: Repr> DeviceBuf<T> {
 }
 
 impl<T: Repr> Drop for DeviceBuf<T> {
+    #[inline]
     fn drop(&mut self) {
         if self.ptr != 0 {
-            if let Ok(d) = driver() {
-                unsafe { let _ = (d.cuMemFreeAsync)(self.ptr, self.stream.handle); }
+            // Driver was guaranteed loaded when `self.stream` was created.
+            unsafe {
+                let _ = (self.stream.drv.cuMemFreeAsync)(self.ptr, self.stream.handle);
             }
         }
     }
@@ -548,14 +805,29 @@ pub struct DeviceView<'a, T: Repr> {
 }
 
 impl<'a, T: Repr> DeviceView<'a, T> {
-    #[inline] pub fn device_ptr(&self) -> CUdeviceptr { self.ptr }
-    #[inline] pub fn len(&self) -> usize { self.len }
-    #[inline] pub fn is_empty(&self) -> bool { self.len == 0 }
-    #[inline] pub fn byte_len(&self) -> usize { self.len * std::mem::size_of::<T>() }
+    #[inline]
+    pub fn device_ptr(&self) -> CUdeviceptr {
+        self.ptr
+    }
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+    #[inline]
+    pub fn byte_len(&self) -> usize {
+        self.len * std::mem::size_of::<T>()
+    }
 
     /// Narrow to `[offset .. offset + len]`. Panics on out-of-bounds.
     pub fn slice(&self, offset: usize, len: usize) -> DeviceView<'a, T> {
-        assert!(offset.saturating_add(len) <= self.len, "DeviceView::slice out of bounds");
+        assert!(
+            offset.saturating_add(len) <= self.len,
+            "DeviceView::slice out of bounds"
+        );
         DeviceView {
             ptr: self.ptr + (offset * std::mem::size_of::<T>()) as u64,
             len,
@@ -572,12 +844,29 @@ pub struct DeviceViewMut<'a, T: Repr> {
 }
 
 impl<'a, T: Repr> DeviceViewMut<'a, T> {
-    #[inline] pub fn device_ptr(&self) -> CUdeviceptr { self.ptr }
-    #[inline] pub fn len(&self) -> usize { self.len }
-    #[inline] pub fn is_empty(&self) -> bool { self.len == 0 }
-    #[inline] pub fn byte_len(&self) -> usize { self.len * std::mem::size_of::<T>() }
-    #[inline] pub fn as_view(&self) -> DeviceView<'_, T> {
-        DeviceView { ptr: self.ptr, len: self.len, _marker: PhantomData }
+    #[inline]
+    pub fn device_ptr(&self) -> CUdeviceptr {
+        self.ptr
+    }
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+    #[inline]
+    pub fn byte_len(&self) -> usize {
+        self.len * std::mem::size_of::<T>()
+    }
+    #[inline]
+    pub fn as_view(&self) -> DeviceView<'_, T> {
+        DeviceView {
+            ptr: self.ptr,
+            len: self.len,
+            _marker: PhantomData,
+        }
     }
 }
 
@@ -595,31 +884,50 @@ pub struct PinnedBuf<T: Repr> {
 impl<T: Repr> PinnedBuf<T> {
     pub fn alloc(device: Arc<Device>, len: usize) -> Result<Self> {
         device.bind()?;
-        let d = driver()?;
-        let bytes = len.checked_mul(std::mem::size_of::<T>()).ok_or(Error::Precondition {
-            op: "PinnedBuf::alloc", msg: "size overflow".into(),
-        })?;
+        let Some(bytes) = len.checked_mul(std::mem::size_of::<T>()) else {
+            return Err(pinned_alloc_overflow());
+        };
         let mut raw: *mut c_void = ptr::null_mut();
-        unsafe { check("cuMemHostAlloc",
-                       (d.cuMemHostAlloc)(&mut raw, bytes,
-                                          sys::CUhostAllocFlags::Portable as u32))?; }
-        Ok(Self { ptr: raw as *mut T, len, _keep: device })
+        unsafe {
+            check(
+                "cuMemHostAlloc",
+                (device.drv.cuMemHostAlloc)(
+                    &mut raw,
+                    bytes,
+                    sys::CUhostAllocFlags::Portable as u32,
+                ),
+            )?;
+        }
+        Ok(Self {
+            ptr: raw as *mut T,
+            len,
+            _keep: device,
+        })
     }
-    #[inline] pub fn len(&self) -> usize { self.len }
-    #[inline] pub fn is_empty(&self) -> bool { self.len == 0 }
-    #[inline] pub fn as_slice(&self) -> &[T] {
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+    #[inline]
+    pub fn as_slice(&self) -> &[T] {
         unsafe { std::slice::from_raw_parts(self.ptr, self.len) }
     }
-    #[inline] pub fn as_mut_slice(&mut self) -> &mut [T] {
+    #[inline]
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
         unsafe { std::slice::from_raw_parts_mut(self.ptr, self.len) }
     }
 }
 
 impl<T: Repr> Drop for PinnedBuf<T> {
+    #[inline]
     fn drop(&mut self) {
         if !self.ptr.is_null() {
-            if let Ok(d) = driver() {
-                unsafe { let _ = (d.cuMemFreeHost)(self.ptr as *mut c_void); }
+            unsafe {
+                let _ = (self._keep.drv.cuMemFreeHost)(self.ptr as *mut c_void);
             }
         }
     }
@@ -634,42 +942,64 @@ unsafe impl<T: Repr> Send for PinnedBuf<T> {}
 pub struct Module {
     device: Arc<Device>,
     handle: CUmodule,
+    drv: &'static sys::DriverFns,
 }
 
 impl Module {
     /// Load a PTX (null-terminated inside) or CUBIN image.
     pub fn load(device: Arc<Device>, image: &[u8]) -> Result<Arc<Self>> {
         device.bind()?;
-        let d = driver()?;
+        let d = device.drv;
         // cuModuleLoadData takes a raw pointer; the image must be NUL-terminated
         // for PTX strings. Cubins carry their own length.
         let mut handle = CUmodule::default();
-        unsafe { check("cuModuleLoadData",
-                       (d.cuModuleLoadData)(&mut handle, image.as_ptr() as *const c_void))?; }
-        Ok(Arc::new(Self { device, handle }))
+        unsafe {
+            check(
+                "cuModuleLoadData",
+                (d.cuModuleLoadData)(&mut handle, image.as_ptr() as *const c_void),
+            )?;
+        }
+        Ok(Arc::new(Self {
+            device,
+            handle,
+            drv: d,
+        }))
     }
 
     pub fn function(self: &Arc<Self>, name: &str) -> Result<Function> {
         let cname = CString::new(name).map_err(|_| Error::Precondition {
-            op: "Module::function", msg: "function name contains NUL".into(),
+            op: "Module::function",
+            msg: "function name contains NUL".into(),
         })?;
-        let d = driver()?;
         let mut f = CUfunction::default();
-        unsafe { check("cuModuleGetFunction",
-                       (d.cuModuleGetFunction)(&mut f, self.handle, cname.as_ptr()))?; }
-        Ok(Function { module: self.clone(), handle: f, _name: cname })
+        unsafe {
+            check(
+                "cuModuleGetFunction",
+                (self.drv.cuModuleGetFunction)(&mut f, self.handle, cname.as_ptr()),
+            )?;
+        }
+        Ok(Function {
+            module: self.clone(),
+            handle: f,
+            _name: cname,
+            drv: self.drv,
+        })
     }
 
-    #[inline] pub fn device(&self) -> &Arc<Device> { &self.device }
+    #[inline]
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
 }
 
 unsafe impl Send for Module {}
 unsafe impl Sync for Module {}
 
 impl Drop for Module {
+    #[inline]
     fn drop(&mut self) {
-        if let Ok(d) = driver() {
-            unsafe { let _ = (d.cuModuleUnload)(self.handle); }
+        unsafe {
+            let _ = (self.drv.cuModuleUnload)(self.handle);
         }
     }
 }
@@ -678,27 +1008,42 @@ pub struct Function {
     module: Arc<Module>,
     handle: CUfunction,
     _name: CString,
+    drv: &'static sys::DriverFns,
 }
 
 impl Function {
-    #[inline] pub fn module(&self) -> &Arc<Module> { &self.module }
-    #[inline] pub fn raw(&self) -> CUfunction { self.handle }
+    #[inline]
+    pub fn module(&self) -> &Arc<Module> {
+        &self.module
+    }
+    #[inline]
+    pub fn raw(&self) -> CUfunction {
+        self.handle
+    }
 
     /// Launch with the given config, stream, and argument tuple.
+    #[inline]
     pub fn launch<A: LaunchArgs>(&self, cfg: LaunchCfg, stream: &Stream, args: A) -> Result<()> {
-        let d = driver()?;
         let mut storage = A::storage();
         let mut ptrs = A::ptrs_init();
         args.pack(&mut storage, &mut ptrs);
         unsafe {
-            check("cuLaunchKernel", (d.cuLaunchKernel)(
-                self.handle,
-                cfg.grid.0, cfg.grid.1, cfg.grid.2,
-                cfg.block.0, cfg.block.1, cfg.block.2,
-                cfg.shared_bytes, stream.handle,
-                ptrs.as_mut().as_mut_ptr() as *mut *mut c_void,
-                ptr::null_mut(),
-            ))
+            check(
+                "cuLaunchKernel",
+                (self.drv.cuLaunchKernel)(
+                    self.handle,
+                    cfg.grid.0,
+                    cfg.grid.1,
+                    cfg.grid.2,
+                    cfg.block.0,
+                    cfg.block.1,
+                    cfg.block.2,
+                    cfg.shared_bytes,
+                    stream.handle,
+                    ptrs.as_mut().as_mut_ptr() as *mut *mut c_void,
+                    ptr::null_mut(),
+                ),
+            )
         }
     }
 }
@@ -716,7 +1061,11 @@ pub struct LaunchCfg {
 
 impl LaunchCfg {
     pub fn linear(grid: u32, block: u32) -> Self {
-        Self { grid: (grid, 1, 1), block: (block, 1, 1), shared_bytes: 0 }
+        Self {
+            grid: (grid, 1, 1),
+            block: (block, 1, 1),
+            shared_bytes: 0,
+        }
     }
     pub fn for_elements(n: u32, block: u32) -> Self {
         let grid = (n + block - 1) / block.max(1);
@@ -773,14 +1122,14 @@ kernel_arg_pod!(u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, usize, isize);
 impl<'a, T: Repr> KernelArg for DeviceView<'a, T> {
     #[inline]
     fn write_into(self, slot: &mut u64) {
-        *slot = self.ptr as u64;
+        *slot = self.ptr;
     }
 }
 
 impl<'a, T: Repr> KernelArg for DeviceViewMut<'a, T> {
     #[inline]
     fn write_into(self, slot: &mut u64) {
-        *slot = self.ptr as u64;
+        *slot = self.ptr;
     }
 }
 
@@ -805,9 +1154,16 @@ macro_rules! launch_args_tuple {
 impl LaunchArgs for () {
     type Storage = [u64; 0];
     type Ptrs = [*const c_void; 0];
-    #[inline] fn storage() -> Self::Storage { [] }
-    #[inline] fn ptrs_init() -> Self::Ptrs { [] }
-    #[inline] fn pack(self, _s: &mut Self::Storage, _p: &mut Self::Ptrs) {}
+    #[inline]
+    fn storage() -> Self::Storage {
+        []
+    }
+    #[inline]
+    fn ptrs_init() -> Self::Ptrs {
+        []
+    }
+    #[inline]
+    fn pack(self, _s: &mut Self::Storage, _p: &mut Self::Ptrs) {}
 }
 launch_args_tuple!(1; 0 => A);
 launch_args_tuple!(2; 0 => A, 1 => B);
@@ -830,9 +1186,16 @@ launch_args_tuple!(16; 0=>A,1=>B,2=>C,3=>D,4=>E,5=>F,6=>G,7=>H,8=>I,9=>J,10=>K,1
 // Graph capture/replay
 // ════════════════════════════════════════════════════════════════════════════
 
-pub struct CapturedGraph { handle: CUgraph }
+pub struct CapturedGraph {
+    handle: CUgraph,
+    drv: &'static sys::DriverFns,
+}
 
-pub struct GraphExec { handle: CUgraphExec, _device: Arc<Device> }
+pub struct GraphExec {
+    handle: CUgraphExec,
+    _device: Arc<Device>,
+    drv: &'static sys::DriverFns,
+}
 
 impl Stream {
     /// Begin capturing all subsequent work on this stream into a graph.
@@ -849,26 +1212,36 @@ impl Stream {
     /// when other streams in the same thread need to perform non-captured
     /// stream-ordered operations (typically allocations or frees) concurrently.
     pub fn begin_capture_mode(&self, mode: CUstreamCaptureMode) -> Result<()> {
-        let d = driver()?;
-        unsafe { check("cuStreamBeginCapture_v2",
-                       (d.cuStreamBeginCapture_v2)(self.handle, mode)) }
+        unsafe {
+            check(
+                "cuStreamBeginCapture_v2",
+                (self.drv.cuStreamBeginCapture_v2)(self.handle, mode),
+            )
+        }
     }
 
     /// End capture and return the resulting graph. Call [`GraphExec::new`] to
     /// instantiate an executable.
     pub fn end_capture(&self) -> Result<CapturedGraph> {
-        let d = driver()?;
         let mut g = CUgraph::default();
-        unsafe { check("cuStreamEndCapture",
-                       (d.cuStreamEndCapture)(self.handle, &mut g))?; }
-        Ok(CapturedGraph { handle: g })
+        unsafe {
+            check(
+                "cuStreamEndCapture",
+                (self.drv.cuStreamEndCapture)(self.handle, &mut g),
+            )?;
+        }
+        Ok(CapturedGraph {
+            handle: g,
+            drv: self.drv,
+        })
     }
 }
 
 impl Drop for CapturedGraph {
+    #[inline]
     fn drop(&mut self) {
-        if let Ok(d) = driver() {
-            unsafe { let _ = (d.cuGraphDestroy)(self.handle); }
+        unsafe {
+            let _ = (self.drv.cuGraphDestroy)(self.handle);
         }
     }
 }
@@ -876,26 +1249,42 @@ impl Drop for CapturedGraph {
 impl GraphExec {
     pub fn new(graph: CapturedGraph, device: Arc<Device>) -> Result<Self> {
         device.bind()?;
-        let d = driver()?;
+        let d = device.drv;
         let mut exec = CUgraphExec::default();
-        unsafe { check("cuGraphInstantiateWithFlags",
-                       (d.cuGraphInstantiateWithFlags)(&mut exec, graph.handle, 0))?; }
+        unsafe {
+            check(
+                "cuGraphInstantiateWithFlags",
+                (d.cuGraphInstantiateWithFlags)(&mut exec, graph.handle, 0),
+            )?;
+        }
         // graph is consumed: destroy it now.
-        unsafe { let _ = (d.cuGraphDestroy)(graph.handle); }
+        unsafe {
+            let _ = (d.cuGraphDestroy)(graph.handle);
+        }
         std::mem::forget(graph);
-        Ok(Self { handle: exec, _device: device })
+        Ok(Self {
+            handle: exec,
+            _device: device,
+            drv: d,
+        })
     }
 
+    #[inline]
     pub fn launch(&self, stream: &Stream) -> Result<()> {
-        let d = driver()?;
-        unsafe { check("cuGraphLaunch", (d.cuGraphLaunch)(self.handle, stream.handle)) }
+        unsafe {
+            check(
+                "cuGraphLaunch",
+                (self.drv.cuGraphLaunch)(self.handle, stream.handle),
+            )
+        }
     }
 }
 
 impl Drop for GraphExec {
+    #[inline]
     fn drop(&mut self) {
-        if let Ok(d) = driver() {
-            unsafe { let _ = (d.cuGraphExecDestroy)(self.handle); }
+        unsafe {
+            let _ = (self.drv.cuGraphExecDestroy)(self.handle);
         }
     }
 }
@@ -941,9 +1330,11 @@ mod tests {
 
     #[test]
     fn launch_args_tuple_lengths() {
-        fn check<A: LaunchArgs>() -> usize { std::mem::size_of::<A::Slots>() }
+        fn check<A: LaunchArgs>() -> usize {
+            std::mem::size_of::<A::Storage>()
+        }
         assert_eq!(check::<()>(), 0);
-        assert_eq!(check::<(u32,)>(), std::mem::size_of::<*const c_void>());
-        assert_eq!(check::<(u32, u32, u32)>(), 3 * std::mem::size_of::<*const c_void>());
+        assert_eq!(check::<(u32,)>(), std::mem::size_of::<u64>());
+        assert_eq!(check::<(u32, u32, u32)>(), 3 * std::mem::size_of::<u64>());
     }
 }

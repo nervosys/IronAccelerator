@@ -38,19 +38,32 @@ pub enum CurandStatus {
 impl CurandStatus {
     pub fn from_raw(r: u32) -> Self {
         match r {
-            0 => Self::Success, 100 => Self::VersionMismatch,
-            101 => Self::NotInitialized, 102 => Self::AllocationFailed,
-            103 => Self::TypeError, 104 => Self::OutOfRange,
-            105 => Self::LengthNotMultiple, 106 => Self::DoublePrecisionRequired,
-            201 => Self::LaunchFailure, 202 => Self::PreexistingFailure,
-            203 => Self::InitializationFailed, 204 => Self::ArchMismatch,
-            999 => Self::InternalError, _ => Self::Other,
+            0 => Self::Success,
+            100 => Self::VersionMismatch,
+            101 => Self::NotInitialized,
+            102 => Self::AllocationFailed,
+            103 => Self::TypeError,
+            104 => Self::OutOfRange,
+            105 => Self::LengthNotMultiple,
+            106 => Self::DoublePrecisionRequired,
+            201 => Self::LaunchFailure,
+            202 => Self::PreexistingFailure,
+            203 => Self::InitializationFailed,
+            204 => Self::ArchMismatch,
+            999 => Self::InternalError,
+            _ => Self::Other,
         }
     }
     pub fn ok(self) -> Result<(), Self> {
-        if self == Self::Success { Ok(()) } else { Err(self) }
+        if self == Self::Success {
+            Ok(())
+        } else {
+            Err(self)
+        }
     }
-    pub fn is_ok(self) -> bool { self == Self::Success }
+    pub fn is_ok(self) -> bool {
+        self == Self::Success
+    }
 }
 
 #[repr(u32)]
@@ -64,39 +77,33 @@ pub enum CurandRngType {
 }
 
 pub struct CurandFns {
-    pub curandCreateGenerator: unsafe extern "C" fn(
-        *mut CurandGenerator, CurandRngType,
-    ) -> CurandStatus,
+    pub curandCreateGenerator:
+        unsafe extern "C" fn(*mut CurandGenerator, CurandRngType) -> CurandStatus,
     pub curandDestroyGenerator: unsafe extern "C" fn(CurandGenerator) -> CurandStatus,
     pub curandSetStream: unsafe extern "C" fn(CurandGenerator, CUstream) -> CurandStatus,
-    pub curandSetPseudoRandomGeneratorSeed: unsafe extern "C" fn(
-        CurandGenerator, u64,
-    ) -> CurandStatus,
+    pub curandSetPseudoRandomGeneratorSeed:
+        unsafe extern "C" fn(CurandGenerator, u64) -> CurandStatus,
     pub curandSetGeneratorOffset: unsafe extern "C" fn(CurandGenerator, u64) -> CurandStatus,
 
-    pub curandGenerate: unsafe extern "C" fn(
-        CurandGenerator, CUdeviceptr, usize,
-    ) -> CurandStatus,
-    pub curandGenerateLongLong: unsafe extern "C" fn(
-        CurandGenerator, CUdeviceptr, usize,
-    ) -> CurandStatus,
-    pub curandGenerateUniform: unsafe extern "C" fn(
-        CurandGenerator, CUdeviceptr, usize,
-    ) -> CurandStatus,
-    pub curandGenerateUniformDouble: unsafe extern "C" fn(
-        CurandGenerator, CUdeviceptr, usize,
-    ) -> CurandStatus,
-    pub curandGenerateNormal: unsafe extern "C" fn(
-        CurandGenerator, CUdeviceptr, usize, f32, f32,
-    ) -> CurandStatus,
-    pub curandGenerateNormalDouble: unsafe extern "C" fn(
-        CurandGenerator, CUdeviceptr, usize, f64, f64,
-    ) -> CurandStatus,
+    pub curandGenerate: unsafe extern "C" fn(CurandGenerator, CUdeviceptr, usize) -> CurandStatus,
+    pub curandGenerateLongLong:
+        unsafe extern "C" fn(CurandGenerator, CUdeviceptr, usize) -> CurandStatus,
+    pub curandGenerateUniform:
+        unsafe extern "C" fn(CurandGenerator, CUdeviceptr, usize) -> CurandStatus,
+    pub curandGenerateUniformDouble:
+        unsafe extern "C" fn(CurandGenerator, CUdeviceptr, usize) -> CurandStatus,
+    pub curandGenerateNormal:
+        unsafe extern "C" fn(CurandGenerator, CUdeviceptr, usize, f32, f32) -> CurandStatus,
+    pub curandGenerateNormalDouble:
+        unsafe extern "C" fn(CurandGenerator, CUdeviceptr, usize, f64, f64) -> CurandStatus,
 }
 
 fn candidates() -> &'static [&'static str] {
     &[
-        "libcurand.so.10", "libcurand.so", "curand64_10.dll", "curand64_13.dll",
+        "libcurand.so.10",
+        "libcurand.so",
+        "curand64_10.dll",
+        "curand64_13.dll",
     ]
 }
 
@@ -109,7 +116,11 @@ static FNS: LazyLock<Result<CurandFns, LoadError>> = LazyLock::new(|| {
             curandCreateGenerator: sym(lib, "curand", "curandCreateGenerator")?,
             curandDestroyGenerator: sym(lib, "curand", "curandDestroyGenerator")?,
             curandSetStream: sym(lib, "curand", "curandSetStream")?,
-            curandSetPseudoRandomGeneratorSeed: sym(lib, "curand", "curandSetPseudoRandomGeneratorSeed")?,
+            curandSetPseudoRandomGeneratorSeed: sym(
+                lib,
+                "curand",
+                "curandSetPseudoRandomGeneratorSeed",
+            )?,
             curandSetGeneratorOffset: sym(lib, "curand", "curandSetGeneratorOffset")?,
             curandGenerate: sym(lib, "curand", "curandGenerate")?,
             curandGenerateLongLong: sym(lib, "curand", "curandGenerateLongLong")?,
@@ -121,5 +132,10 @@ static FNS: LazyLock<Result<CurandFns, LoadError>> = LazyLock::new(|| {
     }
 });
 
-pub fn fns() -> Result<&'static CurandFns, &'static LoadError> { FNS.as_ref() }
-pub fn is_available() -> bool { FNS.is_ok() }
+#[inline]
+pub fn fns() -> Result<&'static CurandFns, &'static LoadError> {
+    FNS.as_ref()
+}
+pub fn is_available() -> bool {
+    FNS.is_ok()
+}

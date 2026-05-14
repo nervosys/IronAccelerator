@@ -17,7 +17,7 @@
 //!
 //! # Metrics
 //!
-//! [`Metrics`] lives on each [`crate::Session`] and uses relaxed atomics so
+//! [`Metrics`] uses relaxed atomics so
 //! it never synchronises more than strictly necessary. For truly
 //! zero-overhead builds, all increments are behind `#[inline(always)]` —
 //! LLVM can fold them when the returned value is discarded.
@@ -29,7 +29,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// Open a named NVTX range guard; the range closes when the guard is dropped.
 #[inline(always)]
 pub fn range<S: AsRef<str>>(msg: S) -> EventBuilder {
-    EventBuilder { msg: msg.as_ref().to_string(), argb: None, category: None }
+    EventBuilder {
+        msg: msg.as_ref().to_string(),
+        argb: None,
+        category: None,
+    }
 }
 
 /// Fire-and-forget instant NVTX marker.
@@ -37,7 +41,9 @@ pub fn range<S: AsRef<str>>(msg: S) -> EventBuilder {
 pub fn mark<S: AsRef<str>>(msg: S) {
     if let Ok(f) = nvtx::fns() {
         if let Ok(c) = CString::new(msg.as_ref()) {
-            unsafe { (f.nvtxMarkA)(c.as_ptr()); }
+            unsafe {
+                (f.nvtxMarkA)(c.as_ptr());
+            }
         }
     }
 }
@@ -49,15 +55,27 @@ pub struct EventBuilder {
 }
 
 impl EventBuilder {
-    #[inline(always)] pub fn argb(mut self, c: u32) -> Self { self.argb = Some(c); self }
-    #[inline(always)] pub fn category(mut self, c: u32) -> Self { self.category = Some(c); self }
+    #[inline(always)]
+    pub fn argb(mut self, c: u32) -> Self {
+        self.argb = Some(c);
+        self
+    }
+    #[inline(always)]
+    pub fn category(mut self, c: u32) -> Self {
+        self.category = Some(c);
+        self
+    }
 
     /// Materialise the NVTX range guard.
     #[inline]
     pub fn open(self) -> Range {
         let id = if let Ok(f) = nvtx::fns() {
-            CString::new(self.msg.as_str()).ok().map(|c| unsafe { (f.nvtxRangeStartA)(c.as_ptr()) })
-        } else { None };
+            CString::new(self.msg.as_str())
+                .ok()
+                .map(|c| unsafe { (f.nvtxRangeStartA)(c.as_ptr()) })
+        } else {
+            None
+        };
         // argb/category are ignored in the simplified ASCII path — extended
         // attributes use nvtxDomainRangeStartEx which we'll add when needed.
         let _ = (self.argb, self.category);
@@ -66,12 +84,16 @@ impl EventBuilder {
 }
 
 /// NVTX range guard. Closes on drop.
-pub struct Range { id: Option<nvtx::NvtxRangeId> }
+pub struct Range {
+    id: Option<nvtx::NvtxRangeId>,
+}
 
 impl Drop for Range {
     fn drop(&mut self) {
         if let (Some(id), Ok(f)) = (self.id, nvtx::fns()) {
-            unsafe { (f.nvtxRangeEnd)(id); }
+            unsafe {
+                (f.nvtxRangeEnd)(id);
+            }
         }
     }
 }
@@ -80,57 +102,82 @@ impl Drop for Range {
 /// dashboards, not a synchronisation primitive.
 #[derive(Debug, Default)]
 pub struct Metrics {
-    pub alloc_bytes:     AtomicU64,
-    pub alloc_calls:     AtomicU64,
-    pub free_bytes:      AtomicU64,
-    pub htod_bytes:      AtomicU64,
-    pub dtoh_bytes:      AtomicU64,
+    pub alloc_bytes: AtomicU64,
+    pub alloc_calls: AtomicU64,
+    pub free_bytes: AtomicU64,
+    pub htod_bytes: AtomicU64,
+    pub dtoh_bytes: AtomicU64,
     pub kernels_launched: AtomicU64,
-    pub blas_calls:      AtomicU64,
-    pub nvrtc_hits:      AtomicU64,
-    pub nvrtc_misses:    AtomicU64,
-    pub fft_hits:        AtomicU64,
-    pub fft_misses:      AtomicU64,
-    pub collectives:     AtomicU64,
+    pub blas_calls: AtomicU64,
+    pub nvrtc_hits: AtomicU64,
+    pub nvrtc_misses: AtomicU64,
+    pub fft_hits: AtomicU64,
+    pub fft_misses: AtomicU64,
+    pub collectives: AtomicU64,
 }
 
 impl Metrics {
-    #[inline(always)] pub fn record_alloc(&self, bytes: u64) {
+    #[inline(always)]
+    pub fn record_alloc(&self, bytes: u64) {
         self.alloc_calls.fetch_add(1, Ordering::Relaxed);
         self.alloc_bytes.fetch_add(bytes, Ordering::Relaxed);
     }
-    #[inline(always)] pub fn record_free(&self, bytes: u64) {
+    #[inline(always)]
+    pub fn record_free(&self, bytes: u64) {
         self.free_bytes.fetch_add(bytes, Ordering::Relaxed);
     }
-    #[inline(always)] pub fn record_htod(&self, bytes: u64) { self.htod_bytes.fetch_add(bytes, Ordering::Relaxed); }
-    #[inline(always)] pub fn record_dtoh(&self, bytes: u64) { self.dtoh_bytes.fetch_add(bytes, Ordering::Relaxed); }
-    #[inline(always)] pub fn record_launch(&self)            { self.kernels_launched.fetch_add(1, Ordering::Relaxed); }
-    #[inline(always)] pub fn record_blas(&self)              { self.blas_calls.fetch_add(1, Ordering::Relaxed); }
-    #[inline(always)] pub fn record_nvrtc(&self, hit: bool)  {
-        if hit { self.nvrtc_hits.fetch_add(1, Ordering::Relaxed); }
-        else   { self.nvrtc_misses.fetch_add(1, Ordering::Relaxed); }
+    #[inline(always)]
+    pub fn record_htod(&self, bytes: u64) {
+        self.htod_bytes.fetch_add(bytes, Ordering::Relaxed);
     }
-    #[inline(always)] pub fn record_fft(&self, hit: bool)    {
-        if hit { self.fft_hits.fetch_add(1, Ordering::Relaxed); }
-        else   { self.fft_misses.fetch_add(1, Ordering::Relaxed); }
+    #[inline(always)]
+    pub fn record_dtoh(&self, bytes: u64) {
+        self.dtoh_bytes.fetch_add(bytes, Ordering::Relaxed);
     }
-    #[inline(always)] pub fn record_collective(&self) { self.collectives.fetch_add(1, Ordering::Relaxed); }
+    #[inline(always)]
+    pub fn record_launch(&self) {
+        self.kernels_launched.fetch_add(1, Ordering::Relaxed);
+    }
+    #[inline(always)]
+    pub fn record_blas(&self) {
+        self.blas_calls.fetch_add(1, Ordering::Relaxed);
+    }
+    #[inline(always)]
+    pub fn record_nvrtc(&self, hit: bool) {
+        if hit {
+            self.nvrtc_hits.fetch_add(1, Ordering::Relaxed);
+        } else {
+            self.nvrtc_misses.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+    #[inline(always)]
+    pub fn record_fft(&self, hit: bool) {
+        if hit {
+            self.fft_hits.fetch_add(1, Ordering::Relaxed);
+        } else {
+            self.fft_misses.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+    #[inline(always)]
+    pub fn record_collective(&self) {
+        self.collectives.fetch_add(1, Ordering::Relaxed);
+    }
 
     /// Immutable snapshot — O(1) relaxed reads.
     pub fn snapshot(&self) -> MetricsSnapshot {
         MetricsSnapshot {
-            alloc_bytes:      self.alloc_bytes.load(Ordering::Relaxed),
-            alloc_calls:      self.alloc_calls.load(Ordering::Relaxed),
-            free_bytes:       self.free_bytes.load(Ordering::Relaxed),
-            htod_bytes:       self.htod_bytes.load(Ordering::Relaxed),
-            dtoh_bytes:       self.dtoh_bytes.load(Ordering::Relaxed),
+            alloc_bytes: self.alloc_bytes.load(Ordering::Relaxed),
+            alloc_calls: self.alloc_calls.load(Ordering::Relaxed),
+            free_bytes: self.free_bytes.load(Ordering::Relaxed),
+            htod_bytes: self.htod_bytes.load(Ordering::Relaxed),
+            dtoh_bytes: self.dtoh_bytes.load(Ordering::Relaxed),
             kernels_launched: self.kernels_launched.load(Ordering::Relaxed),
-            blas_calls:       self.blas_calls.load(Ordering::Relaxed),
-            nvrtc_hits:       self.nvrtc_hits.load(Ordering::Relaxed),
-            nvrtc_misses:     self.nvrtc_misses.load(Ordering::Relaxed),
-            fft_hits:         self.fft_hits.load(Ordering::Relaxed),
-            fft_misses:       self.fft_misses.load(Ordering::Relaxed),
-            collectives:      self.collectives.load(Ordering::Relaxed),
+            blas_calls: self.blas_calls.load(Ordering::Relaxed),
+            nvrtc_hits: self.nvrtc_hits.load(Ordering::Relaxed),
+            nvrtc_misses: self.nvrtc_misses.load(Ordering::Relaxed),
+            fft_hits: self.fft_hits.load(Ordering::Relaxed),
+            fft_misses: self.fft_misses.load(Ordering::Relaxed),
+            collectives: self.collectives.load(Ordering::Relaxed),
         }
     }
 }
@@ -153,18 +200,29 @@ pub struct MetricsSnapshot {
 
 impl MetricsSnapshot {
     /// Bytes still resident on the device according to our accounting.
-    #[inline] pub fn resident_bytes(&self) -> i64 {
+    #[inline]
+    pub fn resident_bytes(&self) -> i64 {
         self.alloc_bytes as i64 - self.free_bytes as i64
     }
     /// NVRTC cache hit ratio in `[0, 1]`. Returns 0 if the cache was never hit.
-    #[inline] pub fn nvrtc_hit_ratio(&self) -> f32 {
+    #[inline]
+    pub fn nvrtc_hit_ratio(&self) -> f32 {
         let total = self.nvrtc_hits + self.nvrtc_misses;
-        if total == 0 { 0.0 } else { self.nvrtc_hits as f32 / total as f32 }
+        if total == 0 {
+            0.0
+        } else {
+            self.nvrtc_hits as f32 / total as f32
+        }
     }
     /// cuFFT plan cache hit ratio in `[0, 1]`.
-    #[inline] pub fn fft_hit_ratio(&self) -> f32 {
+    #[inline]
+    pub fn fft_hit_ratio(&self) -> f32 {
         let total = self.fft_hits + self.fft_misses;
-        if total == 0 { 0.0 } else { self.fft_hits as f32 / total as f32 }
+        if total == 0 {
+            0.0
+        } else {
+            self.fft_hits as f32 / total as f32
+        }
     }
 }
 

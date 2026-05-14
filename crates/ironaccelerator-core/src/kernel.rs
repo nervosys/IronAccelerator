@@ -12,7 +12,11 @@ pub struct LaunchDims {
 impl LaunchDims {
     pub const fn linear(threads: u32, block: u32) -> Self {
         let grid = threads.div_ceil(block);
-        Self { grid: (grid, 1, 1), block: (block, 1, 1), shared_bytes: 0 }
+        Self {
+            grid: (grid, 1, 1),
+            block: (block, 1, 1),
+            shared_bytes: 0,
+        }
     }
 
     pub const fn elements(self) -> u64 {

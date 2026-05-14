@@ -14,12 +14,17 @@ use std::sync::Arc;
 pub use sys::{CudnnDataType as CudnnDType, CudnnStatus};
 
 fn fns() -> Result<&'static sys::CudnnFns> {
-    sys::fns().map_err(|e| Error::Other(Box::leak(
-        format!("cudnn not available: {e}").into_boxed_str())))
+    sys::fns().map_err(|e| {
+        Error::Other(Box::leak(
+            format!("cudnn not available: {e}").into_boxed_str(),
+        ))
+    })
 }
 
 fn check(_op: &'static str, s: CudnnStatus) -> Result<()> {
-    if s.is_ok() { Ok(()) } else {
+    if s.is_ok() {
+        Ok(())
+    } else {
         Err(Error::Backend {
             backend: ironaccelerator_core::BackendKind::Cuda,
             code: (s as u32) as i64,
@@ -40,24 +45,43 @@ impl CudnnHandle {
         device.bind()?;
         let f = fns()?;
         let mut h = sys::CudnnHandle::default();
-        unsafe { check("cudnnCreate", (f.cudnnCreate)(&mut h))?; }
-        Ok(Arc::new(Self { handle: h, _device: device }))
+        unsafe {
+            check("cudnnCreate", (f.cudnnCreate)(&mut h))?;
+        }
+        Ok(Arc::new(Self {
+            handle: h,
+            _device: device,
+        }))
     }
 
     pub fn set_stream(&self, stream: &Stream) -> Result<()> {
-        unsafe { check("cudnnSetStream", (fns()?.cudnnSetStream)(self.handle, stream.raw())) }
+        unsafe {
+            check(
+                "cudnnSetStream",
+                (fns()?.cudnnSetStream)(self.handle, stream.raw()),
+            )
+        }
     }
 
-    #[inline] pub fn raw(&self) -> sys::CudnnHandle { self.handle }
+    #[inline]
+    pub fn raw(&self) -> sys::CudnnHandle {
+        self.handle
+    }
 
-    pub fn version() -> Result<usize> { Ok(unsafe { (fns()?.cudnnGetVersion)() }) }
-    pub fn cudart_version() -> Result<usize> { Ok(unsafe { (fns()?.cudnnGetCudartVersion)() }) }
+    pub fn version() -> Result<usize> {
+        Ok(unsafe { (fns()?.cudnnGetVersion)() })
+    }
+    pub fn cudart_version() -> Result<usize> {
+        Ok(unsafe { (fns()?.cudnnGetCudartVersion)() })
+    }
 }
 
 impl Drop for CudnnHandle {
     fn drop(&mut self) {
         if let Ok(f) = fns() {
-            unsafe { let _ = (f.cudnnDestroy)(self.handle); }
+            unsafe {
+                let _ = (f.cudnnDestroy)(self.handle);
+            }
         }
     }
 }
@@ -81,7 +105,9 @@ pub fn handle_for(stream: &Arc<Stream>) -> Result<Arc<CudnnHandle>> {
     Ok(h)
 }
 
-pub fn is_available() -> bool { sys::is_available() }
+pub fn is_available() -> bool {
+    sys::is_available()
+}
 
 // ─── Generic v9 backend-descriptor wrapper ─────────────────────────────────
 //
@@ -139,15 +165,30 @@ impl BackendDescr {
         let f = fns()?;
         let mut raw = sys::CudnnBackendDescriptor::default();
         unsafe {
-            check("cudnnBackendCreateDescriptor",
-                  (f.cudnnBackendCreateDescriptor)(kind, &mut raw))?;
+            check(
+                "cudnnBackendCreateDescriptor",
+                (f.cudnnBackendCreateDescriptor)(kind, &mut raw),
+            )?;
         }
-        Ok(Self { raw, kind, finalized: false })
+        Ok(Self {
+            raw,
+            kind,
+            finalized: false,
+        })
     }
 
-    #[inline] pub fn raw(&self) -> sys::CudnnBackendDescriptor { self.raw }
-    #[inline] pub fn kind(&self) -> u32 { self.kind }
-    #[inline] pub fn is_finalized(&self) -> bool { self.finalized }
+    #[inline]
+    pub fn raw(&self) -> sys::CudnnBackendDescriptor {
+        self.raw
+    }
+    #[inline]
+    pub fn kind(&self) -> u32 {
+        self.kind
+    }
+    #[inline]
+    pub fn is_finalized(&self) -> bool {
+        self.finalized
+    }
 
     /// Set `count` elements of `ty` at the given attribute slot. Generic over
     /// the element type — caller is responsible for matching `ty` to `T`.
@@ -156,13 +197,22 @@ impl BackendDescr {
     /// `ty` must be a valid `cudnnBackendAttributeType_t` and `T` must match
     /// its expected representation.
     pub unsafe fn set_attribute<T: Copy>(
-        &mut self, attr: u32, ty: AttrType, elements: &[T],
+        &mut self,
+        attr: u32,
+        ty: AttrType,
+        elements: &[T],
     ) -> Result<()> {
         let f = fns()?;
-        check("cudnnBackendSetAttribute",
-              (f.cudnnBackendSetAttribute)(
-                  self.raw, attr, ty as u32, elements.len() as i64,
-                  elements.as_ptr() as *const c_void))
+        check(
+            "cudnnBackendSetAttribute",
+            (f.cudnnBackendSetAttribute)(
+                self.raw,
+                attr,
+                ty as u32,
+                elements.len() as i64,
+                elements.as_ptr() as *const c_void,
+            ),
+        )
     }
 
     pub fn set_i64(&mut self, attr: u32, vals: &[i64]) -> Result<()> {
@@ -174,7 +224,11 @@ impl BackendDescr {
     pub fn set_bool(&mut self, attr: u32, vals: &[u8]) -> Result<()> {
         unsafe { self.set_attribute(attr, AttrType::Boolean, vals) }
     }
-    pub fn set_descriptors(&mut self, attr: u32, descs: &[sys::CudnnBackendDescriptor]) -> Result<()> {
+    pub fn set_descriptors(
+        &mut self,
+        attr: u32,
+        descs: &[sys::CudnnBackendDescriptor],
+    ) -> Result<()> {
         unsafe { self.set_attribute(attr, AttrType::BackendDescriptor, descs) }
     }
     pub fn set_handle(&mut self, attr: u32, handles: &[sys::CudnnHandle]) -> Result<()> {
@@ -186,7 +240,9 @@ impl BackendDescr {
 
     pub fn finalize(&mut self) -> Result<()> {
         let f = fns()?;
-        unsafe { check("cudnnBackendFinalize", (f.cudnnBackendFinalize)(self.raw))?; }
+        unsafe {
+            check("cudnnBackendFinalize", (f.cudnnBackendFinalize)(self.raw))?;
+        }
         self.finalized = true;
         Ok(())
     }
@@ -198,28 +254,40 @@ impl BackendDescr {
     /// `ty` must match the attribute's declared type, and `out` must have
     /// room for `cap` elements of `T`.
     pub unsafe fn get_attribute<T>(
-        &self, attr: u32, ty: AttrType, cap: i64, out: *mut T,
+        &self,
+        attr: u32,
+        ty: AttrType,
+        cap: i64,
+        out: *mut T,
     ) -> Result<i64> {
         let f = fns()?;
         let mut n: i64 = 0;
         unsafe {
-            check("cudnnBackendGetAttribute",
-                  (f.cudnnBackendGetAttribute)(
-                      self.raw, attr, ty as u32, cap, &mut n, out as *mut c_void))?;
+            check(
+                "cudnnBackendGetAttribute",
+                (f.cudnnBackendGetAttribute)(
+                    self.raw,
+                    attr,
+                    ty as u32,
+                    cap,
+                    &mut n,
+                    out as *mut c_void,
+                ),
+            )?;
         }
         Ok(n)
     }
 
     pub fn get_i64(&self, attr: u32) -> Result<i64> {
         let mut v: i64 = 0;
-        unsafe { self.get_attribute(attr, AttrType::Int64, 1, &mut v)?; }
+        unsafe {
+            self.get_attribute(attr, AttrType::Int64, 1, &mut v)?;
+        }
         Ok(v)
     }
     pub fn get_descriptor(&self, attr: u32) -> Result<sys::CudnnBackendDescriptor> {
         let mut v = sys::CudnnBackendDescriptor::default();
-        let n = unsafe {
-            self.get_attribute(attr, AttrType::BackendDescriptor, 1, &mut v)?
-        };
+        let n = unsafe { self.get_attribute(attr, AttrType::BackendDescriptor, 1, &mut v)? };
         if n < 1 {
             return Err(Error::Other("cudnn::get_descriptor: no result"));
         }
@@ -234,28 +302,40 @@ impl BackendDescr {
         variant_pack: &BackendDescr,
     ) -> Result<()> {
         if !plan.finalized || !variant_pack.finalized {
-            return Err(Error::Other("cudnn::execute: plan and variant pack must be finalized"));
+            return Err(Error::Other(
+                "cudnn::execute: plan and variant pack must be finalized",
+            ));
         }
         let f = fns()?;
         unsafe {
-            check("cudnnBackendExecute", (f.cudnnBackendExecute)(
-                handle.raw(), plan.raw, variant_pack.raw))
+            check(
+                "cudnnBackendExecute",
+                (f.cudnnBackendExecute)(handle.raw(), plan.raw, variant_pack.raw),
+            )
         }
     }
 }
 
 /// Adopt a raw descriptor that was created externally (e.g. by
 /// `cudnnBackendGetAttribute`) so it participates in RAII destruction.
-pub fn adopt_descriptor(raw: sys::CudnnBackendDescriptor, kind: u32, finalized: bool)
-    -> BackendDescr
-{
-    BackendDescr { raw, kind, finalized }
+pub fn adopt_descriptor(
+    raw: sys::CudnnBackendDescriptor,
+    kind: u32,
+    finalized: bool,
+) -> BackendDescr {
+    BackendDescr {
+        raw,
+        kind,
+        finalized,
+    }
 }
 
 impl Drop for BackendDescr {
     fn drop(&mut self) {
         if let Ok(f) = fns() {
-            unsafe { let _ = (f.cudnnBackendDestroyDescriptor)(self.raw); }
+            unsafe {
+                let _ = (f.cudnnBackendDestroyDescriptor)(self.raw);
+            }
         }
     }
 }

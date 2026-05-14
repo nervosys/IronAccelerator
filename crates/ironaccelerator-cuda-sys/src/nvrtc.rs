@@ -36,30 +36,46 @@ pub enum NvrtcResult {
 impl NvrtcResult {
     pub fn from_raw(r: u32) -> Self {
         match r {
-            0 => Self::Success, 1 => Self::OutOfMemory, 2 => Self::ProgramCreationFailure,
-            3 => Self::InvalidInput, 4 => Self::InvalidProgram, 5 => Self::InvalidOption,
-            6 => Self::Compilation, 7 => Self::BuiltinOperationFailure,
+            0 => Self::Success,
+            1 => Self::OutOfMemory,
+            2 => Self::ProgramCreationFailure,
+            3 => Self::InvalidInput,
+            4 => Self::InvalidProgram,
+            5 => Self::InvalidOption,
+            6 => Self::Compilation,
+            7 => Self::BuiltinOperationFailure,
             8 => Self::NoNameExpressionsAfterCompilation,
             9 => Self::NoLoweredNamesBeforeCompilation,
-            10 => Self::NameExpressionNotValid, 11 => Self::InternalError,
-            12 => Self::TimeFileWriteFailed, _ => Self::Other,
+            10 => Self::NameExpressionNotValid,
+            11 => Self::InternalError,
+            12 => Self::TimeFileWriteFailed,
+            _ => Self::Other,
         }
     }
     pub fn ok(self) -> Result<(), Self> {
-        if self == Self::Success { Ok(()) } else { Err(self) }
+        if self == Self::Success {
+            Ok(())
+        } else {
+            Err(self)
+        }
     }
-    pub fn is_ok(self) -> bool { self == Self::Success }
+    pub fn is_ok(self) -> bool {
+        self == Self::Success
+    }
 }
 
 pub struct NvrtcFns {
     pub nvrtcCreateProgram: unsafe extern "C" fn(
-        *mut NvrtcProgram, *const c_char, *const c_char,
-        c_int, *const *const c_char, *const *const c_char,
+        *mut NvrtcProgram,
+        *const c_char,
+        *const c_char,
+        c_int,
+        *const *const c_char,
+        *const *const c_char,
     ) -> NvrtcResult,
     pub nvrtcDestroyProgram: unsafe extern "C" fn(*mut NvrtcProgram) -> NvrtcResult,
-    pub nvrtcCompileProgram: unsafe extern "C" fn(
-        NvrtcProgram, c_int, *const *const c_char,
-    ) -> NvrtcResult,
+    pub nvrtcCompileProgram:
+        unsafe extern "C" fn(NvrtcProgram, c_int, *const *const c_char) -> NvrtcResult,
     pub nvrtcGetPTXSize: unsafe extern "C" fn(NvrtcProgram, *mut usize) -> NvrtcResult,
     pub nvrtcGetPTX: unsafe extern "C" fn(NvrtcProgram, *mut c_char) -> NvrtcResult,
     pub nvrtcGetCUBINSize: unsafe extern "C" fn(NvrtcProgram, *mut usize) -> NvrtcResult,
@@ -72,8 +88,12 @@ pub struct NvrtcFns {
 
 fn candidates() -> &'static [&'static str] {
     &[
-        "libnvrtc.so.13", "libnvrtc.so.12", "libnvrtc.so",
-        "nvrtc64_130_0.dll", "nvrtc64_120_0.dll", "nvrtc.dll",
+        "libnvrtc.so.13",
+        "libnvrtc.so.12",
+        "libnvrtc.so",
+        "nvrtc64_130_0.dll",
+        "nvrtc64_120_0.dll",
+        "nvrtc.dll",
     ]
 }
 
@@ -98,5 +118,10 @@ static FNS: LazyLock<Result<NvrtcFns, LoadError>> = LazyLock::new(|| {
     }
 });
 
-pub fn fns() -> Result<&'static NvrtcFns, &'static LoadError> { FNS.as_ref() }
-pub fn is_available() -> bool { FNS.is_ok() }
+#[inline]
+pub fn fns() -> Result<&'static NvrtcFns, &'static LoadError> {
+    FNS.as_ref()
+}
+pub fn is_available() -> bool {
+    FNS.is_ok()
+}

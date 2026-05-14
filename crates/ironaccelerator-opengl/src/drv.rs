@@ -60,11 +60,21 @@ fn probe(gl: &glow::Context) -> GlInfo {
         let supports_compute = (major, minor) >= (4, 3);
 
         let (mcwgi, mcwgc, msm) = if supports_compute {
-            let mcwgi = gl.get_parameter_i32(glow::MAX_COMPUTE_WORK_GROUP_INVOCATIONS).max(0) as u32;
-            let x = gl.get_parameter_indexed_i32(glow::MAX_COMPUTE_WORK_GROUP_COUNT, 0).max(0) as u32;
-            let y = gl.get_parameter_indexed_i32(glow::MAX_COMPUTE_WORK_GROUP_COUNT, 1).max(0) as u32;
-            let z = gl.get_parameter_indexed_i32(glow::MAX_COMPUTE_WORK_GROUP_COUNT, 2).max(0) as u32;
-            let msm = gl.get_parameter_i32(glow::MAX_COMPUTE_SHARED_MEMORY_SIZE).max(0) as u32;
+            let mcwgi = gl
+                .get_parameter_i32(glow::MAX_COMPUTE_WORK_GROUP_INVOCATIONS)
+                .max(0) as u32;
+            let x = gl
+                .get_parameter_indexed_i32(glow::MAX_COMPUTE_WORK_GROUP_COUNT, 0)
+                .max(0) as u32;
+            let y = gl
+                .get_parameter_indexed_i32(glow::MAX_COMPUTE_WORK_GROUP_COUNT, 1)
+                .max(0) as u32;
+            let z = gl
+                .get_parameter_indexed_i32(glow::MAX_COMPUTE_WORK_GROUP_COUNT, 2)
+                .max(0) as u32;
+            let msm = gl
+                .get_parameter_i32(glow::MAX_COMPUTE_SHARED_MEMORY_SIZE)
+                .max(0) as u32;
             (mcwgi, [x, y, z], msm)
         } else {
             (0, [0, 0, 0], 0)

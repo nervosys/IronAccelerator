@@ -34,7 +34,8 @@
 //! ```
 
 use core::fmt;
-use ironaccelerator_core::{BackendKind, WorkloadKind};
+use ironaccelerator_core::workload::Phase;
+use ironaccelerator_core::{BackendKind, CapabilityFlags, ComputeTier, DType, WorkloadKind};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -54,14 +55,22 @@ pub use query::{Explanation, FilterSpec, RankBy};
 pub struct Id(pub String);
 
 impl<S: Into<String>> From<S> for Id {
-    fn from(s: S) -> Self { Self(s.into()) }
+    fn from(s: S) -> Self {
+        Self(s.into())
+    }
 }
 
 impl fmt::Display for Id {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { f.write_str(&self.0) }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
 }
 
 /// One node in the hardware sub-graph.
+///
+/// Fields are chosen so an autonomous agent can answer, without any other
+/// lookup: *"what backend drives it, what arch class, what compute bucket,
+/// what capability bits, how much memory, how fast at each precision?"*
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HardwareNode {
     pub id: Id,
@@ -70,9 +79,17 @@ pub struct HardwareNode {
     pub family: String,
     pub arch: String,
     pub launch_year: u16,
+    /// Coarse compute bucket — lets agents filter by tier without parsing tags.
+    pub compute_tier: ComputeTier,
+    /// Structured capability bits (FP8, TF32, HMX, NVLink, …) mirroring the
+    /// same [`CapabilityFlags`] a live backend reports at runtime.
+    pub capabilities: CapabilityFlags,
     pub fp16_tflops: Option<f32>,
     pub fp8_tflops: Option<f32>,
     pub mem_bandwidth_gbs: Option<f32>,
+    /// On-device memory in GiB (HBM / GDDR / LPDDR unified). `None` when
+    /// the part is a system-shared accelerator without a fixed pool.
+    pub device_memory_gib: Option<f32>,
     pub tags: Vec<String>,
     pub notes: String,
 }
@@ -89,6 +106,10 @@ pub struct WorkloadClass {
 }
 
 /// An implementation strategy (a *how*).
+///
+/// The extra `supported_dtypes` / `supported_phases` fields let an agent
+/// rule out a strategy purely from the workload descriptor, before the
+/// heuristic / edge-weight stage.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StrategyClass {
     pub id: Id,
@@ -97,6 +118,12 @@ pub struct StrategyClass {
     pub min_arch: HashMap<String, String>, // backend.name() -> min arch
     pub workloads: Vec<Id>,                // applicable WorkloadClass ids
     pub optimizations: Vec<Id>,            // referenced Optimization ids
+    /// Dtypes the strategy accepts as input/output. Empty = any.
+    #[serde(default)]
+    pub supported_dtypes: Vec<DType>,
+    /// Training / Inference / Calibration. Empty = any.
+    #[serde(default)]
+    pub supported_phases: Vec<Phase>,
     pub description: String,
     pub rationale: String,
     pub jit: bool,
@@ -107,7 +134,7 @@ pub struct StrategyClass {
 pub struct Optimization {
     pub id: Id,
     pub description: String,
-    pub savings: String, // e.g. "~2x bandwidth", "~30% memory"
+    pub savings: String,       // e.g. "~2x bandwidth", "~30% memory"
     pub requires: Vec<String>, // capability strings
 }
 
@@ -202,7 +229,11 @@ impl Ontology {
                 score: edge_score,
             });
         }
-        out.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(core::cmp::Ordering::Equal));
+        out.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(core::cmp::Ordering::Equal)
+        });
         out
     }
 
@@ -216,43 +247,81 @@ impl Ontology {
     /// (e.g. `"strategy."`, `"hardware.nvidia."`). Useful for agent menus.
     pub fn ids_with_prefix(&self, prefix: &str) -> Vec<Id> {
         let mut v = Vec::new();
-        v.extend(self.hardware.keys().filter(|i| i.0.starts_with(prefix)).cloned());
-        v.extend(self.workloads.keys().filter(|i| i.0.starts_with(prefix)).cloned());
-        v.extend(self.strategies.keys().filter(|i| i.0.starts_with(prefix)).cloned());
-        v.extend(self.optimizations.keys().filter(|i| i.0.starts_with(prefix)).cloned());
+        v.extend(
+            self.hardware
+                .keys()
+                .filter(|i| i.0.starts_with(prefix))
+                .cloned(),
+        );
+        v.extend(
+            self.workloads
+                .keys()
+                .filter(|i| i.0.starts_with(prefix))
+                .cloned(),
+        );
+        v.extend(
+            self.strategies
+                .keys()
+                .filter(|i| i.0.starts_with(prefix))
+                .cloned(),
+        );
+        v.extend(
+            self.optimizations
+                .keys()
+                .filter(|i| i.0.starts_with(prefix))
+                .cloned(),
+        );
         v
     }
 
     /// Hardware filtered by tag (e.g. `"datacenter"`, `"unified-memory"`).
-    pub fn hardware_by_tag<'a>(&'a self, tag: &'a str) -> impl Iterator<Item = &'a HardwareNode> + 'a {
-        self.hardware.values().filter(move |h| h.tags.iter().any(|t| t == tag))
+    pub fn hardware_by_tag<'a>(
+        &'a self,
+        tag: &'a str,
+    ) -> impl Iterator<Item = &'a HardwareNode> + 'a {
+        self.hardware
+            .values()
+            .filter(move |h| h.tags.iter().any(|t| t == tag))
     }
 
     /// Strategies that target a given backend.
-    pub fn strategies_for_backend<'a>(&'a self, backend: BackendKind)
-        -> impl Iterator<Item = &'a StrategyClass> + 'a
-    {
-        self.strategies.values().filter(move |s| s.backends.contains(&backend))
+    pub fn strategies_for_backend<'a>(
+        &'a self,
+        backend: BackendKind,
+    ) -> impl Iterator<Item = &'a StrategyClass> + 'a {
+        self.strategies
+            .values()
+            .filter(move |s| s.backends.contains(&backend))
     }
 
     /// Strategies that implement a given workload kind.
-    pub fn strategies_for_workload<'a>(&'a self, kind: WorkloadKind)
-        -> impl Iterator<Item = &'a StrategyClass> + 'a
-    {
+    pub fn strategies_for_workload<'a>(
+        &'a self,
+        kind: WorkloadKind,
+    ) -> impl Iterator<Item = &'a StrategyClass> + 'a {
         self.strategies.values().filter(move |s| {
             s.workloads.iter().any(|wid| {
-                self.workloads.get(wid).map(|w| w.kind == kind).unwrap_or(false)
+                self.workloads
+                    .get(wid)
+                    .map(|w| w.kind == kind)
+                    .unwrap_or(false)
             })
         })
     }
 
     /// Optimisations referenced by a strategy id, resolved through the index.
-    pub fn optimizations_of<'a>(&'a self, strategy: &Id)
-        -> impl Iterator<Item = &'a Optimization> + 'a
-    {
-        let opt_ids: Vec<Id> = self.strategies.get(strategy)
-            .map(|s| s.optimizations.clone()).unwrap_or_default();
-        opt_ids.into_iter().filter_map(move |id| self.optimizations.get(&id))
+    pub fn optimizations_of<'a>(
+        &'a self,
+        strategy: &Id,
+    ) -> impl Iterator<Item = &'a Optimization> + 'a {
+        let opt_ids: Vec<Id> = self
+            .strategies
+            .get(strategy)
+            .map(|s| s.optimizations.clone())
+            .unwrap_or_default();
+        opt_ids
+            .into_iter()
+            .filter_map(move |id| self.optimizations.get(&id))
     }
 
     /// All edges originating at `from` (any relation).
@@ -276,18 +345,28 @@ impl Ontology {
                 || self.optimizations.contains_key(id)
         };
         for e in &self.edges {
-            if !known(&e.from) { errs.push(format!("dangling edge.from: {}", e.from)); }
-            if !known(&e.to)   { errs.push(format!("dangling edge.to: {}",   e.to)); }
+            if !known(&e.from) {
+                errs.push(format!("dangling edge.from: {}", e.from));
+            }
+            if !known(&e.to) {
+                errs.push(format!("dangling edge.to: {}", e.to));
+            }
         }
         for s in self.strategies.values() {
             for w in &s.workloads {
                 if !self.workloads.contains_key(w) {
-                    errs.push(format!("strategy {} references unknown workload {}", s.id, w));
+                    errs.push(format!(
+                        "strategy {} references unknown workload {}",
+                        s.id, w
+                    ));
                 }
             }
             for o in &s.optimizations {
                 if !self.optimizations.contains_key(o) {
-                    errs.push(format!("strategy {} references unknown optimization {}", s.id, o));
+                    errs.push(format!(
+                        "strategy {} references unknown optimization {}",
+                        s.id, o
+                    ));
                 }
             }
         }
@@ -356,7 +435,10 @@ mod tests {
         let o = Ontology::global();
         let recs = o.recommend(WorkloadKind::FlashAttention, "hardware.nvidia.h100");
         assert!(!recs.is_empty());
-        assert!(recs[0].id.0.contains("flashattn.v3"),
-            "expected FA-v3 to rank first on H100, got {:?}", recs[0].id);
+        assert!(
+            recs[0].id.0.contains("flashattn.v3"),
+            "expected FA-v3 to rank first on H100, got {:?}",
+            recs[0].id
+        );
     }
 }

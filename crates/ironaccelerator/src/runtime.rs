@@ -2,8 +2,8 @@
 //! routes a [`Workload`] to a `(backend, device, strategy)` tuple.
 
 use ironaccelerator_core::{
-    Backend, BackendKind, BackendRegistry, DeviceDescriptor, Error, Result, Strategy,
-    StrategyHint, Workload,
+    Backend, BackendKind, BackendRegistry, DeviceDescriptor, Error, Result, Strategy, StrategyHint,
+    Workload,
 };
 
 pub struct Runtime {
@@ -22,8 +22,11 @@ impl Runtime {
     pub fn new() -> Self {
         let mut registry = BackendRegistry::new();
 
-        #[cfg(feature = "cuda")]
-        ironaccelerator_cuda::register(&mut registry);
+        // NOTE: ironaccelerator-cuda is intentionally NOT registered here.
+        // The CUDA crate is a low-level hardware-agnostic interface (a cudarc
+        // drop-in replacement); it doesn't implement workload kernels or
+        // planners, so it has no `Backend` impl. Use the CUDA crate directly
+        // via `ironaccelerator_cuda::drv` / `cudarc_compat`.
         #[cfg(feature = "rocm")]
         ironaccelerator_rocm::register(&mut registry);
         #[cfg(feature = "metal")]
@@ -46,7 +49,9 @@ impl Runtime {
         Self { registry }
     }
 
-    pub fn registry(&self) -> &BackendRegistry { &self.registry }
+    pub fn registry(&self) -> &BackendRegistry {
+        &self.registry
+    }
 
     /// Enumerate every visible device across every available backend.
     pub fn devices(&self) -> Vec<DeviceDescriptor> {
@@ -68,7 +73,8 @@ impl Runtime {
         let backends: Vec<&'static dyn Backend> = if hint.prefer_backends.is_empty() {
             self.registry.available().collect()
         } else {
-            hint.prefer_backends.iter()
+            hint.prefer_backends
+                .iter()
                 .filter_map(|k| self.registry.get(*k).filter(|b| b.is_available()))
                 .collect()
         };
@@ -77,7 +83,9 @@ impl Runtime {
             let devs = b.enumerate().unwrap_or_default();
             for d in devs {
                 let score = b.score(d.id.ordinal, workload);
-                if score <= 0.0 { continue; }
+                if score <= 0.0 {
+                    continue;
+                }
                 let strategy = b.plan(d.id.ordinal, workload)?;
                 let candidate = Plan {
                     backend: b.kind(),
@@ -96,8 +104,12 @@ impl Runtime {
 }
 
 impl Default for Runtime {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Convenience: build a runtime with every compiled-in backend registered.
-pub fn init() -> Runtime { Runtime::new() }
+pub fn init() -> Runtime {
+    Runtime::new()
+}

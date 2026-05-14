@@ -5,9 +5,15 @@ use ironaccelerator_core::*;
 struct DummyBackend;
 
 impl Backend for DummyBackend {
-    fn kind(&self) -> BackendKind { BackendKind::Cpu }
-    fn is_available(&self) -> bool { true }
-    fn enumerate(&self) -> Result<Vec<DeviceDescriptor>> { Ok(Vec::new()) }
+    fn kind(&self) -> BackendKind {
+        BackendKind::Cpu
+    }
+    fn is_available(&self) -> bool {
+        true
+    }
+    fn enumerate(&self) -> Result<Vec<DeviceDescriptor>> {
+        Ok(Vec::new())
+    }
     fn capabilities(&self, _: u32) -> Result<CapabilityFlags> {
         Ok(CapabilityFlags::FP32)
     }

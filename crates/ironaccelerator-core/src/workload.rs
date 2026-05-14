@@ -7,10 +7,10 @@
 
 use crate::dtype::DType;
 
-#[cfg(feature = "std")]
-use std::{string::String, vec::Vec};
 #[cfg(not(feature = "std"))]
 use alloc::{string::String, vec::Vec};
+#[cfg(feature = "std")]
+use std::{string::String, vec::Vec};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -39,10 +39,10 @@ pub enum WorkloadKind {
     Conv3d,
     DepthwiseConv,
     // ---- Attention ------------------------------------------------------
-    Attention,            // standard MHA
-    FlashAttention,       // memory-efficient
-    PagedAttention,       // vLLM-style KV-cache
-    Mamba,                // SSM
+    Attention,      // standard MHA
+    FlashAttention, // memory-efficient
+    PagedAttention, // vLLM-style KV-cache
+    Mamba,          // SSM
     // ---- Reductions -----------------------------------------------------
     Reduce,
     Softmax,
@@ -130,8 +130,7 @@ impl Workload {
             shape: WorkloadShape::matmul(m, n, k),
             input_dtype: dt,
             output_dtype: dt,
-            accum_dtype: if matches!(dt, DType::F16 | DType::Bf16 | DType::F8E4M3 | DType::F8E5M2)
-            {
+            accum_dtype: if matches!(dt, DType::F16 | DType::Bf16 | DType::F8E4M3 | DType::F8E5M2) {
                 DType::F32
             } else {
                 dt

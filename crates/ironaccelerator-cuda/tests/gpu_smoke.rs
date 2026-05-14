@@ -135,12 +135,8 @@ fn raw_driver_parity_memset_and_copy() {
 
     let mut dst = vec![0u32; N];
     unsafe {
-        let r = (fns.cuMemcpyDtoHAsync_v2)(
-            dst.as_mut_ptr() as *mut c_void,
-            ptr,
-            bytes,
-            stream.raw(),
-        );
+        let r =
+            (fns.cuMemcpyDtoHAsync_v2)(dst.as_mut_ptr() as *mut c_void, ptr, bytes, stream.raw());
         assert!(r.is_ok(), "raw D2H failed: {r:?}");
     }
     stream.synchronize().unwrap();
@@ -163,8 +159,10 @@ fn many_streams_in_flight() {
     let host: Vec<u8> = (0..N).map(|i| (i & 0xff) as u8).collect();
 
     let streams: Vec<_> = (0..S).map(|_| Stream::new(dev.clone()).unwrap()).collect();
-    let mut bufs: Vec<DeviceBuf<u8>> =
-        streams.iter().map(|s| DeviceBuf::alloc(s.clone(), N).unwrap()).collect();
+    let mut bufs: Vec<DeviceBuf<u8>> = streams
+        .iter()
+        .map(|s| DeviceBuf::alloc(s.clone(), N).unwrap())
+        .collect();
 
     for b in bufs.iter_mut() {
         b.copy_from_host(&host).unwrap();

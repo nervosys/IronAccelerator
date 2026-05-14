@@ -22,8 +22,12 @@ pub struct NvtxFns {
 }
 
 fn candidates() -> &'static [&'static str] {
-    &["libnvToolsExt.so.1", "libnvToolsExt.so",
-      "nvToolsExt64_1.dll", "nvToolsExt.dll"]
+    &[
+        "libnvToolsExt.so.1",
+        "libnvToolsExt.so",
+        "nvToolsExt64_1.dll",
+        "nvToolsExt.dll",
+    ]
 }
 
 static LIB: OnceLock<Library> = OnceLock::new();
@@ -42,5 +46,10 @@ static FNS: LazyLock<Result<NvtxFns, LoadError>> = LazyLock::new(|| {
     }
 });
 
-pub fn fns() -> Result<&'static NvtxFns, &'static LoadError> { FNS.as_ref() }
-pub fn is_available() -> bool { FNS.is_ok() }
+#[inline]
+pub fn fns() -> Result<&'static NvtxFns, &'static LoadError> {
+    FNS.as_ref()
+}
+pub fn is_available() -> bool {
+    FNS.is_ok()
+}

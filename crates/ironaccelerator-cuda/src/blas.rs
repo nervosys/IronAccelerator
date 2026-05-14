@@ -13,14 +13,22 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::Arc;
 
-pub use sys::{CublasComputeType as ComputeType, CublasOp as Op, CudaDataType as DType, CublasLtOrder as Order};
+pub use sys::{
+    CublasComputeType as ComputeType, CublasLtOrder as Order, CublasOp as Op, CudaDataType as DType,
+};
 
 fn fns() -> Result<&'static sys::CublasLtFns> {
-    sys::fns().map_err(|e| Error::Other(Box::leak(format!("cublasLt not available: {e}").into_boxed_str())))
+    sys::fns().map_err(|e| {
+        Error::Other(Box::leak(
+            format!("cublasLt not available: {e}").into_boxed_str(),
+        ))
+    })
 }
 
 fn check(_op: &'static str, s: sys::CublasStatus) -> Result<()> {
-    if s.is_ok() { Ok(()) } else {
+    if s.is_ok() {
+        Ok(())
+    } else {
         Err(Error::Backend {
             backend: ironaccelerator_core::BackendKind::Cuda,
             code: (s as u32) as i64,
@@ -43,11 +51,19 @@ impl BlasLt {
         device.bind()?;
         let f = fns()?;
         let mut h = sys::CublasLtHandle::default();
-        unsafe { check("cublasLtCreate", (f.cublasLtCreate)(&mut h))?; }
-        Ok(Arc::new(Self { handle: h, _device: device }))
+        unsafe {
+            check("cublasLtCreate", (f.cublasLtCreate)(&mut h))?;
+        }
+        Ok(Arc::new(Self {
+            handle: h,
+            _device: device,
+        }))
     }
 
-    #[inline] pub fn raw(&self) -> sys::CublasLtHandle { self.handle }
+    #[inline]
+    pub fn raw(&self) -> sys::CublasLtHandle {
+        self.handle
+    }
 
     pub fn version() -> Result<usize> {
         Ok(unsafe { (fns()?.cublasLtGetVersion)() })
@@ -57,7 +73,9 @@ impl BlasLt {
 impl Drop for BlasLt {
     fn drop(&mut self) {
         if let Ok(f) = fns() {
-            unsafe { let _ = (f.cublasLtDestroy)(self.handle); }
+            unsafe {
+                let _ = (f.cublasLtDestroy)(self.handle);
+            }
         }
     }
 }
@@ -72,7 +90,9 @@ pub fn handle_for(stream: &Arc<Stream>) -> Result<Arc<BlasLt>> {
     let ord = device.ordinal();
     {
         let g = HANDLES.lock();
-        if let Some(h) = g.get(&ord) { return Ok(h.clone()); }
+        if let Some(h) = g.get(&ord) {
+            return Ok(h.clone());
+        }
     }
     let h = BlasLt::new(device.clone())?;
     HANDLES.lock().insert(ord, h.clone());
@@ -81,7 +101,9 @@ pub fn handle_for(stream: &Arc<Stream>) -> Result<Arc<BlasLt>> {
 
 // ─── Matmul descriptor ──────────────────────────────────────────────────────
 
-pub struct MatmulDesc { raw: sys::CublasLtMatmulDesc }
+pub struct MatmulDesc {
+    raw: sys::CublasLtMatmulDesc,
+}
 
 unsafe impl Send for MatmulDesc {}
 unsafe impl Sync for MatmulDesc {}
@@ -90,8 +112,12 @@ impl MatmulDesc {
     pub fn new(compute: ComputeType, scale: DType) -> Result<Self> {
         let f = fns()?;
         let mut raw = sys::CublasLtMatmulDesc::default();
-        unsafe { check("cublasLtMatmulDescCreate",
-                       (f.cublasLtMatmulDescCreate)(&mut raw, compute, scale))?; }
+        unsafe {
+            check(
+                "cublasLtMatmulDescCreate",
+                (f.cublasLtMatmulDescCreate)(&mut raw, compute, scale),
+            )?;
+        }
         Ok(Self { raw })
     }
 
@@ -100,14 +126,24 @@ impl MatmulDesc {
         let ta = trans_a as u32;
         let tb = trans_b as u32;
         unsafe {
-            check("cublasLtMatmulDescSetAttribute(TransA)",
-                  (f.cublasLtMatmulDescSetAttribute)(
-                      self.raw, sys::CublasLtMatmulDescAttr::TransA,
-                      &ta as *const u32 as *const c_void, std::mem::size_of::<u32>()))?;
-            check("cublasLtMatmulDescSetAttribute(TransB)",
-                  (f.cublasLtMatmulDescSetAttribute)(
-                      self.raw, sys::CublasLtMatmulDescAttr::TransB,
-                      &tb as *const u32 as *const c_void, std::mem::size_of::<u32>()))?;
+            check(
+                "cublasLtMatmulDescSetAttribute(TransA)",
+                (f.cublasLtMatmulDescSetAttribute)(
+                    self.raw,
+                    sys::CublasLtMatmulDescAttr::TransA,
+                    &ta as *const u32 as *const c_void,
+                    std::mem::size_of::<u32>(),
+                ),
+            )?;
+            check(
+                "cublasLtMatmulDescSetAttribute(TransB)",
+                (f.cublasLtMatmulDescSetAttribute)(
+                    self.raw,
+                    sys::CublasLtMatmulDescAttr::TransB,
+                    &tb as *const u32 as *const c_void,
+                    std::mem::size_of::<u32>(),
+                ),
+            )?;
         }
         Ok(())
     }
@@ -116,10 +152,15 @@ impl MatmulDesc {
     pub fn set_epilogue_raw(&mut self, epi: u32) -> Result<()> {
         let f = fns()?;
         unsafe {
-            check("cublasLtMatmulDescSetAttribute(Epilogue)",
-                  (f.cublasLtMatmulDescSetAttribute)(
-                      self.raw, sys::CublasLtMatmulDescAttr::Epilogue,
-                      &epi as *const u32 as *const c_void, std::mem::size_of::<u32>()))
+            check(
+                "cublasLtMatmulDescSetAttribute(Epilogue)",
+                (f.cublasLtMatmulDescSetAttribute)(
+                    self.raw,
+                    sys::CublasLtMatmulDescAttr::Epilogue,
+                    &epi as *const u32 as *const c_void,
+                    std::mem::size_of::<u32>(),
+                ),
+            )
         }
     }
 
@@ -131,36 +172,53 @@ impl MatmulDesc {
         // SAFETY: `CublasLtMatmulDescAttr` is `#[repr(u32)]`; any in-range
         // discriminant is valid. The caller vouches for the raw attribute.
         let attr: sys::CublasLtMatmulDescAttr = std::mem::transmute(attr_raw);
-        check("cublasLtMatmulDescSetAttribute(raw)",
-              (f.cublasLtMatmulDescSetAttribute)(
-                  self.raw, attr,
-                  &value as *const u32 as *const c_void, std::mem::size_of::<u32>()))
+        check(
+            "cublasLtMatmulDescSetAttribute(raw)",
+            (f.cublasLtMatmulDescSetAttribute)(
+                self.raw,
+                attr,
+                &value as *const u32 as *const c_void,
+                std::mem::size_of::<u32>(),
+            ),
+        )
     }
 
     pub fn set_amax_d_pointer(&mut self, ptr: iron_cuda_sys::driver::CUdeviceptr) -> Result<()> {
         let f = fns()?;
         unsafe {
-            check("cublasLtMatmulDescSetAttribute(AmaxDPointer)",
-                  (f.cublasLtMatmulDescSetAttribute)(
-                      self.raw, sys::CublasLtMatmulDescAttr::AmaxDPointer,
-                      &ptr as *const _ as *const c_void, std::mem::size_of::<u64>()))
+            check(
+                "cublasLtMatmulDescSetAttribute(AmaxDPointer)",
+                (f.cublasLtMatmulDescSetAttribute)(
+                    self.raw,
+                    sys::CublasLtMatmulDescAttr::AmaxDPointer,
+                    &ptr as *const _ as *const c_void,
+                    std::mem::size_of::<u64>(),
+                ),
+            )
         }
     }
 
     pub fn set_bias_pointer(&mut self, ptr: iron_cuda_sys::driver::CUdeviceptr) -> Result<()> {
         let f = fns()?;
         unsafe {
-            check("cublasLtMatmulDescSetAttribute(BiasPointer)",
-                  (f.cublasLtMatmulDescSetAttribute)(
-                      self.raw, sys::CublasLtMatmulDescAttr::BiasPointer,
-                      &ptr as *const _ as *const c_void, std::mem::size_of::<u64>()))
+            check(
+                "cublasLtMatmulDescSetAttribute(BiasPointer)",
+                (f.cublasLtMatmulDescSetAttribute)(
+                    self.raw,
+                    sys::CublasLtMatmulDescAttr::BiasPointer,
+                    &ptr as *const _ as *const c_void,
+                    std::mem::size_of::<u64>(),
+                ),
+            )
         }
     }
 
     /// Set a device scale pointer (for FP8 delayed-scaling). `which` picks
     /// whether this is A, B, C, or D's scale.
     pub fn set_scale_pointer(
-        &mut self, which: ScaleTensor, ptr: iron_cuda_sys::driver::CUdeviceptr,
+        &mut self,
+        which: ScaleTensor,
+        ptr: iron_cuda_sys::driver::CUdeviceptr,
     ) -> Result<()> {
         let f = fns()?;
         let attr = match which {
@@ -170,30 +228,47 @@ impl MatmulDesc {
             ScaleTensor::D => sys::CublasLtMatmulDescAttr::ScaleD,
         };
         unsafe {
-            check("cublasLtMatmulDescSetAttribute(Scale)",
-                  (f.cublasLtMatmulDescSetAttribute)(
-                      self.raw, attr,
-                      &ptr as *const _ as *const c_void, std::mem::size_of::<u64>()))
+            check(
+                "cublasLtMatmulDescSetAttribute(Scale)",
+                (f.cublasLtMatmulDescSetAttribute)(
+                    self.raw,
+                    attr,
+                    &ptr as *const _ as *const c_void,
+                    std::mem::size_of::<u64>(),
+                ),
+            )
         }
     }
 
-    #[inline] pub fn raw(&self) -> sys::CublasLtMatmulDesc { self.raw }
+    #[inline]
+    pub fn raw(&self) -> sys::CublasLtMatmulDesc {
+        self.raw
+    }
 }
 
 impl Drop for MatmulDesc {
     fn drop(&mut self) {
         if let Ok(f) = fns() {
-            unsafe { let _ = (f.cublasLtMatmulDescDestroy)(self.raw); }
+            unsafe {
+                let _ = (f.cublasLtMatmulDescDestroy)(self.raw);
+            }
         }
     }
 }
 
 #[derive(Copy, Clone, Debug)]
-pub enum ScaleTensor { A, B, C, D }
+pub enum ScaleTensor {
+    A,
+    B,
+    C,
+    D,
+}
 
 // ─── Matrix layout ──────────────────────────────────────────────────────────
 
-pub struct MatrixLayout { raw: sys::CublasLtMatrixLayout }
+pub struct MatrixLayout {
+    raw: sys::CublasLtMatrixLayout,
+}
 
 unsafe impl Send for MatrixLayout {}
 unsafe impl Sync for MatrixLayout {}
@@ -203,8 +278,10 @@ impl MatrixLayout {
         let f = fns()?;
         let mut raw = sys::CublasLtMatrixLayout::default();
         unsafe {
-            check("cublasLtMatrixLayoutCreate",
-                  (f.cublasLtMatrixLayoutCreate)(&mut raw, dtype, rows, cols, ld))?;
+            check(
+                "cublasLtMatrixLayoutCreate",
+                (f.cublasLtMatrixLayoutCreate)(&mut raw, dtype, rows, cols, ld),
+            )?;
         }
         Ok(Self { raw })
     }
@@ -213,42 +290,64 @@ impl MatrixLayout {
         let f = fns()?;
         let v = order as u32;
         unsafe {
-            check("cublasLtMatrixLayoutSetAttribute(Order)",
-                  (f.cublasLtMatrixLayoutSetAttribute)(
-                      self.raw, sys::CublasLtMatrixLayoutAttr::Order,
-                      &v as *const _ as *const c_void, std::mem::size_of::<u32>()))
+            check(
+                "cublasLtMatrixLayoutSetAttribute(Order)",
+                (f.cublasLtMatrixLayoutSetAttribute)(
+                    self.raw,
+                    sys::CublasLtMatrixLayoutAttr::Order,
+                    &v as *const _ as *const c_void,
+                    std::mem::size_of::<u32>(),
+                ),
+            )
         }
     }
 
     pub fn set_batch(&mut self, count: i32, stride: i64) -> Result<()> {
         let f = fns()?;
         unsafe {
-            check("cublasLtMatrixLayoutSetAttribute(BatchCount)",
-                  (f.cublasLtMatrixLayoutSetAttribute)(
-                      self.raw, sys::CublasLtMatrixLayoutAttr::BatchCount,
-                      &count as *const _ as *const c_void, std::mem::size_of::<i32>()))?;
-            check("cublasLtMatrixLayoutSetAttribute(StridedBatchOffset)",
-                  (f.cublasLtMatrixLayoutSetAttribute)(
-                      self.raw, sys::CublasLtMatrixLayoutAttr::StridedBatchOffset,
-                      &stride as *const _ as *const c_void, std::mem::size_of::<i64>()))?;
+            check(
+                "cublasLtMatrixLayoutSetAttribute(BatchCount)",
+                (f.cublasLtMatrixLayoutSetAttribute)(
+                    self.raw,
+                    sys::CublasLtMatrixLayoutAttr::BatchCount,
+                    &count as *const _ as *const c_void,
+                    std::mem::size_of::<i32>(),
+                ),
+            )?;
+            check(
+                "cublasLtMatrixLayoutSetAttribute(StridedBatchOffset)",
+                (f.cublasLtMatrixLayoutSetAttribute)(
+                    self.raw,
+                    sys::CublasLtMatrixLayoutAttr::StridedBatchOffset,
+                    &stride as *const _ as *const c_void,
+                    std::mem::size_of::<i64>(),
+                ),
+            )?;
         }
         Ok(())
     }
 
-    #[inline] pub fn raw(&self) -> sys::CublasLtMatrixLayout { self.raw }
+    #[inline]
+    pub fn raw(&self) -> sys::CublasLtMatrixLayout {
+        self.raw
+    }
 }
 
 impl Drop for MatrixLayout {
     fn drop(&mut self) {
         if let Ok(f) = fns() {
-            unsafe { let _ = (f.cublasLtMatrixLayoutDestroy)(self.raw); }
+            unsafe {
+                let _ = (f.cublasLtMatrixLayoutDestroy)(self.raw);
+            }
         }
     }
 }
 
 // ─── Preference ─────────────────────────────────────────────────────────────
 
-pub struct Preference { raw: sys::CublasLtMatmulPreference }
+pub struct Preference {
+    raw: sys::CublasLtMatmulPreference,
+}
 
 unsafe impl Send for Preference {}
 unsafe impl Sync for Preference {}
@@ -257,8 +356,12 @@ impl Preference {
     pub fn new() -> Result<Self> {
         let f = fns()?;
         let mut raw = sys::CublasLtMatmulPreference::default();
-        unsafe { check("cublasLtMatmulPreferenceCreate",
-                       (f.cublasLtMatmulPreferenceCreate)(&mut raw))?; }
+        unsafe {
+            check(
+                "cublasLtMatmulPreferenceCreate",
+                (f.cublasLtMatmulPreferenceCreate)(&mut raw),
+            )?;
+        }
         Ok(Self { raw })
     }
 
@@ -268,20 +371,30 @@ impl Preference {
         // platforms `usize` matches; on 32-bit we still need a 8-byte write.
         let v: u64 = bytes as u64;
         unsafe {
-            check("cublasLtMatmulPreferenceSetAttribute(MaxWorkspaceBytes)",
-                  (f.cublasLtMatmulPreferenceSetAttribute)(
-                      self.raw, sys::CublasLtMatmulPrefAttr::MaxWorkspaceBytes,
-                      &v as *const u64 as *const c_void, std::mem::size_of::<u64>()))
+            check(
+                "cublasLtMatmulPreferenceSetAttribute(MaxWorkspaceBytes)",
+                (f.cublasLtMatmulPreferenceSetAttribute)(
+                    self.raw,
+                    sys::CublasLtMatmulPrefAttr::MaxWorkspaceBytes,
+                    &v as *const u64 as *const c_void,
+                    std::mem::size_of::<u64>(),
+                ),
+            )
         }
     }
 
-    #[inline] pub fn raw(&self) -> sys::CublasLtMatmulPreference { self.raw }
+    #[inline]
+    pub fn raw(&self) -> sys::CublasLtMatmulPreference {
+        self.raw
+    }
 }
 
 impl Drop for Preference {
     fn drop(&mut self) {
         if let Ok(f) = fns() {
-            unsafe { let _ = (f.cublasLtMatmulPreferenceDestroy)(self.raw); }
+            unsafe {
+                let _ = (f.cublasLtMatmulPreferenceDestroy)(self.raw);
+            }
         }
     }
 }
@@ -292,22 +405,36 @@ impl Drop for Preference {
 pub fn heuristic(
     blaslt: &BlasLt,
     desc: &MatmulDesc,
-    a: &MatrixLayout, b: &MatrixLayout, c: &MatrixLayout, d: &MatrixLayout,
+    a: &MatrixLayout,
+    b: &MatrixLayout,
+    c: &MatrixLayout,
+    d: &MatrixLayout,
     pref: &Preference,
 ) -> Result<sys::CublasLtMatmulHeuristicResult> {
     let f = fns()?;
     let mut out = sys::CublasLtMatmulHeuristicResult::default();
     let mut returned: i32 = 0;
     unsafe {
-        check("cublasLtMatmulAlgoGetHeuristic",
-              (f.cublasLtMatmulAlgoGetHeuristic)(
-                  blaslt.handle, desc.raw,
-                  a.raw, b.raw, c.raw, d.raw,
-                  pref.raw,
-                  1, &mut out, &mut returned))?;
+        check(
+            "cublasLtMatmulAlgoGetHeuristic",
+            (f.cublasLtMatmulAlgoGetHeuristic)(
+                blaslt.handle,
+                desc.raw,
+                a.raw,
+                b.raw,
+                c.raw,
+                d.raw,
+                pref.raw,
+                1,
+                &mut out,
+                &mut returned,
+            ),
+        )?;
     }
     if returned == 0 {
-        return Err(Error::Other("cublasLtMatmulAlgoGetHeuristic: no algorithms returned"));
+        return Err(Error::Other(
+            "cublasLtMatmulAlgoGetHeuristic: no algorithms returned",
+        ));
     }
     Ok(out)
 }
@@ -324,34 +451,49 @@ pub fn heuristic(
 pub unsafe fn matmul(
     blaslt: &BlasLt,
     desc: &MatmulDesc,
-    alpha: &[u8], beta: &[u8],
-    a_ptr: iron_cuda_sys::driver::CUdeviceptr, a_layout: &MatrixLayout,
-    b_ptr: iron_cuda_sys::driver::CUdeviceptr, b_layout: &MatrixLayout,
-    c_ptr: iron_cuda_sys::driver::CUdeviceptr, c_layout: &MatrixLayout,
-    d_ptr: iron_cuda_sys::driver::CUdeviceptr, d_layout: &MatrixLayout,
+    alpha: &[u8],
+    beta: &[u8],
+    a_ptr: iron_cuda_sys::driver::CUdeviceptr,
+    a_layout: &MatrixLayout,
+    b_ptr: iron_cuda_sys::driver::CUdeviceptr,
+    b_layout: &MatrixLayout,
+    c_ptr: iron_cuda_sys::driver::CUdeviceptr,
+    c_layout: &MatrixLayout,
+    d_ptr: iron_cuda_sys::driver::CUdeviceptr,
+    d_layout: &MatrixLayout,
     algo: Option<&sys::CublasLtMatmulHeuristicResult>,
     workspace: Option<&mut DeviceBuf<u8>>,
     stream: &Stream,
 ) -> Result<()> {
     let f = fns()?;
-    let algo_ptr = algo.map(|a| a.algo.as_ptr() as *const c_void).unwrap_or(std::ptr::null());
+    let algo_ptr = algo
+        .map(|a| a.algo.as_ptr() as *const c_void)
+        .unwrap_or(std::ptr::null());
     let (ws_ptr, ws_bytes) = match workspace {
         Some(w) => (w.device_ptr() as *mut c_void, w.byte_len()),
         None => (std::ptr::null_mut(), 0),
     };
-    check("cublasLtMatmul",
-          (f.cublasLtMatmul)(
-              blaslt.handle, desc.raw,
-              alpha.as_ptr() as *const c_void,
-              a_ptr as *const c_void, a_layout.raw,
-              b_ptr as *const c_void, b_layout.raw,
-              beta.as_ptr() as *const c_void,
-              c_ptr as *const c_void, c_layout.raw,
-              d_ptr as *mut c_void,   d_layout.raw,
-              algo_ptr,
-              ws_ptr, ws_bytes,
-              stream.raw(),
-          ))
+    check(
+        "cublasLtMatmul",
+        (f.cublasLtMatmul)(
+            blaslt.handle,
+            desc.raw,
+            alpha.as_ptr() as *const c_void,
+            a_ptr as *const c_void,
+            a_layout.raw,
+            b_ptr as *const c_void,
+            b_layout.raw,
+            beta.as_ptr() as *const c_void,
+            c_ptr as *const c_void,
+            c_layout.raw,
+            d_ptr as *mut c_void,
+            d_layout.raw,
+            algo_ptr,
+            ws_ptr,
+            ws_bytes,
+            stream.raw(),
+        ),
+    )
 }
 
 // ─── Convenience: planner epilogue tag (unchanged from stub) ────────────────
@@ -369,7 +511,12 @@ mod tests {
     use super::*;
     #[test]
     fn epilogue_lookup() {
-        assert_eq!(epilogue_for(&Strategy::BlasLt { epilogue: "bias-gelu" }), "bias-gelu");
+        assert_eq!(
+            epilogue_for(&Strategy::BlasLt {
+                epilogue: "bias-gelu"
+            }),
+            "bias-gelu"
+        );
         assert_eq!(epilogue_for(&Strategy::Reference), "none");
     }
 }

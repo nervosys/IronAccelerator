@@ -5,7 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "High-performance, agentic-first acceleration library spanning CUDA, ROCm, Metal, and Qualcomm NPUs"
+repository.workspace = true
+homepage.workspace = true
+description = "Facade crate for IronAccelerator — re-exports the per-backend driver wrappers and a cross-backend Runtime/planner."
+keywords = ["cuda", "rocm", "gpu", "accelerator", "cudarc"]
+categories = ["api-bindings", "hardware-support"]
+documentation = "https://docs.rs/ironaccelerator"
 readme = "../../README.md"
 
 [dependencies]

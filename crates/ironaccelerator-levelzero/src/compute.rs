@@ -8,15 +8,14 @@
 use core::ffi::c_void;
 
 use crate::drv::{
-    self, Loaded, ZeCommandListDesc, ZeCommandListHandle, ZeCommandQueueDesc,
-    ZeCommandQueueHandle, ZeContextDesc, ZeContextHandle, ZeDeviceHandle,
-    ZeDeviceMemAllocDesc, ZeDriverHandle, ZeGroupCount, ZeHostMemAllocDesc, ZeKernelDesc,
-    ZeKernelHandle, ZeModuleDesc, ZeModuleHandle,
+    self, Loaded, ZeCommandListDesc, ZeCommandListHandle, ZeCommandQueueDesc, ZeCommandQueueHandle,
+    ZeContextDesc, ZeContextHandle, ZeDeviceHandle, ZeDeviceMemAllocDesc, ZeDriverHandle,
+    ZeGroupCount, ZeHostMemAllocDesc, ZeKernelDesc, ZeKernelHandle, ZeModuleDesc, ZeModuleHandle,
     ZE_COMMAND_QUEUE_MODE_DEFAULT, ZE_COMMAND_QUEUE_PRIORITY_NORMAL, ZE_MODULE_FORMAT_IL_SPIRV,
-    ZE_RESULT_SUCCESS, ZE_STRUCTURE_TYPE_COMMAND_LIST_DESC,
-    ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC, ZE_STRUCTURE_TYPE_CONTEXT_DESC,
-    ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC, ZE_STRUCTURE_TYPE_HOST_MEM_ALLOC_DESC,
-    ZE_STRUCTURE_TYPE_KERNEL_DESC, ZE_STRUCTURE_TYPE_MODULE_DESC,
+    ZE_RESULT_SUCCESS, ZE_STRUCTURE_TYPE_COMMAND_LIST_DESC, ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC,
+    ZE_STRUCTURE_TYPE_CONTEXT_DESC, ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC,
+    ZE_STRUCTURE_TYPE_HOST_MEM_ALLOC_DESC, ZE_STRUCTURE_TYPE_KERNEL_DESC,
+    ZE_STRUCTURE_TYPE_MODULE_DESC,
 };
 
 pub struct Context {
@@ -80,8 +79,7 @@ impl Context {
                 command_queue_group_ordinal: queue_ordinal,
                 flags: 0,
             };
-            if (l.ze_command_list_create)(context, device, &l_desc, &mut list)
-                != ZE_RESULT_SUCCESS
+            if (l.ze_command_list_create)(context, device, &l_desc, &mut list) != ZE_RESULT_SUCCESS
             {
                 (l.ze_command_queue_destroy)(queue);
                 (l.ze_context_destroy)(context);
@@ -200,11 +198,7 @@ impl Context {
     /// Append a kernel launch to `self.list`, close + execute the list,
     /// and wait for the queue to drain. One-shot pattern — higher layers
     /// will want to reuse command lists.
-    pub fn launch(
-        &self,
-        kernel: &Kernel,
-        group_count: [u32; 3],
-    ) -> Result<(), u32> {
+    pub fn launch(&self, kernel: &Kernel, group_count: [u32; 3]) -> Result<(), u32> {
         let gc = ZeGroupCount {
             group_count_x: group_count[0],
             group_count_y: group_count[1],
@@ -219,9 +213,13 @@ impl Context {
                 0,
                 core::ptr::null_mut(),
             );
-            if r != ZE_RESULT_SUCCESS { return Err(r); }
+            if r != ZE_RESULT_SUCCESS {
+                return Err(r);
+            }
             let r = (self.l.ze_command_list_close)(self.list);
-            if r != ZE_RESULT_SUCCESS { return Err(r); }
+            if r != ZE_RESULT_SUCCESS {
+                return Err(r);
+            }
             let lists = [self.list];
             let r = (self.l.ze_command_queue_execute_command_lists)(
                 self.queue,
@@ -229,9 +227,13 @@ impl Context {
                 lists.as_ptr(),
                 core::ptr::null_mut(),
             );
-            if r != ZE_RESULT_SUCCESS { return Err(r); }
+            if r != ZE_RESULT_SUCCESS {
+                return Err(r);
+            }
             let r = (self.l.ze_command_queue_synchronize)(self.queue, u64::MAX);
-            if r != ZE_RESULT_SUCCESS { return Err(r); }
+            if r != ZE_RESULT_SUCCESS {
+                return Err(r);
+            }
             let _ = (self.l.ze_command_list_reset)(self.list);
         }
         Ok(())
@@ -257,7 +259,9 @@ pub struct DeviceBuffer {
 
 impl Drop for DeviceBuffer {
     fn drop(&mut self) {
-        unsafe { (self.l.ze_mem_free)(self.context, self.ptr); }
+        unsafe {
+            (self.l.ze_mem_free)(self.context, self.ptr);
+        }
     }
 }
 
@@ -282,13 +286,18 @@ impl Module {
                 return None;
             }
         }
-        Some(Kernel { l: self.l, kernel: k })
+        Some(Kernel {
+            l: self.l,
+            kernel: k,
+        })
     }
 }
 
 impl Drop for Module {
     fn drop(&mut self) {
-        unsafe { (self.l.ze_module_destroy)(self.module); }
+        unsafe {
+            (self.l.ze_module_destroy)(self.module);
+        }
     }
 }
 
@@ -328,7 +337,9 @@ impl Kernel {
 
 impl Drop for Kernel {
     fn drop(&mut self) {
-        unsafe { (self.l.ze_kernel_destroy)(self.kernel); }
+        unsafe {
+            (self.l.ze_kernel_destroy)(self.kernel);
+        }
     }
 }
 
@@ -346,8 +357,7 @@ unsafe fn locate_device(l: &Loaded, target: u32) -> Option<(ZeDriverHandle, ZeDe
     let mut seen = 0u32;
     for driver in drivers.into_iter().take(driver_count as usize) {
         let mut dev_count: u32 = 0;
-        if (l.ze_device_get)(driver, &mut dev_count, core::ptr::null_mut())
-            != ZE_RESULT_SUCCESS
+        if (l.ze_device_get)(driver, &mut dev_count, core::ptr::null_mut()) != ZE_RESULT_SUCCESS
             || dev_count == 0
         {
             continue;

@@ -46,7 +46,7 @@
     clippy::missing_safety_doc,
     clippy::too_many_arguments,
     clippy::type_complexity,
-    clippy::missing_transmute_annotations,
+    clippy::missing_transmute_annotations
 )]
 
 pub mod cublas;

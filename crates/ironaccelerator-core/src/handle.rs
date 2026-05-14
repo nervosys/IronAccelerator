@@ -18,7 +18,10 @@ impl<Tag> Handle<Tag> {
     /// `ptr` must be a valid handle of the right vendor type.
     #[inline(always)]
     pub const unsafe fn from_raw(ptr: NonNull<()>) -> Self {
-        Self { raw: ptr, _t: PhantomData }
+        Self {
+            raw: ptr,
+            _t: PhantomData,
+        }
     }
 
     #[inline(always)]

@@ -20,7 +20,11 @@ pub enum LoadError {
     LibraryNotFound { tried: Vec<String>, last: String },
     /// Library loaded but a required symbol is missing — likely driver is
     /// older than the CUDA version this crate binds (13.2).
-    SymbolMissing { lib: &'static str, symbol: &'static str, err: String },
+    SymbolMissing {
+        lib: &'static str,
+        symbol: &'static str,
+        err: String,
+    },
 }
 
 impl std::fmt::Display for LoadError {
@@ -75,7 +79,9 @@ pub fn try_load(candidates: &[&str]) -> LoaderResult<Library> {
 /// # Safety
 /// Caller asserts the symbol has the declared signature.
 pub unsafe fn sym<T: Copy>(
-    lib: &Library, library_name: &'static str, symbol: &'static str,
+    lib: &Library,
+    library_name: &'static str,
+    symbol: &'static str,
 ) -> LoaderResult<T> {
     // libloading::Library::get requires a NUL-terminated byte slice on both
     // POSIX (CStr) and Windows (GetProcAddress). `str::as_bytes` omits the
@@ -88,7 +94,8 @@ pub unsafe fn sym<T: Copy>(
         match r {
             Ok(s) => Ok(*s),
             Err(e) => Err(LoadError::SymbolMissing {
-                lib: library_name, symbol,
+                lib: library_name,
+                symbol,
                 err: format!("{e}"),
             }),
         }
@@ -116,8 +123,11 @@ mod tests {
 
     #[test]
     fn nonexistent_library_reports_all_attempts() {
-        let err = try_load(&["definitely-not-a-real-lib-ironcuda.so", "ironcuda.dll.unreal"])
-            .unwrap_err();
+        let err = try_load(&[
+            "definitely-not-a-real-lib-ironcuda.so",
+            "ironcuda.dll.unreal",
+        ])
+        .unwrap_err();
         match err {
             LoadError::LibraryNotFound { tried, .. } => assert_eq!(tried.len(), 2),
             _ => panic!("wrong error variant"),

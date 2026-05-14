@@ -23,13 +23,7 @@ void main() {
 
 /// Compile + dispatch a SAXPY across `n` elements. The caller owns `x`
 /// and `y`; they must already hold `n * 4` bytes each.
-pub fn axpy_f32(
-    gl: &glow::Context,
-    x: &Ssbo,
-    y: &Ssbo,
-    alpha: f32,
-    n: u32,
-) -> Result<(), String> {
+pub fn axpy_f32(gl: &glow::Context, x: &Ssbo, y: &Ssbo, alpha: f32, n: u32) -> Result<(), String> {
     let program = Program::from_glsl(gl, SAXPY_GLSL)?;
     unsafe {
         gl.use_program(Some(program.id));
@@ -40,7 +34,7 @@ pub fn axpy_f32(
     }
     x.bind(gl, 0);
     y.bind(gl, 1);
-    let groups = [(n + 63) / 64, 1, 1];
+    let groups = [n.div_ceil(64), 1, 1];
     dispatch(gl, &program, groups);
     program.destroy(gl);
     Ok(())

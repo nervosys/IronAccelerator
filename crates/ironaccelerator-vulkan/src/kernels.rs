@@ -51,11 +51,15 @@ pub enum KernelError {
 }
 
 impl From<ShaderError> for KernelError {
-    fn from(e: ShaderError) -> Self { KernelError::Shader(e) }
+    fn from(e: ShaderError) -> Self {
+        KernelError::Shader(e)
+    }
 }
 
 impl From<ash::vk::Result> for KernelError {
-    fn from(e: ash::vk::Result) -> Self { KernelError::Vulkan(e) }
+    fn from(e: ash::vk::Result) -> Self {
+        KernelError::Vulkan(e)
+    }
 }
 
 /// Compile the SAXPY kernel and dispatch across `n` elements. Caller
@@ -71,7 +75,7 @@ pub fn axpy_f32(
     let spirv = wgsl_to_spirv(SAXPY_WGSL)?;
     let entry = std::ffi::CString::new("main").unwrap();
     let pipeline = ComputePipeline::new(ctx, &spirv, &entry, &[x, y, params])?;
-    let groups = [(n + 63) / 64, 1, 1];
+    let groups = [n.div_ceil(64), 1, 1];
     ctx.dispatch(&pipeline, groups)?;
     Ok(())
 }
@@ -89,7 +93,7 @@ pub fn gemm_f32(
     let spirv = wgsl_to_spirv(GEMM_F32_WGSL)?;
     let entry = std::ffi::CString::new("main").unwrap();
     let pipeline = ComputePipeline::new(ctx, &spirv, &entry, &[a, b, c, dims])?;
-    let groups = [(n + 15) / 16, (m + 15) / 16, 1];
+    let groups = [n.div_ceil(16), m.div_ceil(16), 1];
     ctx.dispatch(&pipeline, groups)?;
     Ok(())
 }

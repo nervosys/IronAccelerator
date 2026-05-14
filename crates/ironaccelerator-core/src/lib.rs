@@ -28,8 +28,8 @@ pub mod kernel;
 pub mod memory;
 pub mod quant;
 pub mod simd;
-pub mod stream;
 pub mod strategy;
+pub mod stream;
 pub mod tensor;
 pub mod workload;
 
@@ -40,7 +40,7 @@ pub use dtype::{DType, NumericClass};
 pub use error::{Error, Result};
 pub use kernel::{KernelLaunch, LaunchDims};
 pub use memory::{Allocation, MemoryKind, MemoryPool};
-pub use stream::{Event, Stream};
 pub use strategy::{Strategy, StrategyHint, StrategyScore};
+pub use stream::{Event, Stream};
 pub use tensor::{Layout, TensorDesc};
 pub use workload::{Precision, Workload, WorkloadKind, WorkloadShape};
