@@ -60,12 +60,41 @@
 use crate::drv::{DeviceBuf, Repr, Result, Stream, ZeroBits};
 use iron_cuda_sys::driver::CUdeviceptr;
 use parking_lot::Mutex;
-use std::cell::RefCell;
+use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use thread_local::ThreadLocal;
+
+/// Per-thread storage cell. `UnsafeCell` skips `RefCell`'s borrow-counter
+/// check on the hot path; the `thread_local::ThreadLocal` outside guarantees
+/// only one thread ever reaches a given `ThreadLocalCell`, so the unchecked
+/// access is sound.
+#[repr(transparent)]
+struct ThreadLocalCell<T>(UnsafeCell<T>);
+
+// SAFETY: `ThreadLocal<ThreadLocalCell<T>>` hands out one cell per thread;
+// no two threads share the same cell. Adding `Sync` to the cell type itself
+// is the contract we owe `thread_local`'s `get_or`.
+unsafe impl<T: Send> Sync for ThreadLocalCell<T> {}
+
+impl<T> ThreadLocalCell<T> {
+    #[inline]
+    fn new(v: T) -> Self {
+        Self(UnsafeCell::new(v))
+    }
+    /// # Safety
+    /// Caller must guarantee no other reference to the inner T exists. The
+    /// `thread_local::ThreadLocal` containing this cell already guarantees
+    /// single-thread access; not aliasing within the thread is the caller's
+    /// duty (we only ever do one short-lived `&mut` per alloc/free).
+    #[inline]
+    #[allow(clippy::mut_from_ref)] // this is the entire point of UnsafeCell.
+    unsafe fn get_mut(&self) -> &mut T {
+        unsafe { &mut *self.0.get() }
+    }
+}
 
 /// Sentinel `bucket_idx` value meaning "this allocation bypassed the pool;
 /// drop it back to the driver directly."
@@ -132,7 +161,7 @@ pub struct MemPool {
     /// from a thread for this pool initialises the thread's `FrontCache`.
     /// Hits skip the mutex entirely; misses fall through to the shared
     /// back cache below.
-    front: ThreadLocal<RefCell<FrontCache>>,
+    front: ThreadLocal<ThreadLocalCell<FrontCache>>,
     buckets: [Mutex<Vec<CUdeviceptr>>; NUM_BUCKETS],
     max_per_bucket: usize,
 }
@@ -165,9 +194,20 @@ impl MemPool {
     }
 
     /// Get or initialise the calling thread's front cache for this pool.
+    /// Returns a mutable reference; safe because the `ThreadLocal` storage
+    /// hands out one cell per thread, so this `&mut` cannot alias across
+    /// threads, and within a thread we only hold it for the body of one
+    /// alloc/free.
     #[inline]
-    fn front_cache(&self) -> &RefCell<FrontCache> {
-        self.front.get_or(|| RefCell::new(FrontCache::new()))
+    #[allow(clippy::mut_from_ref)]
+    fn front_cache(&self) -> &mut FrontCache {
+        let cell = self
+            .front
+            .get_or(|| ThreadLocalCell::new(FrontCache::new()));
+        // SAFETY: this cell is unique to the calling thread (thread_local
+        // invariant). We hold the returned `&mut` for the duration of the
+        // alloc/free body only, no aliasing.
+        unsafe { cell.get_mut() }
     }
 
     /// Allocate `len` elements of `T`. Pops a cached block of the matching
@@ -184,9 +224,9 @@ impl MemPool {
         if let Some(idx) = bucket_for_bytes(bytes) {
             let bucket_capacity = bucket_bytes(idx);
 
-            // Tier 1 — thread-local front cache. No lock at all.
+            // Tier 1 — thread-local front cache. No lock, no borrow check.
             {
-                let mut front = self.front_cache().borrow_mut();
+                let front = self.front_cache();
                 let (flen, slots) = &mut front.buckets[idx];
                 if *flen > 0 {
                     *flen -= 1;
@@ -263,9 +303,10 @@ impl MemPool {
     /// Takes `&mut self` because draining the per-thread front caches
     /// requires exclusive access to the `ThreadLocal` storage.
     pub fn shrink(&mut self) {
-        // Drain every thread's front cache.
+        // Drain every thread's front cache. We hold `&mut self` so no
+        // other thread can be mid-access through `front_cache`.
         for front_cell in self.front.iter_mut() {
-            let front = front_cell.get_mut();
+            let front: &mut FrontCache = front_cell.0.get_mut();
             for (idx, (flen, slots)) in front.buckets.iter_mut().enumerate() {
                 let capacity = bucket_bytes(idx);
                 for ptr in &slots[..*flen as usize] {
@@ -354,7 +395,7 @@ impl<'p, T: Repr> Drop for PooledBuf<'p, T> {
     fn drop(&mut self) {
         // SAFETY: ManuallyDrop::take leaves `self.inner` invalid; nothing
         // accesses it past this point because `drop` is the last call.
-        let buf = unsafe { ManuallyDrop::take(&mut self.inner) };
+        let mut buf = unsafe { ManuallyDrop::take(&mut self.inner) };
 
         if self.bucket_idx == NO_BUCKET {
             // Bypassed allocation — let the buf's Drop free via the driver.
@@ -362,16 +403,19 @@ impl<'p, T: Repr> Drop for PooledBuf<'p, T> {
             return;
         }
         let idx = self.bucket_idx as usize;
-        let ptr = buf.device_ptr();
 
-        // Tier 1 — push to the thread-local front cache. No lock.
+        // Tier 1 — push to the thread-local front cache. No lock, no borrow check.
+        //
+        // We `detach_ptr` instead of `mem::forget(buf)` so the `Arc<Stream>`
+        // inside the buffer still gets its refcount decrement — otherwise
+        // every alloc/free cycle would leak one `Arc::clone` increment.
         {
-            let mut front = self.pool.front_cache().borrow_mut();
+            let front = self.pool.front_cache();
             let (flen, slots) = &mut front.buckets[idx];
             if (*flen as usize) < FRONT_CAP {
-                slots[*flen as usize] = ptr;
+                slots[*flen as usize] = unsafe { buf.detach_ptr() };
                 *flen += 1;
-                std::mem::forget(buf);
+                drop(buf); // Arc<Stream> dec, no FFI (ptr is now 0)
                 return;
             }
         }
@@ -379,8 +423,9 @@ impl<'p, T: Repr> Drop for PooledBuf<'p, T> {
         // Tier 2 — front full; push to the shared back cache.
         let mut guard = self.pool.buckets[idx].lock();
         if guard.len() < self.pool.max_per_bucket {
-            guard.push(ptr);
-            std::mem::forget(buf);
+            guard.push(unsafe { buf.detach_ptr() });
+            drop(guard);
+            drop(buf); // Arc<Stream> dec, no FFI
             return;
         }
 

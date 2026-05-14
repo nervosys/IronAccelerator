@@ -14,8 +14,8 @@ versions may break API.
   faster stream sync). See README and `cudarc_compat` module docs for the
   migration map and bench numbers.
 - **New `MemPool` opt-in recycling allocator** for dispatch loops:
-  ~7 ns per alloc+free cycle regardless of size, vs ~1000 ns for cudarc —
-  **~145× faster** by skipping the `cuMemAllocAsync` round-trip entirely
+  ~10 ns per alloc+free cycle regardless of size, vs ~740 ns for cudarc —
+  **~75× faster** by skipping the `cuMemAllocAsync` round-trip entirely
   on the hot path. See `crates/ironaccelerator-cuda/src/pool.rs`.
 
   Three-tier cache:

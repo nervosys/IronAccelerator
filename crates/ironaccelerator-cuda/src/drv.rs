@@ -822,6 +822,26 @@ impl<T: Repr> DeviceBuf<T> {
         }
     }
 
+    /// Detach the device pointer without freeing it and zero this buffer's
+    /// state so [`Drop`] becomes a no-op for the pointer. The returned ptr
+    /// is now the caller's responsibility to free via the appropriate driver
+    /// call.
+    ///
+    /// Used by [`crate::pool`] to recycle a buffer's underlying allocation
+    /// back into the pool's cache. The `Arc<Stream>` inside the buffer still
+    /// drops normally — only `cuMemFreeAsync` is suppressed.
+    ///
+    /// # Safety
+    /// After this call the buffer's logical state is `(ptr = 0, len = 0)`;
+    /// no further reads of the storage are valid.
+    #[inline]
+    pub unsafe fn detach_ptr(&mut self) -> CUdeviceptr {
+        let p = self.ptr;
+        self.ptr = 0;
+        self.len = 0;
+        p
+    }
+
     pub fn view(&self) -> DeviceView<'_, T> {
         DeviceView {
             ptr: self.ptr,
