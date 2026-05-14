@@ -40,20 +40,31 @@ high-frequency dispatch loops.
 
 ## Backend support matrix
 
-| Backend    | Vendor / API                       | Enumerate | Driver wrappers | Vendor-lib handles | Min SDK / runtime               |
-| ---------- | ---------------------------------- | --------- | --------------- | ------------------ | ------------------------------- |
-| CUDA       | NVIDIA                             | ✅         | ✅               | cuBLAS / cuBLASLt / cuDNN / cuFFT / cuSPARSE / cuSOLVER / cuTENSOR / NCCL / cuRAND / NVTX / CUPTI | CUDA 12.5+ driver (13.x tested) |
-| ROCm       | AMD                                | ✅         | ✅               | hipBLASLt          | ROCm 6.2+                       |
-| Metal      | Apple                              | ✅         | ✅               | MPS                | macOS 14+ / iOS 17+             |
-| QNN        | Qualcomm Hexagon NPU               | ✅         | ⚠️ HDK needed    | —                  | QNN SDK 2.22+                   |
-| Vulkan     | cross-vendor GPU compute           | ✅         | ✅               | —                  | Vulkan 1.3 ICD                  |
-| OpenGL     | legacy / embedded GPU fallback     | ✅ ctx     | ✅               | —                  | GL 4.3+ compute                 |
-| WebGPU     | native (Vk/Metal/DX12) + browser   | ✅         | ✅               | —                  | wgpu 22 / Chrome 113+           |
-| TPU (PJRT) | Google TPU v4 / v5 / v6e           | ✅ env     | ⏳ PJRT client   | —                  | PJRT plugin (`libtpu.so`)       |
-| Level Zero | Intel GPU (Arc / Flex / PVC) + NPU | ✅         | ✅               | —                  | `ze_loader` from Intel compute  |
-| AWS Neuron | Trainium / Inferentia              | ✅ cores   | ⏳ NEFF load     | —                  | `libnrt` (Neuron SDK 2.x)       |
+Honest current state. **CUDA is the only backend that's production-ready today.** Everything else compiles, registers, and enumerates devices where the SDK is present — but the per-backend hot path has not yet had the same optimization sprint that pushed CUDA to ~75× faster than cudarc. Detailed gap analysis per backend lives in [`docs/backends/STATUS.md`](docs/backends/STATUS.md).
 
-Every backend is loaded via `libloading` at first use — the workspace builds on any host, present or missing vendor SDK. Missing runtimes surface as typed `NotAvailable` errors, not link failures.
+| Backend    | Vendor / API                       | Driver wrappers | Runtime kernel compile | cudarc-shaped compat | `MemPool` equivalent | Live-GPU tests | Min SDK / runtime               |
+| ---------- | ---------------------------------- | --------------- | ---------------------- | -------------------- | -------------------- | -------------- | ------------------------------- |
+| **CUDA**   | NVIDIA                             | ✅ full          | ✅ NVRTC + disk cache  | ✅ `cudarc_compat`   | ✅ `MemPool` (~75× cudarc) | ✅ 45 tests | CUDA 12.5+ driver (13.x tested) |
+| ROCm       | AMD                                | ✅ HIP full      | ⏳ HIPRTC pending      | ❌                   | ❌                   | ❌ no AMD GPU on CI host | ROCm 6.2+                |
+| Metal      | Apple                              | ⚠️ scaffold      | n/a (MSL is offline)   | ❌                   | ❌                   | ❌ needs macOS | macOS 14+ / iOS 17+              |
+| Vulkan     | cross-vendor GPU compute           | ✅ enumerate + compute | ✅ WGSL → SPIR-V via naga | ❌              | ❌                   | ⏳ device probe only | Vulkan 1.3 ICD             |
+| QNN        | Qualcomm Hexagon NPU               | ⚠️ scaffold      | n/a (QNN is AOT)       | ❌                   | ❌                   | ❌ needs SDK + device | QNN SDK 2.22+              |
+| OpenGL     | legacy / embedded GPU fallback     | ✅ enumerate     | ⏳                     | ❌                   | ❌                   | ⏳ context probe only | GL 4.3+ compute            |
+| WebGPU     | native (Vk/Metal/DX12) + browser   | ✅ enumerate + compute | ⏳ (WGSL inline)  | ❌                   | ❌                   | ⏳ adapter probe only | wgpu 22 / Chrome 113+    |
+| TPU (PJRT) | Google TPU v4 / v5 / v6e           | ⚠️ env probe     | n/a (PJRT plugin AOT)  | ❌                   | ❌                   | ❌ needs TPU VM | PJRT plugin (`libtpu.so`)      |
+| Level Zero | Intel GPU (Arc / Flex / PVC) + NPU | ✅ enumerate + compute | ⏳ SPIR-V        | ❌                   | ❌                   | ⏳ device probe only | `ze_loader` from Intel compute |
+| AWS Neuron | Trainium / Inferentia              | ⚠️ cores probe   | n/a (NEFF AOT)         | ❌                   | ❌                   | ❌ needs trn/inf instance | `libnrt` (Neuron SDK 2.x)  |
+
+Legend:
+- ✅ shipped and exercised against a real device (or the closest equivalent — Vulkan ICD probe, WGSL compile, etc.)
+- ⚠️ scaffold compiles and registers, does device enumeration only
+- ⏳ noted in code, work pending
+- ❌ not present
+- n/a not meaningful for this backend (e.g. Metal Shading Language compile happens offline by design)
+
+Every backend is loaded via `libloading` at first use — the workspace builds on any host, with or without the vendor SDK. Missing runtimes surface as typed `NotAvailable` errors, not link failures.
+
+If you're shopping for "drop-in cudarc replacement", use the CUDA backend; that's the whole point of the project today. If you need ROCm/Metal/Vulkan/QNN parity with the CUDA backend's posture, [`STATUS.md`](docs/backends/STATUS.md) lists what remains per backend — none of the non-CUDA backends are at production-ready quality yet, and most need their target hardware in CI to validate further work.
 
 Per-backend build prerequisites and runtime environment variables live in [`docs/backends/`](docs/backends/).
 
