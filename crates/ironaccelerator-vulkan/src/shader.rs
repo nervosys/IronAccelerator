@@ -41,18 +41,23 @@ pub fn wgsl_to_spirv(src: &str) -> Result<Vec<u32>, ShaderError> {
 mod tests {
     use super::*;
 
+    /// Tiny well-formed WGSL kernel kept inline so this test doesn't depend
+    /// on any kernel-source modules (those belong in downstream libraries).
+    const TRIVIAL_WGSL: &str = r#"
+@group(0) @binding(0) var<storage, read_write> data: array<f32>;
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    if (gid.x < arrayLength(&data)) {
+        data[gid.x] = data[gid.x] * 2.0;
+    }
+}
+"#;
+
     #[test]
-    fn saxpy_wgsl_compiles_to_spirv() {
-        let spv = wgsl_to_spirv(crate::kernels::SAXPY_WGSL).expect("wgsl→spv");
+    fn wgsl_compiles_to_spirv() {
+        let spv = wgsl_to_spirv(TRIVIAL_WGSL).expect("wgsl→spv");
         // SPIR-V magic word is 0x07230203 little-endian.
         assert_eq!(spv[0], 0x07230203, "missing SPIR-V magic header");
         assert!(spv.len() > 10);
-    }
-
-    #[test]
-    fn gemm_wgsl_compiles_to_spirv() {
-        let spv = wgsl_to_spirv(crate::kernels::GEMM_F32_WGSL).expect("gemm wgsl→spv");
-        assert_eq!(spv[0], 0x07230203);
-        assert!(spv.len() > 20);
     }
 }

@@ -14,7 +14,6 @@
 pub mod backend;
 pub mod compute;
 pub mod drv;
-pub mod kernels;
 
 pub use backend::{WebGpuBackend, WEBGPU_BACKEND};
 pub use drv::{bind_device, AdapterInfo};

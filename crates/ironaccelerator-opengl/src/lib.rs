@@ -15,7 +15,6 @@
 pub mod backend;
 pub mod compute;
 pub mod drv;
-pub mod kernels;
 
 pub use backend::{OpenGlBackend, OPENGL_BACKEND};
 pub use drv::bind_current_context;

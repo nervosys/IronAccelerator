@@ -18,8 +18,6 @@ pub mod compute;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod drv;
 #[cfg(not(target_arch = "wasm32"))]
-pub mod kernels;
-#[cfg(not(target_arch = "wasm32"))]
 pub mod shader;
 
 pub use backend::{VulkanBackend, VULKAN_BACKEND};
