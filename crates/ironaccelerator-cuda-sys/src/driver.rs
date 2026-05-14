@@ -349,6 +349,36 @@ pub enum CUhostAllocFlags {
     WriteCombined = 0x4,
 }
 
+/// Per-function tunables. The IDs match the CUDA driver `CUfunction_attribute`
+/// enum so they can be passed directly to `cuFuncSetAttribute` /
+/// `cuFuncGetAttribute`.
+#[repr(i32)]
+#[derive(Debug, Clone, Copy)]
+pub enum CUfunction_attribute {
+    MaxThreadsPerBlock = 0,
+    SharedSizeBytes = 1,
+    ConstSizeBytes = 2,
+    LocalSizeBytes = 3,
+    NumRegs = 4,
+    PtxVersion = 5,
+    BinaryVersion = 6,
+    CacheModeCa = 7,
+    /// **Hopper+ / required for >48 KB dynamic shared memory.**
+    MaxDynamicSharedSizeBytes = 8,
+    PreferredSharedMemoryCarveout = 9,
+    ClusterSizeMustBeSet = 10,
+    RequiredClusterWidth = 11,
+    RequiredClusterHeight = 12,
+    RequiredClusterDepth = 13,
+}
+
+/// 16-byte device UUID, matches the CUDA driver `CUuuid` struct.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CUuuid {
+    pub bytes: [u8; 16],
+}
+
 pub const CU_STREAM_DEFAULT: u32 = 0x0;
 pub const CU_STREAM_NON_BLOCKING: u32 = 0x1;
 
@@ -366,6 +396,7 @@ pub struct DriverFns {
         unsafe extern "C" fn(*mut c_int, CUdevice_attribute, CUdevice) -> CUresult,
     pub cuDeviceTotalMem_v2: unsafe extern "C" fn(*mut usize, CUdevice) -> CUresult,
     pub cuDeviceCanAccessPeer: unsafe extern "C" fn(*mut c_int, CUdevice, CUdevice) -> CUresult,
+    pub cuDeviceGetUuid_v2: unsafe extern "C" fn(*mut CUuuid, CUdevice) -> CUresult,
 
     pub cuDevicePrimaryCtxRetain: unsafe extern "C" fn(*mut CUcontext, CUdevice) -> CUresult,
     pub cuDevicePrimaryCtxRelease_v2: unsafe extern "C" fn(CUdevice) -> CUresult,
@@ -402,6 +433,17 @@ pub struct DriverFns {
         unsafe extern "C" fn(*mut c_void, CUdeviceptr, usize, CUstream) -> CUresult,
     pub cuMemcpyDtoDAsync_v2:
         unsafe extern "C" fn(CUdeviceptr, CUdeviceptr, usize, CUstream) -> CUresult,
+    /// Cross-device async memcpy. Either or both contexts must allow peer
+    /// access; the call enqueues on `stream` (which belongs to the *source*
+    /// context, per the CUDA driver contract).
+    pub cuMemcpyPeerAsync: unsafe extern "C" fn(
+        CUdeviceptr, // dst
+        CUcontext,   // dst ctx
+        CUdeviceptr, // src
+        CUcontext,   // src ctx
+        usize,
+        CUstream,
+    ) -> CUresult,
     pub cuMemHostAlloc: unsafe extern "C" fn(*mut *mut c_void, usize, c_uint) -> CUresult,
     pub cuMemFreeHost: unsafe extern "C" fn(*mut c_void) -> CUresult,
 
@@ -409,6 +451,10 @@ pub struct DriverFns {
     pub cuModuleUnload: unsafe extern "C" fn(CUmodule) -> CUresult,
     pub cuModuleGetFunction:
         unsafe extern "C" fn(*mut CUfunction, CUmodule, *const c_char) -> CUresult,
+    /// Look up a device-side `__constant__` / `__device__` symbol by name.
+    /// Returns its device pointer and byte size.
+    pub cuModuleGetGlobal_v2:
+        unsafe extern "C" fn(*mut CUdeviceptr, *mut usize, CUmodule, *const c_char) -> CUresult,
 
     pub cuLaunchKernel: unsafe extern "C" fn(
         CUfunction,
@@ -422,6 +468,41 @@ pub struct DriverFns {
         CUstream,
         *mut *mut c_void, // kernel params
         *mut *mut c_void, // extra
+    ) -> CUresult,
+    /// Cooperative-groups launch. Same arg order as `cuLaunchKernel`,
+    /// minus the `extra` slot. The kernel must be compiled with
+    /// `--cooperative-groups` and all blocks must fit on the device
+    /// simultaneously.
+    pub cuLaunchCooperativeKernel: unsafe extern "C" fn(
+        CUfunction,
+        c_uint,
+        c_uint,
+        c_uint,
+        c_uint,
+        c_uint,
+        c_uint,
+        c_uint,
+        CUstream,
+        *mut *mut c_void,
+    ) -> CUresult,
+
+    /// Read a per-function attribute (e.g. `MaxDynamicSharedSizeBytes`).
+    pub cuFuncGetAttribute:
+        unsafe extern "C" fn(*mut c_int, CUfunction_attribute, CUfunction) -> CUresult,
+    /// Set a per-function attribute. Required to opt in to >48 KiB of
+    /// dynamic shared memory and to set cluster dims on Hopper+.
+    pub cuFuncSetAttribute:
+        unsafe extern "C" fn(CUfunction, CUfunction_attribute, c_int) -> CUresult,
+
+    /// Returns the maximum number of active thread blocks per SM for the
+    /// given function with the supplied block-size and dynamic shmem usage.
+    /// Use with `MultiprocessorCount` device attribute for occupancy-based
+    /// grid sizing.
+    pub cuOccupancyMaxActiveBlocksPerMultiprocessor: unsafe extern "C" fn(
+        *mut c_int,
+        CUfunction,
+        c_int, // block size
+        usize, // dynamic shmem bytes
     ) -> CUresult,
 
     pub cuStreamBeginCapture_v2: unsafe extern "C" fn(CUstream, CUstreamCaptureMode) -> CUresult,
@@ -566,6 +647,7 @@ fn load_fns(lib: &Library) -> LoaderResult<DriverFns> {
             cuDeviceGetAttribute: g!(cuDeviceGetAttribute),
             cuDeviceTotalMem_v2: g!(cuDeviceTotalMem_v2),
             cuDeviceCanAccessPeer: g!(cuDeviceCanAccessPeer),
+            cuDeviceGetUuid_v2: g!(cuDeviceGetUuid_v2),
             cuDevicePrimaryCtxRetain: g!(cuDevicePrimaryCtxRetain),
             cuDevicePrimaryCtxRelease_v2: g!(cuDevicePrimaryCtxRelease_v2),
             cuCtxSetCurrent: g!(cuCtxSetCurrent),
@@ -594,12 +676,20 @@ fn load_fns(lib: &Library) -> LoaderResult<DriverFns> {
             cuMemcpyHtoDAsync_v2: g!(cuMemcpyHtoDAsync_v2),
             cuMemcpyDtoHAsync_v2: g!(cuMemcpyDtoHAsync_v2),
             cuMemcpyDtoDAsync_v2: g!(cuMemcpyDtoDAsync_v2),
+            cuMemcpyPeerAsync: g!(cuMemcpyPeerAsync),
             cuMemHostAlloc: g!(cuMemHostAlloc),
             cuMemFreeHost: g!(cuMemFreeHost),
             cuModuleLoadData: g!(cuModuleLoadData),
             cuModuleUnload: g!(cuModuleUnload),
             cuModuleGetFunction: g!(cuModuleGetFunction),
+            cuModuleGetGlobal_v2: g!(cuModuleGetGlobal_v2),
             cuLaunchKernel: g!(cuLaunchKernel),
+            cuLaunchCooperativeKernel: g!(cuLaunchCooperativeKernel),
+            cuFuncGetAttribute: g!(cuFuncGetAttribute),
+            cuFuncSetAttribute: g!(cuFuncSetAttribute),
+            cuOccupancyMaxActiveBlocksPerMultiprocessor: g!(
+                cuOccupancyMaxActiveBlocksPerMultiprocessor
+            ),
             cuStreamBeginCapture_v2: g!(cuStreamBeginCapture_v2),
             cuStreamEndCapture: g!(cuStreamEndCapture),
             cuGraphDestroy: g!(cuGraphDestroy),

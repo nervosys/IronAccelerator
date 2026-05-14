@@ -50,6 +50,43 @@ versions may break API.
   workload autotuners — they belong to downstream libraries. The surface is
   small enough that an LLM agent can hold the whole API in context.
 
+### Added (CUDA completeness pass)
+
+Six driver primitives commonly needed for "full" CUDA support that the
+crate didn't yet expose. Live-GPU smoke tests for each in
+`tests/driver_extras.rs` (6 tests, all pass on the reference 2× RTX 3090
+Ti box).
+
+* **`Device::uuid()` → `CUuuid`** via `cuDeviceGetUuid_v2`. Stable
+  16-byte identifier per physical GPU, useful for naming devices across
+  enumerations and across MIG slices.
+* **`Function::attribute(attr)` / `set_attribute(attr, v)`** via
+  `cuFuncGetAttribute` / `cuFuncSetAttribute`. New
+  `sys::driver::CUfunction_attribute` enum exposes the 14 attribute IDs.
+  Most importantly: setting `MaxDynamicSharedSizeBytes` is the only way
+  to opt in to >48 KiB of dynamic shared memory per block (required for
+  most FlashAttention-class kernels), and the cluster-dim attributes
+  drive Hopper+ thread-block clusters.
+* **`Function::occupancy_max_active_blocks_per_sm(block_size, dyn_shmem)`**
+  via `cuOccupancyMaxActiveBlocksPerMultiprocessor`. Returns the
+  occupancy bound; multiply by the device's `MultiprocessorCount`
+  attribute for occupancy-based grid sizing. Required input for
+  `launch_cooperative`.
+* **`Function::launch_cooperative(cfg, stream, args)`** via
+  `cuLaunchCooperativeKernel`. Same shape as `launch()` but routes
+  through the cooperative-groups entry so kernels can call
+  `cooperative_groups::this_grid()::sync()`. The kernel must be
+  compiled with `--cooperative-groups` and the grid must fit on the
+  device concurrently — use the occupancy query above.
+* **`Module::global(name)` → `(CUdeviceptr, usize)`** via
+  `cuModuleGetGlobal_v2`. Returns the device pointer and byte size of a
+  `__constant__` or `__device__` symbol so callers can `memcpy` constants
+  into the kernel's address space without a full launch.
+* **`DeviceBuf::copy_from_peer_async(&src)`** via `cuMemcpyPeerAsync`.
+  Cross-device memcpy bounded by `dst.len == src.len`. Verified on the
+  reference dual-GPU box (RTX 3090 Ti pair) with bytes round-tripping
+  correctly between devices 0 and 1.
+
 ### Added (cudarc compatibility)
 
 - `cudarc_compat::CudaDevice::mem_get_info()` — `(free, total)` device-memory

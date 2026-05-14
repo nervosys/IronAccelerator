@@ -274,6 +274,20 @@ impl Device {
         Ok((maj, min))
     }
 
+    /// 16-byte device UUID. Stable across reboots; useful for identifying a
+    /// physical GPU across enumerations and across MIG slices. Matches
+    /// `cudarc::driver::CudaContext::uuid`.
+    pub fn uuid(&self) -> Result<sys::CUuuid> {
+        let mut u = sys::CUuuid::default();
+        unsafe {
+            check(
+                "cuDeviceGetUuid_v2",
+                (self.drv.cuDeviceGetUuid_v2)(&mut u, self.device),
+            )?;
+        }
+        Ok(u)
+    }
+
     pub fn can_access_peer(&self, other: &Device) -> Result<bool> {
         let mut v: i32 = 0;
         unsafe {
@@ -726,6 +740,38 @@ impl<T: Repr> DeviceBuf<T> {
         Ok(())
     }
 
+    /// Async copy from a buffer on another device. Both contexts must
+    /// allow peer access (see [`Device::enable_peer_access`]); the call
+    /// enqueues on `self`'s stream which the driver treats as belonging to
+    /// the *destination* (source) ordering. Length must match `src`.
+    #[inline]
+    pub fn copy_from_peer_async(&mut self, src: &DeviceBuf<T>) -> Result<()> {
+        if src.len != self.len {
+            return Err(Error::Precondition {
+                op: "DeviceBuf::copy_from_peer_async",
+                msg: format!("length mismatch: dst={} src={}", self.len, src.len),
+            });
+        }
+        if self.len == 0 {
+            return Ok(());
+        }
+        let bytes = self.len * std::mem::size_of::<T>();
+        unsafe {
+            check(
+                "cuMemcpyPeerAsync",
+                (self.stream.drv.cuMemcpyPeerAsync)(
+                    self.ptr,
+                    self.stream.device.ctx,
+                    src.ptr,
+                    src.stream.device.ctx,
+                    bytes,
+                    self.stream.handle,
+                ),
+            )?;
+        }
+        Ok(())
+    }
+
     #[inline]
     pub fn len(&self) -> usize {
         self.len
@@ -1092,6 +1138,25 @@ impl Module {
     pub fn device(&self) -> &Arc<Device> {
         &self.device
     }
+
+    /// Look up a device-side `__constant__` or `__device__` symbol by
+    /// name. Returns `(device_ptr, size_in_bytes)`. Use the pointer to
+    /// `cuMemcpyHtoDAsync` constants into the kernel's address space.
+    pub fn global(&self, name: &str) -> Result<(CUdeviceptr, usize)> {
+        let cname = CString::new(name).map_err(|_| Error::Precondition {
+            op: "Module::global",
+            msg: "symbol name contains NUL".into(),
+        })?;
+        let mut p: CUdeviceptr = 0;
+        let mut n: usize = 0;
+        unsafe {
+            check(
+                "cuModuleGetGlobal_v2",
+                (self.drv.cuModuleGetGlobal_v2)(&mut p, &mut n, self.handle, cname.as_ptr()),
+            )?;
+        }
+        Ok((p, n))
+    }
 }
 
 unsafe impl Send for Module {}
@@ -1147,6 +1212,96 @@ impl Function {
                 ),
             )
         }
+    }
+
+    /// Cooperative-groups launch. Same shape as [`Self::launch`] but routes
+    /// through `cuLaunchCooperativeKernel` so the kernel can use
+    /// `grid.sync()` / `cooperative_groups::this_grid()`. Requires every
+    /// block to fit on the device concurrently; use
+    /// [`Self::occupancy_max_active_blocks_per_sm`] to size the grid.
+    #[inline]
+    pub fn launch_cooperative<A: LaunchArgs>(
+        &self,
+        cfg: LaunchCfg,
+        stream: &Stream,
+        args: A,
+    ) -> Result<()> {
+        let mut storage = A::storage();
+        let mut ptrs = A::ptrs_init();
+        args.pack(&mut storage, &mut ptrs);
+        unsafe {
+            check(
+                "cuLaunchCooperativeKernel",
+                (self.drv.cuLaunchCooperativeKernel)(
+                    self.handle,
+                    cfg.grid.0,
+                    cfg.grid.1,
+                    cfg.grid.2,
+                    cfg.block.0,
+                    cfg.block.1,
+                    cfg.block.2,
+                    cfg.shared_bytes,
+                    stream.handle,
+                    ptrs.as_mut().as_mut_ptr() as *mut *mut c_void,
+                ),
+            )
+        }
+    }
+
+    /// Read a per-function attribute. Common ones:
+    /// [`sys::CUfunction_attribute::MaxThreadsPerBlock`],
+    /// [`sys::CUfunction_attribute::NumRegs`],
+    /// [`sys::CUfunction_attribute::MaxDynamicSharedSizeBytes`].
+    #[inline]
+    pub fn attribute(&self, attr: sys::CUfunction_attribute) -> Result<i32> {
+        let mut v: i32 = 0;
+        unsafe {
+            check(
+                "cuFuncGetAttribute",
+                (self.drv.cuFuncGetAttribute)(&mut v, attr, self.handle),
+            )?;
+        }
+        Ok(v)
+    }
+
+    /// Set a per-function attribute. Most commonly used to opt in to
+    /// >48 KiB of dynamic shared memory by setting
+    /// [`sys::CUfunction_attribute::MaxDynamicSharedSizeBytes`] before
+    /// the first launch.
+    #[inline]
+    pub fn set_attribute(&self, attr: sys::CUfunction_attribute, value: i32) -> Result<()> {
+        unsafe {
+            check(
+                "cuFuncSetAttribute",
+                (self.drv.cuFuncSetAttribute)(self.handle, attr, value),
+            )
+        }
+    }
+
+    /// Maximum number of concurrent thread blocks per SM for this function
+    /// at the given `block_size` and `dynamic_shmem_bytes`. Multiply by
+    /// the device's `MultiprocessorCount` attribute to size a grid that
+    /// keeps the GPU fully resident — required input for
+    /// [`Self::launch_cooperative`].
+    #[inline]
+    pub fn occupancy_max_active_blocks_per_sm(
+        &self,
+        block_size: u32,
+        dynamic_shmem_bytes: usize,
+    ) -> Result<i32> {
+        let mut blocks: i32 = 0;
+        unsafe {
+            check(
+                "cuOccupancyMaxActiveBlocksPerMultiprocessor",
+                (self.drv.cuOccupancyMaxActiveBlocksPerMultiprocessor)(
+                    &mut blocks,
+                    self.handle,
+                    block_size as i32,
+                    dynamic_shmem_bytes,
+                ),
+            )?;
+        }
+        Ok(blocks)
     }
 }
 
