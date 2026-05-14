@@ -20,15 +20,31 @@ versions may break API.
 
   Three-tier cache:
     1. **Per-thread, per-bucket front cache** (4-deep fixed array, no
-       lock at all — just `RefCell::borrow_mut`). This is the warm path.
+       lock at all — `UnsafeCell` access via a manually-`Sync` wrapper
+       in `thread_local::ThreadLocal`). This is the warm path.
     2. **Shared `parking_lot::Mutex<Vec>` back cache** per bucket,
        bounded by `max_per_bucket`. Spills here when the front fills or
        a different thread allocs.
     3. **Driver** (`cuMemAllocAsync`) when both tiers are empty/full.
 
-  `PooledBuf<'p, T>` borrows the pool with a lifetime, so the hot path
-  has zero `Arc` refcount traffic. Use `PooledBuf::into_inner()` to
-  detach a buffer for storage beyond the pool's lifetime.
+  `PooledBuf<'p, T>` borrows the pool with a lifetime, so the pool
+  doesn't need `Arc` traffic for buffer lifetime management. Use
+  `PooledBuf::into_inner()` to detach a buffer for storage beyond the
+  pool's lifetime.
+
+  New public methods on `DeviceBuf` to support the pool:
+    * `truncate(new_len)` — shrink logical length without re-allocating.
+    * `zero_in_place()` — stream-ordered `cuMemsetD8Async`.
+    * `unsafe from_raw_parts(stream, ptr, len, capacity_bytes)` —
+      rebuild a buffer from an already-allocated pointer.
+    * `unsafe detach_ptr() -> CUdeviceptr` — extract the device pointer
+      and suppress the buffer's `Drop` for the pointer (keeps the
+      `Arc<Stream>` field's `Drop` so the stream's refcount is balanced).
+
+  Note: `MemPool::shrink()` takes `&mut self` (not `&self`) — required
+  because draining the per-thread front caches via
+  `ThreadLocal::iter_mut` needs unique access. `MemPool::Drop` calls
+  `shrink()` so every cached block returns to the driver.
 - **Scope tightened** to a pure driver substrate. The CUDA crate no longer
   ships kernels, planners, FP8 recipes, attention/MoE implementations, or
   workload autotuners — they belong to downstream libraries. The surface is

@@ -177,18 +177,12 @@ impl MemPool {
 
     /// Like [`Self::new`] but with an explicit per-bucket cap.
     pub fn with_max_per_bucket(stream: Arc<Stream>, max_per_bucket: usize) -> Self {
-        // `array::from_fn` would be cleaner but generates >100 ctors at this
-        // size; the explicit loop keeps codegen small.
-        let mut buckets: Vec<Mutex<Vec<CUdeviceptr>>> = Vec::with_capacity(NUM_BUCKETS);
-        for _ in 0..NUM_BUCKETS {
-            buckets.push(Mutex::new(Vec::new()));
-        }
-        let buckets: [Mutex<Vec<CUdeviceptr>>; NUM_BUCKETS] =
-            buckets.try_into().map_err(|_| ()).expect("bucket count");
+        // Infallible: `array::from_fn` populates the array element-by-element
+        // with no panics, no allocation churn.
         Self {
             stream,
             front: ThreadLocal::new(),
-            buckets,
+            buckets: std::array::from_fn(|_| Mutex::new(Vec::new())),
             max_per_bucket,
         }
     }
