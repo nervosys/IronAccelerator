@@ -65,6 +65,10 @@ use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
+/// Sentinel `bucket_idx` value meaning "this allocation bypassed the pool;
+/// drop it back to the driver directly."
+const NO_BUCKET: i16 = -1;
+
 /// Smallest power-of-two byte size we bucket. 1 KiB.
 const MIN_BUCKET_LOG2: u32 = 10;
 /// Largest power-of-two byte size we bucket. 256 MiB.
@@ -93,11 +97,12 @@ fn bucket_bytes(bucket: usize) -> usize {
 }
 
 /// Per-stream pool of recycled allocations.
+///
+/// `MemPool` owns the bucket arrays inline (no `Arc<PoolInner>` indirection
+/// in the hot path). [`PooledBuf`] borrows the pool with a lifetime, so it's
+/// safe and the alloc/drop path performs **zero atomic refcount ops** — just
+/// a mutex pop/push.
 pub struct MemPool {
-    inner: Arc<PoolInner>,
-}
-
-struct PoolInner {
     stream: Arc<Stream>,
     buckets: [Mutex<Vec<CUdeviceptr>>; NUM_BUCKETS],
     max_per_bucket: usize,
@@ -123,18 +128,16 @@ impl MemPool {
         let buckets: [Mutex<Vec<CUdeviceptr>>; NUM_BUCKETS] =
             buckets.try_into().map_err(|_| ()).expect("bucket count");
         Self {
-            inner: Arc::new(PoolInner {
-                stream,
-                buckets,
-                max_per_bucket,
-            }),
+            stream,
+            buckets,
+            max_per_bucket,
         }
     }
 
     /// Allocate `len` elements of `T`. Pops a cached block of the matching
     /// size class if available; otherwise falls through to `cuMemAllocAsync`.
     #[inline]
-    pub fn alloc<T: Repr>(&self, len: usize) -> Result<PooledBuf<T>> {
+    pub fn alloc<T: Repr>(&self, len: usize) -> Result<PooledBuf<'_, T>> {
         let bytes =
             len.checked_mul(std::mem::size_of::<T>())
                 .ok_or(crate::drv::Error::Precondition {
@@ -143,16 +146,16 @@ impl MemPool {
                 })?;
 
         if let Some(idx) = bucket_for_bytes(bytes) {
-            // Warm path: pop a cached block. No FFI.
-            if let Some(ptr) = self.inner.buckets[idx].lock().pop() {
+            // Warm path: pop a cached block. No FFI, no atomic refcount.
+            if let Some(ptr) = self.buckets[idx].lock().pop() {
                 let bucket_capacity = bucket_bytes(idx);
                 let buf = unsafe {
-                    DeviceBuf::from_raw_parts(self.inner.stream.clone(), ptr, len, bucket_capacity)
+                    DeviceBuf::from_raw_parts(self.stream.clone(), ptr, len, bucket_capacity)
                 };
                 return Ok(PooledBuf {
                     inner: ManuallyDrop::new(buf),
-                    pool: self.inner.clone(),
-                    bucket_capacity,
+                    pool: self,
+                    bucket_idx: idx as i16,
                     _m: PhantomData,
                 });
             }
@@ -160,32 +163,31 @@ impl MemPool {
             // returns a block that satisfies any request in the same class.
             let bucket_capacity = bucket_bytes(idx);
             let pool_len = bucket_capacity / std::mem::size_of::<T>().max(1);
-            let mut buf = DeviceBuf::alloc(self.inner.stream.clone(), pool_len)?;
+            let mut buf = DeviceBuf::alloc(self.stream.clone(), pool_len)?;
             // Reinterpret to the user's requested length without re-allocating.
             buf.truncate(len);
             return Ok(PooledBuf {
                 inner: ManuallyDrop::new(buf),
-                pool: self.inner.clone(),
-                bucket_capacity,
+                pool: self,
+                bucket_idx: idx as i16,
                 _m: PhantomData,
             });
         }
 
-        // Bypass the pool — request too large to bucket. Returns are routed
-        // straight back to the driver because `bucket_capacity == 0` is the
-        // sentinel for "no pool home" in `PooledBuf::drop`.
-        let buf = DeviceBuf::alloc(self.inner.stream.clone(), len)?;
+        // Bypass the pool — request too large to bucket. `NO_BUCKET` makes
+        // `PooledBuf::drop` route the buffer straight back to the driver.
+        let buf = DeviceBuf::alloc(self.stream.clone(), len)?;
         Ok(PooledBuf {
             inner: ManuallyDrop::new(buf),
-            pool: self.inner.clone(),
-            bucket_capacity: 0,
+            pool: self,
+            bucket_idx: NO_BUCKET,
             _m: PhantomData,
         })
     }
 
     /// Zero-initialised variant of [`Self::alloc`].
     #[inline]
-    pub fn alloc_zeros<T: Repr + ZeroBits>(&self, len: usize) -> Result<PooledBuf<T>> {
+    pub fn alloc_zeros<T: Repr + ZeroBits>(&self, len: usize) -> Result<PooledBuf<'_, T>> {
         let mut buf = self.alloc::<T>(len)?;
         // Memset is on the same stream, so it's ordered against subsequent
         // reads. We rely on DeviceBuf::zero_in_place to drive the FFI.
@@ -196,25 +198,19 @@ impl MemPool {
     /// The underlying stream every allocation in this pool is bound to.
     #[inline]
     pub fn stream(&self) -> &Arc<Stream> {
-        &self.inner.stream
+        &self.stream
     }
 
     /// Drop every cached block back to the driver. Useful between epochs
     /// to release memory pressure without dropping the pool itself.
     pub fn shrink(&self) {
-        for (idx, bucket) in self.inner.buckets.iter().enumerate() {
+        for (idx, bucket) in self.buckets.iter().enumerate() {
             let drained: Vec<CUdeviceptr> = std::mem::take(&mut *bucket.lock());
             for ptr in drained {
                 let capacity = bucket_bytes(idx);
-                let pool_len = capacity; // u8 elements: byte count == element count
-                                         // Reconstruct a DeviceBuf<u8> just so its Drop calls cuMemFreeAsync.
+                // Reconstruct a DeviceBuf<u8> just so its Drop calls cuMemFreeAsync.
                 let buf = unsafe {
-                    DeviceBuf::<u8>::from_raw_parts(
-                        self.inner.stream.clone(),
-                        ptr,
-                        pool_len,
-                        capacity,
-                    )
+                    DeviceBuf::<u8>::from_raw_parts(self.stream.clone(), ptr, capacity, capacity)
                 };
                 drop(buf);
             }
@@ -222,7 +218,7 @@ impl MemPool {
     }
 }
 
-impl Drop for PoolInner {
+impl Drop for MemPool {
     fn drop(&mut self) {
         // Final cleanup — every cached block goes back to the driver.
         for (idx, bucket) in self.buckets.iter().enumerate() {
@@ -241,16 +237,22 @@ impl Drop for PoolInner {
 /// A `DeviceBuf` whose `Drop` returns the underlying allocation to its
 /// [`MemPool`] instead of freeing it. Derefs to `DeviceBuf<T>` so every
 /// driver / cudarc-compat method works unchanged.
-pub struct PooledBuf<T: Repr> {
+///
+/// The pool is borrowed (`'p` lifetime), so `PooledBuf<'p, T>` cannot
+/// outlive the `MemPool` that produced it. This is what lets the hot path
+/// avoid `Arc` traffic — there is no refcount to maintain because the borrow
+/// already guarantees pool liveness. If you need a buffer that outlives the
+/// pool, call [`Self::into_inner`] to convert to a plain [`DeviceBuf`].
+pub struct PooledBuf<'p, T: Repr> {
     inner: ManuallyDrop<DeviceBuf<T>>,
-    pool: Arc<PoolInner>,
-    /// Byte size of the bucket this allocation came from (0 = bypassed,
-    /// route back to the driver on drop).
-    bucket_capacity: usize,
+    pool: &'p MemPool,
+    /// Bucket index this allocation came from, or `NO_BUCKET` (-1) if it
+    /// bypassed the pool and should be returned to the driver on drop.
+    bucket_idx: i16,
     _m: PhantomData<T>,
 }
 
-impl<T: Repr> PooledBuf<T> {
+impl<'p, T: Repr> PooledBuf<'p, T> {
     /// Consume `self` and return the inner [`DeviceBuf`]. The buffer will
     /// then be freed via `cuMemFreeAsync` on drop instead of returning to
     /// the pool.
@@ -262,7 +264,7 @@ impl<T: Repr> PooledBuf<T> {
     }
 }
 
-impl<T: Repr> Deref for PooledBuf<T> {
+impl<'p, T: Repr> Deref for PooledBuf<'p, T> {
     type Target = DeviceBuf<T>;
     #[inline]
     fn deref(&self) -> &Self::Target {
@@ -270,45 +272,38 @@ impl<T: Repr> Deref for PooledBuf<T> {
     }
 }
 
-impl<T: Repr> DerefMut for PooledBuf<T> {
+impl<'p, T: Repr> DerefMut for PooledBuf<'p, T> {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
 }
 
-impl<T: Repr> Drop for PooledBuf<T> {
+impl<'p, T: Repr> Drop for PooledBuf<'p, T> {
     #[inline]
     fn drop(&mut self) {
         // SAFETY: ManuallyDrop::take leaves `self.inner` invalid; nothing
         // accesses it past this point because `drop` is the last call.
         let buf = unsafe { ManuallyDrop::take(&mut self.inner) };
-        let bucket = if self.bucket_capacity == 0 {
-            None
-        } else {
-            bucket_for_bytes(self.bucket_capacity)
-        };
 
-        match bucket {
-            Some(idx) => {
-                let ptr = buf.device_ptr();
-                // Caller forgets the DeviceBuf so its Drop doesn't free the
-                // pointer — we now own it for the pool.
-                let mut guard = self.pool.buckets[idx].lock();
-                if guard.len() < self.pool.max_per_bucket {
-                    guard.push(ptr);
-                    std::mem::forget(buf);
-                    return;
-                }
-                // Bucket full — drop the buf, which calls cuMemFreeAsync.
-                drop(guard);
-                drop(buf);
-            }
-            None => {
-                // No pool home; let the buf's Drop free via the driver.
-                drop(buf);
-            }
+        if self.bucket_idx == NO_BUCKET {
+            // Bypassed allocation — let the buf's Drop free via the driver.
+            drop(buf);
+            return;
         }
+        let idx = self.bucket_idx as usize;
+        let ptr = buf.device_ptr();
+        let mut guard = self.pool.buckets[idx].lock();
+        if guard.len() < self.pool.max_per_bucket {
+            guard.push(ptr);
+            // Caller forgets the DeviceBuf so its Drop doesn't free the
+            // pointer — the pool now owns it.
+            std::mem::forget(buf);
+            return;
+        }
+        // Bucket full — drop the buf, which calls cuMemFreeAsync.
+        drop(guard);
+        drop(buf);
     }
 }
 

@@ -14,9 +14,13 @@ versions may break API.
   faster stream sync). See README and `cudarc_compat` module docs for the
   migration map and bench numbers.
 - **New `MemPool` opt-in recycling allocator** for dispatch loops:
-  ~29 ns per alloc+free cycle regardless of size, vs ~970 ns for cudarc —
-  **~33× faster** by skipping the `cuMemAllocAsync` round-trip via a
+  ~21 ns per alloc+free cycle regardless of size, vs ~1000 ns for cudarc —
+  **~48× faster** by skipping the `cuMemAllocAsync` round-trip via a
   per-stream power-of-two bucket cache. See `crates/ironaccelerator-cuda/src/pool.rs`.
+  `PooledBuf<'p, T>` borrows the pool with a lifetime, so the alloc/free
+  hot path has zero `Arc` refcount traffic — just a `parking_lot::Mutex`
+  pop/push. Use `PooledBuf::into_inner()` to detach a buffer for storage
+  beyond the pool's lifetime.
 - **Scope tightened** to a pure driver substrate. The CUDA crate no longer
   ships kernels, planners, FP8 recipes, attention/MoE implementations, or
   workload autotuners — they belong to downstream libraries. The surface is
