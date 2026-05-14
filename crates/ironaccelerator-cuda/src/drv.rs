@@ -731,6 +731,11 @@ impl<T: Repr> DeviceBuf<T> {
     pub fn byte_len(&self) -> usize {
         self.len * std::mem::size_of::<T>()
     }
+    /// Alias of [`Self::byte_len`] for `cudarc::driver::CudaSlice` API parity.
+    #[inline]
+    pub fn num_bytes(&self) -> usize {
+        self.byte_len()
+    }
     #[inline]
     pub fn device_ptr(&self) -> CUdeviceptr {
         self.ptr
@@ -738,6 +743,21 @@ impl<T: Repr> DeviceBuf<T> {
     #[inline]
     pub fn stream(&self) -> &Arc<Stream> {
         &self.stream
+    }
+    /// Ordinal of the device this buffer is allocated on. Matches
+    /// `cudarc::driver::CudaSlice::ordinal`.
+    #[inline]
+    pub fn ordinal(&self) -> u32 {
+        self.stream.device().ordinal()
+    }
+
+    /// Allocate a sibling buffer on the same stream and enqueue a
+    /// device-to-device copy. The clone is independent — drop it whenever.
+    /// Matches `cudarc::driver::CudaSlice::try_clone`.
+    pub fn try_clone(&self) -> Result<Self> {
+        let mut out = Self::alloc(self.stream.clone(), self.len)?;
+        out.copy_from_device(self)?;
+        Ok(out)
     }
 
     pub fn view(&self) -> DeviceView<'_, T> {

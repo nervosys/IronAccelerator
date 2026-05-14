@@ -158,3 +158,19 @@ fn record_event_wait_join_round_trip() {
     s2.synchronize().unwrap();
     drop(buf);
 }
+
+#[test]
+#[ignore = "requires an NVIDIA GPU + CUDA driver"]
+fn try_clone_produces_independent_copy() {
+    let dev = CudaDevice::new(0).expect("CUDA device");
+    let stream = dev.default_stream();
+    let original: CudaSlice<u32> = stream.htod_copy(vec![10u32, 20, 30, 40]).unwrap();
+    let cloned = original.try_clone().unwrap();
+
+    // Cloned buffer holds the same data.
+    assert_eq!(stream.dtoh_sync_copy(&cloned).unwrap(), [10, 20, 30, 40]);
+
+    // num_bytes and ordinal mirror cudarc's API.
+    assert_eq!(cloned.num_bytes(), 4 * std::mem::size_of::<u32>());
+    assert_eq!(cloned.ordinal(), dev.ordinal());
+}

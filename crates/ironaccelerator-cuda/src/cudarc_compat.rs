@@ -46,7 +46,9 @@
 //! | `stream.wait(&event)`                  | `stream.wait(&event)`                      |
 //! | `stream.join(&other)`                  | `stream.join(&other)`                      |
 //! | `CudaSlice::{len, num_bytes, is_empty}`| same (from [`DeviceBuf`](crate::drv::DeviceBuf)) |
-//! | `CudaSlice::as_view{,_mut}`            | `buf.view() / buf.view_mut()`              |
+//! | `CudaSlice::ordinal()`                 | same (on [`DeviceBuf`](crate::drv::DeviceBuf))   |
+//! | `CudaSlice::try_clone()`               | same (D2D copy on the same stream)               |
+//! | `CudaSlice::as_view{,_mut}`            | `buf.view() / buf.view_mut()`                    |
 //! | `nvrtc::compile_ptx(src)`              | [`compile_ptx`]                            |
 //! | `nvrtc::compile_ptx_with_opts(src, _)` | [`compile_ptx_with_opts`]                  |
 //! | `LaunchAsync::launch_async(cfg, args)` | [`LaunchAsync::launch_async`] (`&stream` arg) |
