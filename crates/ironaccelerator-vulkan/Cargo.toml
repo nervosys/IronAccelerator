@@ -5,7 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Vulkan Compute backend for IronAccelerator — cross-vendor GPU compute (native + WASM via WebGPU-over-Vulkan)"
+repository.workspace = true
+homepage.workspace = true
+description = "Vulkan compute backend for IronAccelerator — cross-vendor GPU compute."
+keywords = ["vulkan", "compute", "gpu", "cross-vendor", "spirv"]
+categories = ["api-bindings", "hardware-support", "graphics"]
+documentation = "https://docs.rs/ironaccelerator-vulkan"
 
 [dependencies]
 ironaccelerator-core = { workspace = true }

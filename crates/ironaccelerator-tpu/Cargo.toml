@@ -5,7 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Google TPU backend for IronAccelerator via the PJRT C plugin interface (TPU v4 / v5 / v6e)"
+repository.workspace = true
+homepage.workspace = true
+description = "Google TPU backend for IronAccelerator via the PJRT C plugin interface (TPU v4 / v5 / v6e)."
+keywords = ["tpu", "google", "pjrt", "accelerator"]
+categories = ["api-bindings", "hardware-support"]
+documentation = "https://docs.rs/ironaccelerator-tpu"
 
 [dependencies]
 ironaccelerator-core = { workspace = true }

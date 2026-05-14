@@ -5,7 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Metal backend for IronAccelerator (Apple GPU + ANE via MPS, MPSGraph, MLX-style kernels)"
+repository.workspace = true
+homepage.workspace = true
+description = "Apple Metal / MPS driver wrappers for IronAccelerator."
+keywords = ["metal", "apple", "gpu", "mps", "driver"]
+categories = ["api-bindings", "hardware-support"]
+documentation = "https://docs.rs/ironaccelerator-metal"
 
 [dependencies]
 ironaccelerator-core = { workspace = true }

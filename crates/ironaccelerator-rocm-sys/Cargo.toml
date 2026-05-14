@@ -5,7 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Clean-room ROCm 6.x HIP FFI + dynamic loader for IronAccelerator."
+repository.workspace = true
+homepage.workspace = true
+description = "Clean-room ROCm 6.x HIP FFI + dynamic loader. Zero link-time deps on the ROCm SDK; built on libloading."
+keywords = ["rocm", "hip", "ffi", "amd", "sys"]
+categories = ["external-ffi-bindings", "api-bindings", "hardware-support"]
+documentation = "https://docs.rs/ironaccelerator-rocm-sys"
 
 [lib]
 name = "iron_rocm_sys"

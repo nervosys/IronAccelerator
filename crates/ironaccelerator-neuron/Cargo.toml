@@ -5,7 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "AWS Neuron backend for IronAccelerator — Trainium (trn1 / trn2) and Inferentia (inf1 / inf2) via libnrt"
+repository.workspace = true
+homepage.workspace = true
+description = "AWS Neuron backend for IronAccelerator — Trainium (trn1 / trn2) and Inferentia (inf1 / inf2) via libnrt."
+keywords = ["aws", "neuron", "trainium", "inferentia", "accelerator"]
+categories = ["api-bindings", "hardware-support"]
+documentation = "https://docs.rs/ironaccelerator-neuron"
 
 [dependencies]
 ironaccelerator-core = { workspace = true }

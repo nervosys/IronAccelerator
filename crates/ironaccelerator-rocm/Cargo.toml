@@ -5,7 +5,13 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "ROCm/HIP backend for IronAccelerator (AMD CDNA & RDNA via HIP, hipBLASLt, MIOpen, RCCL)"
+repository.workspace = true
+homepage.workspace = true
+description = "Safe ROCm/HIP driver wrappers for AMD CDNA & RDNA GPUs. Same fast-path posture as the CUDA crate (atomic-free wrapped ops via cached fn-pointer tables)."
+keywords = ["rocm", "hip", "amd", "gpu", "driver"]
+categories = ["api-bindings", "hardware-support", "science"]
+documentation = "https://docs.rs/ironaccelerator-rocm"
+readme = "../../README.md"
 
 [dependencies]
 ironaccelerator-core     = { workspace = true }

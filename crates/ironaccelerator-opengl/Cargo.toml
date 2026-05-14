@@ -5,7 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "OpenGL 4.3+ compute-shader backend for IronAccelerator — legacy GPU fallback"
+repository.workspace = true
+homepage.workspace = true
+description = "OpenGL 4.3+ compute-shader backend for IronAccelerator — legacy GPU fallback."
+keywords = ["opengl", "gl", "compute", "gpu", "fallback"]
+categories = ["api-bindings", "hardware-support", "graphics"]
+documentation = "https://docs.rs/ironaccelerator-opengl"
 
 [dependencies]
 ironaccelerator-core = { workspace = true }

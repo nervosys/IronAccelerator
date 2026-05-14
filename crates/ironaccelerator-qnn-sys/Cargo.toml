@@ -5,7 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "QNN SDK FFI for IronAccelerator (Hexagon HTP / Adreno GPU / CPU reference)"
+repository.workspace = true
+homepage.workspace = true
+description = "Qualcomm QNN SDK FFI + dynamic loader (Hexagon HTP / Adreno / CPU reference)."
+keywords = ["qnn", "qualcomm", "npu", "ffi", "sys"]
+categories = ["external-ffi-bindings", "api-bindings", "hardware-support"]
+documentation = "https://docs.rs/ironaccelerator-qnn-sys"
 
 [lib]
 name = "iron_qnn_sys"

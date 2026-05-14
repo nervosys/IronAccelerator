@@ -5,7 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Qualcomm AI Engine (Hexagon NPU / QNN SDK) backend for IronAccelerator"
+repository.workspace = true
+homepage.workspace = true
+description = "Qualcomm Hexagon NPU driver wrappers (QNN SDK) for IronAccelerator."
+keywords = ["qnn", "qualcomm", "npu", "hexagon", "snapdragon"]
+categories = ["api-bindings", "hardware-support"]
+documentation = "https://docs.rs/ironaccelerator-qnn"
 
 [dependencies]
 ironaccelerator-core     = { workspace = true }

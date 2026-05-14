@@ -5,7 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Machine-readable ontology of accelerators, workloads, and strategies for agent-driven planning"
+repository.workspace = true
+homepage.workspace = true
+description = "Machine-readable ontology of accelerators, workloads, and strategies for agent-driven planning."
+keywords = ["ontology", "agent", "planner", "accelerator", "knowledge"]
+categories = ["api-bindings"]
+documentation = "https://docs.rs/ironaccelerator-ontology"
 
 [dependencies]
 ironaccelerator-core = { workspace = true }

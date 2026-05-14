@@ -5,7 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "oneAPI Level Zero backend for IronAccelerator — Intel GPU (Arc/Ponte Vecchio/Battlemage) and Intel NPU (Meteor/Arrow/Lunar Lake)"
+repository.workspace = true
+homepage.workspace = true
+description = "oneAPI Level Zero backend for IronAccelerator — Intel GPU (Arc / PVC / Battlemage) and Intel NPU."
+keywords = ["intel", "level-zero", "oneapi", "gpu", "npu"]
+categories = ["api-bindings", "hardware-support"]
+documentation = "https://docs.rs/ironaccelerator-levelzero"
 
 [dependencies]
 ironaccelerator-core = { workspace = true }
