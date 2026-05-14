@@ -21,12 +21,28 @@
 //! - [`cudarc_compat`] — drop-in compatibility surface for cudarc users
 //! - [`sys`] — the raw FFI re-export for callers that need it
 //!
+//! ## If you want to…
+//!
+//! | Task                                       | Use                                                          |
+//! |--------------------------------------------|--------------------------------------------------------------|
+//! | port existing cudarc 0.19 code             | [`cudarc_compat`] (drop-in `use` swap)                       |
+//! | open a device + create a stream            | [`drv::Device::open`] then [`drv::Stream::new`]              |
+//! | allocate a typed device buffer             | [`drv::DeviceBuf::alloc`] / [`alloc::alloc`]                 |
+//! | copy host ↔ device on a stream             | [`drv::DeviceBuf::copy_from_host`] / `copy_to_host`          |
+//! | compile a CUDA C++ kernel at runtime       | [`kernel::get_or_compile`] (cached on disk per arch+source)  |
+//! | launch a kernel with typed args            | [`drv::Function::launch`] or [`launch::launch_1d`] / `_2d`   |
+//! | record + measure GPU time                  | [`events::Timer`] (or [`drv::TimingEvent`] directly)         |
+//! | capture & replay a stream as a CUDA graph  | [`drv::Stream::begin_capture`] → [`drv::GraphExec`]          |
+//! | call cuBLASLt / cuDNN / cuFFT / NCCL       | the matching `blas`/`cudnn`/`fft`/`nccl` module              |
+//! | drop down to raw FFI                       | [`sys`] (re-exports [`iron_cuda_sys`])                       |
+//!
 //! ## Performance posture
 //!
 //! Every hot path is `#[inline]`. The driver `fns()` lookup uses an
-//! `AtomicPtr<DriverFns>` fast-path cache so a wrapped op costs ~1 atomic
-//! load + 1 FFI entry. See the workspace README for benchmarks against
-//! `cudarc` 0.19.
+//! `AtomicPtr<DriverFns>` fast-path cache, and each `Device`/`Stream`/`Event`/
+//! `Module`/`Function` caches `&'static DriverFns` at construction — so a
+//! wrapped op costs one struct-field load + one FFI entry. See the workspace
+//! README for benchmarks against `cudarc` 0.19; alloc/free is **~2× faster**.
 
 #![allow(
     clippy::missing_safety_doc,
