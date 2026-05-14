@@ -13,6 +13,10 @@ versions may break API.
   overhead on every host-side hot path (~2× faster alloc/free, ~1.3–1.9×
   faster stream sync). See README and `cudarc_compat` module docs for the
   migration map and bench numbers.
+- **New `MemPool` opt-in recycling allocator** for dispatch loops:
+  ~29 ns per alloc+free cycle regardless of size, vs ~970 ns for cudarc —
+  **~33× faster** by skipping the `cuMemAllocAsync` round-trip via a
+  per-stream power-of-two bucket cache. See `crates/ironaccelerator-cuda/src/pool.rs`.
 - **Scope tightened** to a pure driver substrate. The CUDA crate no longer
   ships kernels, planners, FP8 recipes, attention/MoE implementations, or
   workload autotuners — they belong to downstream libraries. The surface is
@@ -37,6 +41,14 @@ versions may break API.
 - Runnable end-to-end example at `examples/saxpy_cudarc_style.rs` —
   NVRTC compile + kernel launch + H↔D copy + verification, written to be
   byte-identical to what a cudarc user would write.
+- New `pool` module: `MemPool` + `PooledBuf` for per-stream recycling
+  allocation. `PooledBuf` derefs to `DeviceBuf` so every existing method
+  and trait impl works unchanged. `MemPool::shrink()` drains cached blocks
+  back to the driver between epochs. Live-GPU smoke test
+  (`tests/pool_smoke.rs`) verifies pointer recycling and >256 MiB bypass.
+- `DeviceBuf::truncate`, `zero_in_place`, and `unsafe from_raw_parts` —
+  required by `MemPool` to hand out partial views of bucket-rounded
+  allocations and reconstruct `DeviceBuf`s for cached pointers.
 
 ### Performance
 

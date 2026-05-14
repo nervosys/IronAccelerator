@@ -76,6 +76,7 @@ pub mod nccl;
 pub mod observe;
 pub mod peer;
 pub mod pinned;
+pub mod pool;
 pub mod profile;
 pub mod rng;
 pub mod safe;

@@ -189,6 +189,38 @@ fn bench_stream_sync(c: &mut Criterion, ctx: &Ctx) {
     g.finish();
 }
 
+// ─── Pooled alloc + free — Iron's recycling fast path ──────────────────────
+
+fn bench_pooled_alloc_free(c: &mut Criterion, ctx: &Ctx) {
+    use ironaccelerator_cuda::pool::MemPool;
+    let pool = MemPool::new(ctx.iron_stream.clone());
+
+    let mut g = c.benchmark_group("vs_cudarc/alloc/pooled_alloc_free");
+    for (bytes, label) in SIZES {
+        let n = *bytes;
+        g.bench_with_input(
+            BenchmarkId::new("ironaccelerator_pool", label),
+            &n,
+            |b, &n| {
+                b.iter(|| {
+                    let buf = pool.alloc::<u8>(n).unwrap();
+                    drop(buf);
+                });
+                ctx.iron_stream.synchronize().unwrap();
+            },
+        );
+        g.bench_with_input(BenchmarkId::new("cudarc_no_pool", label), &n, |b, &n| {
+            b.iter(|| {
+                let buf: cudarc::driver::CudaSlice<u8> =
+                    unsafe { ctx.cudarc_stream.alloc::<u8>(n).unwrap() };
+                drop(buf);
+            });
+            ctx.cudarc_stream.synchronize().unwrap();
+        });
+    }
+    g.finish();
+}
+
 // ─── Async alloc + free across sizes ────────────────────────────────────────
 
 fn bench_alloc_free(c: &mut Criterion, ctx: &Ctx) {
@@ -291,6 +323,7 @@ fn all(c: &mut Criterion) {
     bench_event_lifecycle(c, &ctx);
     bench_kernel_launch(c, &ctx);
     bench_alloc_free(c, &ctx);
+    bench_pooled_alloc_free(c, &ctx);
     bench_h2d_roundtrip(c, &ctx);
     bench_d2h_roundtrip(c, &ctx);
 }

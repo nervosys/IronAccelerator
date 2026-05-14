@@ -767,6 +767,61 @@ impl<T: Repr> DeviceBuf<T> {
         Ok(out)
     }
 
+    /// Shrink the buffer's logical length. The underlying device allocation
+    /// is unchanged; only [`Self::len`] / [`Self::byte_len`] reports the new
+    /// value. Panics if `new_len > self.len`. Used by [`crate::pool`] to hand
+    /// out partial views of bucket-rounded allocations.
+    #[inline]
+    pub fn truncate(&mut self, new_len: usize) {
+        assert!(new_len <= self.len, "truncate: new_len > len");
+        self.len = new_len;
+    }
+
+    /// Zero every byte of the buffer on its stream. Async; the write is
+    /// stream-ordered against subsequent reads on the same stream.
+    #[inline]
+    pub fn zero_in_place(&mut self) -> Result<()> {
+        if self.len == 0 {
+            return Ok(());
+        }
+        let bytes = self.len * std::mem::size_of::<T>();
+        unsafe {
+            check(
+                "cuMemsetD8Async",
+                (self.stream.drv.cuMemsetD8Async)(self.ptr, 0, bytes, self.stream.handle),
+            )
+        }
+    }
+
+    /// Build a `DeviceBuf` from an already-allocated `ptr` on `stream`. The
+    /// `capacity_bytes` argument is the byte size of the underlying
+    /// allocation; the buffer's logical length is `len` elements. When the
+    /// resulting `DeviceBuf` drops, it calls `cuMemFreeAsync(ptr)`.
+    ///
+    /// # Safety
+    /// `ptr` must be a live `cuMemAllocAsync`-issued pointer on `stream`'s
+    /// allocator that this `DeviceBuf` is now responsible for freeing.
+    /// `capacity_bytes >= len * size_of::<T>()`. Used by [`crate::pool`] to
+    /// reuse cached allocations.
+    #[inline]
+    pub unsafe fn from_raw_parts(
+        stream: Arc<Stream>,
+        ptr: CUdeviceptr,
+        len: usize,
+        capacity_bytes: usize,
+    ) -> Self {
+        debug_assert!(capacity_bytes >= len * std::mem::size_of::<T>());
+        // capacity_bytes is intentionally unused at the type level — the
+        // pool tracks it externally so it knows which bucket to return to.
+        let _ = capacity_bytes;
+        Self {
+            stream,
+            ptr,
+            len,
+            _marker: PhantomData,
+        }
+    }
+
     pub fn view(&self) -> DeviceView<'_, T> {
         DeviceView {
             ptr: self.ptr,
