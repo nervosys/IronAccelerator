@@ -15,7 +15,7 @@ fn pool_recycles_buffers() {
     }
     let dev = Device::open(0).unwrap();
     let stream = Stream::new(dev).unwrap();
-    let pool = MemPool::new(stream.clone());
+    let mut pool = MemPool::new(stream.clone());
 
     // First alloc: must hit the driver (bucket empty). Record the ptr.
     let buf = pool.alloc::<u32>(1024).unwrap();
@@ -46,6 +46,7 @@ fn pool_recycles_buffers() {
     buf4.copy_to_host(&mut out).unwrap();
     stream.synchronize().unwrap();
     assert_eq!(out, [1, 2, 3, 4, 5, 6, 7, 8]);
+    drop(buf4);
 
     pool.shrink(); // releases cached blocks back to driver
     stream.synchronize().unwrap();

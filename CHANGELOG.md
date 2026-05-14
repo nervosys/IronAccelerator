@@ -14,13 +14,21 @@ versions may break API.
   faster stream sync). See README and `cudarc_compat` module docs for the
   migration map and bench numbers.
 - **New `MemPool` opt-in recycling allocator** for dispatch loops:
-  ~21 ns per alloc+free cycle regardless of size, vs ~1000 ns for cudarc —
-  **~48× faster** by skipping the `cuMemAllocAsync` round-trip via a
-  per-stream power-of-two bucket cache. See `crates/ironaccelerator-cuda/src/pool.rs`.
-  `PooledBuf<'p, T>` borrows the pool with a lifetime, so the alloc/free
-  hot path has zero `Arc` refcount traffic — just a `parking_lot::Mutex`
-  pop/push. Use `PooledBuf::into_inner()` to detach a buffer for storage
-  beyond the pool's lifetime.
+  ~7 ns per alloc+free cycle regardless of size, vs ~1000 ns for cudarc —
+  **~145× faster** by skipping the `cuMemAllocAsync` round-trip entirely
+  on the hot path. See `crates/ironaccelerator-cuda/src/pool.rs`.
+
+  Three-tier cache:
+    1. **Per-thread, per-bucket front cache** (4-deep fixed array, no
+       lock at all — just `RefCell::borrow_mut`). This is the warm path.
+    2. **Shared `parking_lot::Mutex<Vec>` back cache** per bucket,
+       bounded by `max_per_bucket`. Spills here when the front fills or
+       a different thread allocs.
+    3. **Driver** (`cuMemAllocAsync`) when both tiers are empty/full.
+
+  `PooledBuf<'p, T>` borrows the pool with a lifetime, so the hot path
+  has zero `Arc` refcount traffic. Use `PooledBuf::into_inner()` to
+  detach a buffer for storage beyond the pool's lifetime.
 - **Scope tightened** to a pure driver substrate. The CUDA crate no longer
   ships kernels, planners, FP8 recipes, attention/MoE implementations, or
   workload autotuners — they belong to downstream libraries. The surface is

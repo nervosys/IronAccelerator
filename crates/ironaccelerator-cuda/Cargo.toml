@@ -18,6 +18,8 @@ ironaccelerator-core     = { workspace = true }
 ironaccelerator-cuda-sys = { workspace = true }
 once_cell = { workspace = true }
 parking_lot = { workspace = true }
+# Per-instance per-thread storage — backs MemPool's lock-free front cache.
+thread_local = "1"
 half = { workspace = true, optional = true }
 
 [dev-dependencies]

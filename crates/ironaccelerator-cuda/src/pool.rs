@@ -60,14 +60,38 @@
 use crate::drv::{DeviceBuf, Repr, Result, Stream, ZeroBits};
 use iron_cuda_sys::driver::CUdeviceptr;
 use parking_lot::Mutex;
+use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
+use thread_local::ThreadLocal;
 
 /// Sentinel `bucket_idx` value meaning "this allocation bypassed the pool;
 /// drop it back to the driver directly."
 const NO_BUCKET: i16 = -1;
+
+/// Capacity of the per-thread front cache for each bucket. Small so the whole
+/// front cache fits in a cache line per bucket.
+const FRONT_CAP: usize = 4;
+
+/// Per-thread, per-pool front-cache: a small fixed-size stack of cached
+/// pointers for each bucket, accessed without any locking. Misses fall
+/// through to the pool's shared `Mutex<Vec<...>>` back cache.
+struct FrontCache {
+    /// Per-bucket `(len, [CUdeviceptr; FRONT_CAP])` stack. We use an
+    /// explicit `len` rather than `Vec` to avoid touching the allocator on
+    /// the hot path and to keep each bucket's state in one cache line.
+    buckets: [(u8, [CUdeviceptr; FRONT_CAP]); NUM_BUCKETS],
+}
+
+impl FrontCache {
+    fn new() -> Self {
+        Self {
+            buckets: [(0, [0; FRONT_CAP]); NUM_BUCKETS],
+        }
+    }
+}
 
 /// Smallest power-of-two byte size we bucket. 1 KiB.
 const MIN_BUCKET_LOG2: u32 = 10;
@@ -104,6 +128,11 @@ fn bucket_bytes(bucket: usize) -> usize {
 /// a mutex pop/push.
 pub struct MemPool {
     stream: Arc<Stream>,
+    /// Per-thread, per-bucket lock-free front caches. The first alloc/free
+    /// from a thread for this pool initialises the thread's `FrontCache`.
+    /// Hits skip the mutex entirely; misses fall through to the shared
+    /// back cache below.
+    front: ThreadLocal<RefCell<FrontCache>>,
     buckets: [Mutex<Vec<CUdeviceptr>>; NUM_BUCKETS],
     max_per_bucket: usize,
 }
@@ -129,9 +158,16 @@ impl MemPool {
             buckets.try_into().map_err(|_| ()).expect("bucket count");
         Self {
             stream,
+            front: ThreadLocal::new(),
             buckets,
             max_per_bucket,
         }
+    }
+
+    /// Get or initialise the calling thread's front cache for this pool.
+    #[inline]
+    fn front_cache(&self) -> &RefCell<FrontCache> {
+        self.front.get_or(|| RefCell::new(FrontCache::new()))
     }
 
     /// Allocate `len` elements of `T`. Pops a cached block of the matching
@@ -146,9 +182,29 @@ impl MemPool {
                 })?;
 
         if let Some(idx) = bucket_for_bytes(bytes) {
-            // Warm path: pop a cached block. No FFI, no atomic refcount.
+            let bucket_capacity = bucket_bytes(idx);
+
+            // Tier 1 — thread-local front cache. No lock at all.
+            {
+                let mut front = self.front_cache().borrow_mut();
+                let (flen, slots) = &mut front.buckets[idx];
+                if *flen > 0 {
+                    *flen -= 1;
+                    let ptr = slots[*flen as usize];
+                    let buf = unsafe {
+                        DeviceBuf::from_raw_parts(self.stream.clone(), ptr, len, bucket_capacity)
+                    };
+                    return Ok(PooledBuf {
+                        inner: ManuallyDrop::new(buf),
+                        pool: self,
+                        bucket_idx: idx as i16,
+                        _m: PhantomData,
+                    });
+                }
+            }
+
+            // Tier 2 — shared mutex'd back cache.
             if let Some(ptr) = self.buckets[idx].lock().pop() {
-                let bucket_capacity = bucket_bytes(idx);
                 let buf = unsafe {
                     DeviceBuf::from_raw_parts(self.stream.clone(), ptr, len, bucket_capacity)
                 };
@@ -159,9 +215,8 @@ impl MemPool {
                     _m: PhantomData,
                 });
             }
-            // Bucket empty — round up to the bucket size so the next free
-            // returns a block that satisfies any request in the same class.
-            let bucket_capacity = bucket_bytes(idx);
+
+            // Tier 3 — bucket empty everywhere; ask the driver.
             let pool_len = bucket_capacity / std::mem::size_of::<T>().max(1);
             let mut buf = DeviceBuf::alloc(self.stream.clone(), pool_len)?;
             // Reinterpret to the user's requested length without re-allocating.
@@ -201,14 +256,37 @@ impl MemPool {
         &self.stream
     }
 
-    /// Drop every cached block back to the driver. Useful between epochs
-    /// to release memory pressure without dropping the pool itself.
-    pub fn shrink(&self) {
+    /// Drop every cached block (both per-thread front caches and the
+    /// shared back cache) back to the driver. Useful between epochs to
+    /// release memory pressure without dropping the pool itself.
+    ///
+    /// Takes `&mut self` because draining the per-thread front caches
+    /// requires exclusive access to the `ThreadLocal` storage.
+    pub fn shrink(&mut self) {
+        // Drain every thread's front cache.
+        for front_cell in self.front.iter_mut() {
+            let front = front_cell.get_mut();
+            for (idx, (flen, slots)) in front.buckets.iter_mut().enumerate() {
+                let capacity = bucket_bytes(idx);
+                for ptr in &slots[..*flen as usize] {
+                    let buf = unsafe {
+                        DeviceBuf::<u8>::from_raw_parts(
+                            self.stream.clone(),
+                            *ptr,
+                            capacity,
+                            capacity,
+                        )
+                    };
+                    drop(buf);
+                }
+                *flen = 0;
+            }
+        }
+        // Drain the shared back cache.
         for (idx, bucket) in self.buckets.iter().enumerate() {
             let drained: Vec<CUdeviceptr> = std::mem::take(&mut *bucket.lock());
             for ptr in drained {
                 let capacity = bucket_bytes(idx);
-                // Reconstruct a DeviceBuf<u8> just so its Drop calls cuMemFreeAsync.
                 let buf = unsafe {
                     DeviceBuf::<u8>::from_raw_parts(self.stream.clone(), ptr, capacity, capacity)
                 };
@@ -220,17 +298,9 @@ impl MemPool {
 
 impl Drop for MemPool {
     fn drop(&mut self) {
-        // Final cleanup — every cached block goes back to the driver.
-        for (idx, bucket) in self.buckets.iter().enumerate() {
-            let drained: Vec<CUdeviceptr> = std::mem::take(&mut *bucket.lock());
-            for ptr in drained {
-                let capacity = bucket_bytes(idx);
-                let buf = unsafe {
-                    DeviceBuf::<u8>::from_raw_parts(self.stream.clone(), ptr, capacity, capacity)
-                };
-                drop(buf);
-            }
-        }
+        // Final cleanup — drain per-thread front caches and the shared back
+        // cache; every cached block goes back to the driver.
+        self.shrink();
     }
 }
 
@@ -293,15 +363,28 @@ impl<'p, T: Repr> Drop for PooledBuf<'p, T> {
         }
         let idx = self.bucket_idx as usize;
         let ptr = buf.device_ptr();
+
+        // Tier 1 — push to the thread-local front cache. No lock.
+        {
+            let mut front = self.pool.front_cache().borrow_mut();
+            let (flen, slots) = &mut front.buckets[idx];
+            if (*flen as usize) < FRONT_CAP {
+                slots[*flen as usize] = ptr;
+                *flen += 1;
+                std::mem::forget(buf);
+                return;
+            }
+        }
+
+        // Tier 2 — front full; push to the shared back cache.
         let mut guard = self.pool.buckets[idx].lock();
         if guard.len() < self.pool.max_per_bucket {
             guard.push(ptr);
-            // Caller forgets the DeviceBuf so its Drop doesn't free the
-            // pointer — the pool now owns it.
             std::mem::forget(buf);
             return;
         }
-        // Bucket full — drop the buf, which calls cuMemFreeAsync.
+
+        // Tier 3 — back full too; let the driver reclaim.
         drop(guard);
         drop(buf);
     }
