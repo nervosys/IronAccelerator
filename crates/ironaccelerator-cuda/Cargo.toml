@@ -38,6 +38,10 @@ harness = false
 name = "vs_cudarc"
 harness = false
 
+[[bench]]
+name = "mempool_retention"
+harness = false
+
 [features]
 default = ["driver", "runtime", "cublas", "cublaslt", "cudnn", "nvrtc",
            "curand", "nccl", "cusparse", "cusolver", "cufft", "cutensor",

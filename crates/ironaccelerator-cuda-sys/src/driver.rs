@@ -26,15 +26,103 @@ pub struct CUmodule(pub *mut c_void);
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct CUfunction(pub *mut c_void);
+
+// ── cudarc-compatibility opaque-pointer aliases ────────────────────────────
+//
+// cudarc declares its handles as opaque pointer typedefs:
+//   pub struct CUstream_st { _unused: [u8; 0] }
+//   pub type CUstream = *mut CUstream_st;
+// Some downstream code casts via these opaque pointer types
+// (`*mut CUstream_st`). Provide them as zero-sized opaque structs so code
+// like `ptr as *mut iron_cuda_sys::driver::CUstream_st` resolves.
+// These do NOT replace [`CUstream`] — they're solely for opaque-pointer-cast
+// compatibility with cudarc-shaped call sites during migration.
+
+/// cudarc-style opaque-pointer counterpart of [`CUstream`].
+/// Use `*mut CUstream_st` where cudarc-shaped pointer-typedef APIs expect it.
+#[repr(C)]
+pub struct CUstream_st {
+    _unused: [u8; 0],
+}
+
+/// cudarc-style opaque-pointer counterpart of [`CUevent`].
+#[repr(C)]
+pub struct CUevent_st {
+    _unused: [u8; 0],
+}
+
+/// cudarc-style opaque-pointer counterpart of [`CUmodule`].
+#[repr(C)]
+pub struct CUmod_st {
+    _unused: [u8; 0],
+}
+
+/// cudarc-style opaque-pointer counterpart of [`CUfunction`].
+#[repr(C)]
+pub struct CUfunc_st {
+    _unused: [u8; 0],
+}
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct CUgraph(pub *mut c_void);
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct CUgraphExec(pub *mut c_void);
+/// `CUgraphExecUpdateResult` — why an in-place graph update succeeded or
+/// failed. Per `cuda.h` `CUgraphExecUpdateResult_enum`.
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(non_camel_case_types)]
+pub enum CUgraphExecUpdateResult_enum {
+    CU_GRAPH_EXEC_UPDATE_SUCCESS = 0x0,
+    CU_GRAPH_EXEC_UPDATE_ERROR = 0x1,
+    CU_GRAPH_EXEC_UPDATE_ERROR_TOPOLOGY_CHANGED = 0x2,
+    CU_GRAPH_EXEC_UPDATE_ERROR_NODE_TYPE_CHANGED = 0x3,
+    CU_GRAPH_EXEC_UPDATE_ERROR_FUNCTION_CHANGED = 0x4,
+    CU_GRAPH_EXEC_UPDATE_ERROR_PARAMETERS_CHANGED = 0x5,
+    CU_GRAPH_EXEC_UPDATE_ERROR_NOT_SUPPORTED = 0x6,
+    CU_GRAPH_EXEC_UPDATE_ERROR_UNSUPPORTED_FUNCTION_CHANGE = 0x7,
+    CU_GRAPH_EXEC_UPDATE_ERROR_ATTRIBUTES_CHANGED = 0x8,
+}
+
+/// `CUgraphExecUpdateResultInfo_st` — result-info struct out-parameter of
+/// `cuGraphExecUpdate_v2`. Field order matches `cuda.h`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+#[allow(non_camel_case_types)]
+pub struct CUgraphExecUpdateResultInfo_st {
+    pub result: CUgraphExecUpdateResult_enum,
+    pub errorNode: CUgraphNode,
+    pub errorFromNode: CUgraphNode,
+}
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct CUmemPool(pub *mut c_void);
+
+/// `CUmemPool_attribute_enum`. Subset matching CUDA 13. The release
+/// threshold is the key one for retain-on-free behaviour.
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(non_camel_case_types)]
+pub enum CUmemPool_attribute {
+    /// `cuuint64_t` — pool releases memory back to OS only when usage
+    /// exceeds this many bytes. Set to `u64::MAX` to retain forever
+    /// (CUDA caching-allocator pattern). Default is 0 (release every free).
+    ReleaseThreshold = 1,
+    ReservedMemCurrent = 2,
+    ReservedMemHigh = 3,
+    UsedMemCurrent = 4,
+    UsedMemHigh = 5,
+    ReuseFollowEventDependencies = 6,
+    ReuseAllowOpportunistic = 7,
+    ReuseAllowInternalDependencies = 8,
+}
+
+impl CUmemPool_attribute {
+    /// cudarc-compatibility alias.
+    #[allow(non_upper_case_globals)]
+    pub const CU_MEMPOOL_ATTR_RELEASE_THRESHOLD: Self = Self::ReleaseThreshold;
+}
 
 // ── CUDA 12.3+/12.4+/13.x additions (optional symbols) ──────────────────────
 
@@ -147,7 +235,7 @@ pub struct CUmemAccessDesc {
 
 /// Graph-node type.
 #[repr(u32)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum CUgraphNodeType {
     Kernel = 0,
     Memcpy = 1,
@@ -163,6 +251,23 @@ pub enum CUgraphNodeType {
     MemFree = 11,
     BatchMemOp = 12,
     Conditional = 13,
+}
+
+impl CUgraphNodeType {
+    /// cudarc-compatibility aliases (CU_GRAPH_NODE_TYPE_*).
+    #[allow(non_upper_case_globals)] pub const CU_GRAPH_NODE_TYPE_KERNEL: Self = Self::Kernel;
+    #[allow(non_upper_case_globals)] pub const CU_GRAPH_NODE_TYPE_MEMCPY: Self = Self::Memcpy;
+    #[allow(non_upper_case_globals)] pub const CU_GRAPH_NODE_TYPE_MEMSET: Self = Self::Memset;
+    #[allow(non_upper_case_globals)] pub const CU_GRAPH_NODE_TYPE_HOST: Self = Self::Host;
+    #[allow(non_upper_case_globals)] pub const CU_GRAPH_NODE_TYPE_GRAPH: Self = Self::Graph;
+    #[allow(non_upper_case_globals)] pub const CU_GRAPH_NODE_TYPE_EMPTY: Self = Self::Empty;
+    #[allow(non_upper_case_globals)] pub const CU_GRAPH_NODE_TYPE_WAIT_EVENT: Self = Self::WaitEvent;
+    #[allow(non_upper_case_globals)] pub const CU_GRAPH_NODE_TYPE_EVENT_RECORD: Self = Self::EventRecord;
+    #[allow(non_upper_case_globals)] pub const CU_GRAPH_NODE_TYPE_EXT_SEMAS_SIGNAL: Self = Self::ExtSemasSignal;
+    #[allow(non_upper_case_globals)] pub const CU_GRAPH_NODE_TYPE_EXT_SEMAS_WAIT: Self = Self::ExtSemasWait;
+    #[allow(non_upper_case_globals)] pub const CU_GRAPH_NODE_TYPE_MEM_ALLOC: Self = Self::MemAlloc;
+    #[allow(non_upper_case_globals)] pub const CU_GRAPH_NODE_TYPE_MEM_FREE: Self = Self::MemFree;
+    #[allow(non_upper_case_globals)] pub const CU_GRAPH_NODE_TYPE_BATCH_MEM_OP: Self = Self::BatchMemOp;
 }
 
 /// Conditional-node type.
@@ -237,6 +342,13 @@ pub enum CUresult {
 }
 
 impl CUresult {
+    /// cudarc-compatibility alias: equivalent to [`CUresult::Success`].
+    /// Lets `cudarc::driver::sys::CUresult::CUDA_SUCCESS`-style call sites
+    /// migrate to `iron_cuda_sys::driver::CUresult::CUDA_SUCCESS` with no
+    /// other change. Same memory representation as `Success` (variant 0).
+    #[allow(non_upper_case_globals)]
+    pub const CUDA_SUCCESS: Self = Self::Success;
+
     #[inline]
     pub fn from_raw(r: u32) -> Self {
         // Map the ones we know; everything else → Other.
@@ -340,6 +452,23 @@ pub enum CUstreamCaptureMode {
     Relaxed = 2,
 }
 
+impl CUstreamCaptureMode {
+    /// cudarc-compatibility alias.
+    #[allow(non_upper_case_globals)]
+    pub const CU_STREAM_CAPTURE_MODE_GLOBAL: Self = Self::Global;
+    /// cudarc-compatibility alias.
+    #[allow(non_upper_case_globals)]
+    pub const CU_STREAM_CAPTURE_MODE_THREAD_LOCAL: Self = Self::ThreadLocal;
+    /// cudarc-compatibility alias.
+    #[allow(non_upper_case_globals)]
+    pub const CU_STREAM_CAPTURE_MODE_RELAXED: Self = Self::Relaxed;
+}
+
+/// cudarc-style type alias for [`CUstreamCaptureMode`] (matches the
+/// `_enum` suffix bindgen produces).
+#[allow(non_camel_case_types)]
+pub type CUstreamCaptureMode_enum = CUstreamCaptureMode;
+
 #[repr(u32)]
 #[derive(Debug, Clone, Copy)]
 pub enum CUhostAllocFlags {
@@ -370,6 +499,41 @@ pub enum CUfunction_attribute {
     RequiredClusterWidth = 11,
     RequiredClusterHeight = 12,
     RequiredClusterDepth = 13,
+}
+
+impl CUfunction_attribute {
+    #[allow(non_upper_case_globals)] pub const CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK: Self = Self::MaxThreadsPerBlock;
+    #[allow(non_upper_case_globals)] pub const CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES: Self = Self::SharedSizeBytes;
+    #[allow(non_upper_case_globals)] pub const CU_FUNC_ATTRIBUTE_CONST_SIZE_BYTES: Self = Self::ConstSizeBytes;
+    #[allow(non_upper_case_globals)] pub const CU_FUNC_ATTRIBUTE_LOCAL_SIZE_BYTES: Self = Self::LocalSizeBytes;
+    #[allow(non_upper_case_globals)] pub const CU_FUNC_ATTRIBUTE_NUM_REGS: Self = Self::NumRegs;
+    #[allow(non_upper_case_globals)] pub const CU_FUNC_ATTRIBUTE_PTX_VERSION: Self = Self::PtxVersion;
+    #[allow(non_upper_case_globals)] pub const CU_FUNC_ATTRIBUTE_BINARY_VERSION: Self = Self::BinaryVersion;
+    #[allow(non_upper_case_globals)] pub const CU_FUNC_ATTRIBUTE_CACHE_MODE_CA: Self = Self::CacheModeCa;
+    #[allow(non_upper_case_globals)] pub const CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES: Self = Self::MaxDynamicSharedSizeBytes;
+    #[allow(non_upper_case_globals)] pub const CU_FUNC_ATTRIBUTE_PREFERRED_SHARED_MEMORY_CARVEOUT: Self = Self::PreferredSharedMemoryCarveout;
+}
+
+impl CUdevice_attribute {
+    #[allow(non_upper_case_globals)] pub const CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK: Self = Self::MaxThreadsPerBlock;
+    #[allow(non_upper_case_globals)] pub const CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK: Self = Self::MaxSharedMemoryPerBlock;
+    #[allow(non_upper_case_globals)] pub const CU_DEVICE_ATTRIBUTE_TOTAL_CONSTANT_MEMORY: Self = Self::TotalConstantMemory;
+    #[allow(non_upper_case_globals)] pub const CU_DEVICE_ATTRIBUTE_WARP_SIZE: Self = Self::WarpSize;
+    #[allow(non_upper_case_globals)] pub const CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_BLOCK: Self = Self::MaxRegistersPerBlock;
+    #[allow(non_upper_case_globals)] pub const CU_DEVICE_ATTRIBUTE_CLOCK_RATE: Self = Self::ClockRate;
+    #[allow(non_upper_case_globals)] pub const CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT: Self = Self::MultiprocessorCount;
+    #[allow(non_upper_case_globals)] pub const CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR: Self = Self::ComputeCapabilityMajor;
+    #[allow(non_upper_case_globals)] pub const CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR: Self = Self::ComputeCapabilityMinor;
+    #[allow(non_upper_case_globals)] pub const CU_DEVICE_ATTRIBUTE_PCI_BUS_ID: Self = Self::PciBusId;
+    #[allow(non_upper_case_globals)] pub const CU_DEVICE_ATTRIBUTE_PCI_DEVICE_ID: Self = Self::PciDeviceId;
+    #[allow(non_upper_case_globals)] pub const CU_DEVICE_ATTRIBUTE_PCI_DOMAIN_ID: Self = Self::PciDomainId;
+    #[allow(non_upper_case_globals)] pub const CU_DEVICE_ATTRIBUTE_MEMORY_CLOCK_RATE: Self = Self::MemoryClockRate;
+    #[allow(non_upper_case_globals)] pub const CU_DEVICE_ATTRIBUTE_GLOBAL_MEMORY_BUS_WIDTH: Self = Self::GlobalMemoryBusWidth;
+    #[allow(non_upper_case_globals)] pub const CU_DEVICE_ATTRIBUTE_L2_CACHE_SIZE: Self = Self::L2CacheSize;
+    #[allow(non_upper_case_globals)] pub const CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_MULTIPROCESSOR: Self = Self::MaxThreadsPerMultiProcessor;
+    #[allow(non_upper_case_globals)] pub const CU_DEVICE_ATTRIBUTE_ASYNC_ENGINE_COUNT: Self = Self::AsyncEngineCount;
+    #[allow(non_upper_case_globals)] pub const CU_DEVICE_ATTRIBUTE_COOPERATIVE_LAUNCH: Self = Self::CooperativeLaunch;
+    #[allow(non_upper_case_globals)] pub const CU_DEVICE_ATTRIBUTE_MEMORY_POOLS_SUPPORTED: Self = Self::MemoryPoolsSupported;
 }
 
 /// 16-byte device UUID, matches the CUDA driver `CUuuid` struct.
@@ -431,6 +595,13 @@ pub struct DriverFns {
         unsafe extern "C" fn(CUdeviceptr, *const c_void, usize, CUstream) -> CUresult,
     pub cuMemcpyDtoHAsync_v2:
         unsafe extern "C" fn(*mut c_void, CUdeviceptr, usize, CUstream) -> CUresult,
+    /// Synchronous variants. Block the calling thread until the copy is
+    /// complete. Use these when you would otherwise issue `Async_v2` +
+    /// `cuStreamSynchronize` — the synchronous form skips the per-call
+    /// stream-state machinery and is ~10-20 % faster on small-to-medium
+    /// transfers (matches cudarc's `clone_dtoh` behaviour).
+    pub cuMemcpyHtoD_v2: unsafe extern "C" fn(CUdeviceptr, *const c_void, usize) -> CUresult,
+    pub cuMemcpyDtoH_v2: unsafe extern "C" fn(*mut c_void, CUdeviceptr, usize) -> CUresult,
     pub cuMemcpyDtoDAsync_v2:
         unsafe extern "C" fn(CUdeviceptr, CUdeviceptr, usize, CUstream) -> CUresult,
     /// Cross-device async memcpy. Either or both contexts must allow peer
@@ -446,6 +617,14 @@ pub struct DriverFns {
     ) -> CUresult,
     pub cuMemHostAlloc: unsafe extern "C" fn(*mut *mut c_void, usize, c_uint) -> CUresult,
     pub cuMemFreeHost: unsafe extern "C" fn(*mut c_void) -> CUresult,
+    /// Page-lock an existing host allocation so the CUDA driver can DMA
+    /// directly to/from it without staging through an internal pinned
+    /// bounce buffer. The flag word controls portability across contexts
+    /// and write-combined semantics; `0` is the default suitable for
+    /// general use. Used by IA's host-registration cache to make repeated
+    /// transfers of the same buffer bandwidth-optimal.
+    pub cuMemHostRegister_v2: unsafe extern "C" fn(*mut c_void, usize, c_uint) -> CUresult,
+    pub cuMemHostUnregister: unsafe extern "C" fn(*mut c_void) -> CUresult,
 
     pub cuModuleLoadData: unsafe extern "C" fn(*mut CUmodule, *const c_void) -> CUresult,
     pub cuModuleUnload: unsafe extern "C" fn(CUmodule) -> CUresult,
@@ -494,6 +673,30 @@ pub struct DriverFns {
     pub cuFuncSetAttribute:
         unsafe extern "C" fn(CUfunction, CUfunction_attribute, c_int) -> CUresult,
 
+    /// Query a device's **default** stream-ordered memory pool. The pool
+    /// returned is the one `cuMemAllocAsync` draws from when called without
+    /// an explicit pool — i.e. the one IronAccelerator's allocator uses.
+    pub cuDeviceGetDefaultMemPool:
+        unsafe extern "C" fn(*mut CUmemPool, CUdevice) -> CUresult,
+
+    /// Set a pool attribute. **The single most important call here is
+    /// `ReleaseThreshold = u64::MAX`** — without it, every free returns
+    /// memory to the OS at next sync, costing remap latency on the next
+    /// allocation. With it set, the pool retains memory across free/alloc
+    /// cycles (the CUDA caching-allocator pattern PyTorch/cudarc use).
+    pub cuMemPoolSetAttribute: unsafe extern "C" fn(
+        CUmemPool,
+        CUmemPool_attribute,
+        *mut c_void,
+    ) -> CUresult,
+
+    /// Query a pool attribute.
+    pub cuMemPoolGetAttribute: unsafe extern "C" fn(
+        CUmemPool,
+        CUmemPool_attribute,
+        *mut c_void,
+    ) -> CUresult,
+
     /// Returns the maximum number of active thread blocks per SM for the
     /// given function with the supplied block-size and dynamic shmem usage.
     /// Use with `MultiprocessorCount` device attribute for occupancy-based
@@ -512,6 +715,26 @@ pub struct DriverFns {
         unsafe extern "C" fn(*mut CUgraphExec, CUgraph, u64) -> CUresult,
     pub cuGraphExecDestroy: unsafe extern "C" fn(CUgraphExec) -> CUresult,
     pub cuGraphLaunch: unsafe extern "C" fn(CUgraphExec, CUstream) -> CUresult,
+
+    /// In-place patch of an instantiated graph (CUDA 12.0+). Hot-path fast
+    /// path: a re-captured decode graph with same topology can be applied to
+    /// an existing exec in ~µs vs ~10× slower full re-instantiation.
+    pub cuGraphExecUpdate_v2: unsafe extern "C" fn(
+        CUgraphExec,
+        CUgraph,
+        *mut CUgraphExecUpdateResultInfo_st,
+    ) -> CUresult,
+
+    /// Enumerate nodes in a graph. Used for graph inspection / validation.
+    pub cuGraphGetNodes: unsafe extern "C" fn(
+        CUgraph,
+        *mut CUgraphNode,
+        *mut usize,
+    ) -> CUresult,
+
+    /// Query a node's type. Used to validate graph topology after capture.
+    pub cuGraphNodeGetType:
+        unsafe extern "C" fn(CUgraphNode, *mut CUgraphNodeType) -> CUresult,
 
     // ── Optional / CUDA 12.3+ additions. All loaded via sym_opt so the crate
     // ── still links on older drivers; callers probe with `is_some()`.
@@ -675,10 +898,14 @@ fn load_fns(lib: &Library) -> LoaderResult<DriverFns> {
             cuMemsetD8Async: g!(cuMemsetD8Async),
             cuMemcpyHtoDAsync_v2: g!(cuMemcpyHtoDAsync_v2),
             cuMemcpyDtoHAsync_v2: g!(cuMemcpyDtoHAsync_v2),
+            cuMemcpyHtoD_v2: g!(cuMemcpyHtoD_v2),
+            cuMemcpyDtoH_v2: g!(cuMemcpyDtoH_v2),
             cuMemcpyDtoDAsync_v2: g!(cuMemcpyDtoDAsync_v2),
             cuMemcpyPeerAsync: g!(cuMemcpyPeerAsync),
             cuMemHostAlloc: g!(cuMemHostAlloc),
             cuMemFreeHost: g!(cuMemFreeHost),
+            cuMemHostRegister_v2: g!(cuMemHostRegister_v2),
+            cuMemHostUnregister: g!(cuMemHostUnregister),
             cuModuleLoadData: g!(cuModuleLoadData),
             cuModuleUnload: g!(cuModuleUnload),
             cuModuleGetFunction: g!(cuModuleGetFunction),
@@ -687,6 +914,9 @@ fn load_fns(lib: &Library) -> LoaderResult<DriverFns> {
             cuLaunchCooperativeKernel: g!(cuLaunchCooperativeKernel),
             cuFuncGetAttribute: g!(cuFuncGetAttribute),
             cuFuncSetAttribute: g!(cuFuncSetAttribute),
+            cuDeviceGetDefaultMemPool: g!(cuDeviceGetDefaultMemPool),
+            cuMemPoolSetAttribute: g!(cuMemPoolSetAttribute),
+            cuMemPoolGetAttribute: g!(cuMemPoolGetAttribute),
             cuOccupancyMaxActiveBlocksPerMultiprocessor: g!(
                 cuOccupancyMaxActiveBlocksPerMultiprocessor
             ),
@@ -696,6 +926,9 @@ fn load_fns(lib: &Library) -> LoaderResult<DriverFns> {
             cuGraphInstantiateWithFlags: g!(cuGraphInstantiateWithFlags),
             cuGraphExecDestroy: g!(cuGraphExecDestroy),
             cuGraphLaunch: g!(cuGraphLaunch),
+            cuGraphExecUpdate_v2: g!(cuGraphExecUpdate_v2),
+            cuGraphGetNodes: g!(cuGraphGetNodes),
+            cuGraphNodeGetType: g!(cuGraphNodeGetType),
 
             cuMemCreate: crate::loader::sym_opt(lib, "cuMemCreate"),
             cuMemRelease: crate::loader::sym_opt(lib, "cuMemRelease"),

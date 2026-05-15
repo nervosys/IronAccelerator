@@ -128,6 +128,34 @@ pub enum CublasOp {
     C = 2,
 }
 
+impl CublasOp {
+    #[allow(non_upper_case_globals)] pub const CUBLAS_OP_N: Self = Self::N;
+    #[allow(non_upper_case_globals)] pub const CUBLAS_OP_T: Self = Self::T;
+    #[allow(non_upper_case_globals)] pub const CUBLAS_OP_C: Self = Self::C;
+}
+
+impl CublasStatus {
+    #[allow(non_upper_case_globals)] pub const CUBLAS_STATUS_SUCCESS: Self = Self::Success;
+}
+
+impl CublasComputeType {
+    #[allow(non_upper_case_globals)] pub const CUBLAS_COMPUTE_16F: Self = Self::F16;
+    #[allow(non_upper_case_globals)] pub const CUBLAS_COMPUTE_32F: Self = Self::F32;
+    #[allow(non_upper_case_globals)] pub const CUBLAS_COMPUTE_32F_FAST_16F: Self = Self::F32FastF16;
+    #[allow(non_upper_case_globals)] pub const CUBLAS_COMPUTE_32F_FAST_TF32: Self = Self::F32FastTf32;
+    #[allow(non_upper_case_globals)] pub const CUBLAS_COMPUTE_64F: Self = Self::F64;
+}
+
+impl CudaDataType {
+    #[allow(non_upper_case_globals)] pub const CUDA_R_16F: Self = Self::R16F;
+    #[allow(non_upper_case_globals)] pub const CUDA_R_16BF: Self = Self::R16BF;
+    #[allow(non_upper_case_globals)] pub const CUDA_R_32F: Self = Self::R32F;
+    #[allow(non_upper_case_globals)] pub const CUDA_R_64F: Self = Self::R64F;
+    #[allow(non_upper_case_globals)] pub const CUDA_R_8I: Self = Self::R8I;
+    #[allow(non_upper_case_globals)] pub const CUDA_R_8U: Self = Self::R8U;
+    #[allow(non_upper_case_globals)] pub const CUDA_R_32I: Self = Self::R32I;
+}
+
 /// `cublasLtMatmulDescAttributes_t` — the attrs we actually set.
 #[repr(u32)]
 #[derive(Debug, Clone, Copy)]

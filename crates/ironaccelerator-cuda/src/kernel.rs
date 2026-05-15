@@ -23,7 +23,25 @@ pub struct CompileOptions {
     pub arch: Option<String>,
     /// Additional `-I` include paths.
     pub include_paths: Vec<String>,
-    /// Raw extra flags (e.g. `--use_fast_math`).
+    /// `--ftz={true,false}` — flush subnormals to zero. Combined with
+    /// `prec_div=Some(false)` enables fast-math on Ampere (~5–10% kernel
+    /// speedup, esp. on softmax-exp tails and reciprocal normalization).
+    pub ftz: Option<bool>,
+    /// `--prec-div={true,false}` — when `Some(false)`, NVRTC emits
+    /// approximate division (faster, no IEEE-correct rounding).
+    pub prec_div: Option<bool>,
+    /// `--prec-sqrt={true,false}` — when `Some(false)`, NVRTC emits
+    /// approximate sqrt.
+    pub prec_sqrt: Option<bool>,
+    /// `--fmad={true,false}` — fused-multiply-add contraction. Defaults to on.
+    pub fmad: Option<bool>,
+    /// `--use_fast_math` — superset shortcut for ftz=true, prec-div=false,
+    /// prec-sqrt=false, fmad=true. Use individual flags above for finer control.
+    pub use_fast_math: Option<bool>,
+    /// `--maxrregcount=N` — cap per-thread registers. Sometimes lifts
+    /// occupancy on register-pressured kernels.
+    pub maxrregcount: Option<u32>,
+    /// Raw extra flags appended after the structured fields.
     pub extras: Vec<String>,
 }
 
@@ -251,6 +269,24 @@ pub fn compile(src: &str, arch: &str, opts: &CompileOptions) -> Result<Vec<u8>> 
     // callers having to plumb the path themselves.
     for inc in default_cuda_include_paths() {
         flags.push(CString::new(format!("-I{inc}")).unwrap());
+    }
+    if let Some(v) = opts.ftz {
+        flags.push(CString::new(format!("--ftz={v}")).unwrap());
+    }
+    if let Some(v) = opts.prec_div {
+        flags.push(CString::new(format!("--prec-div={v}")).unwrap());
+    }
+    if let Some(v) = opts.prec_sqrt {
+        flags.push(CString::new(format!("--prec-sqrt={v}")).unwrap());
+    }
+    if let Some(v) = opts.fmad {
+        flags.push(CString::new(format!("--fmad={v}")).unwrap());
+    }
+    if opts.use_fast_math == Some(true) {
+        flags.push(CString::new("--use_fast_math").unwrap());
+    }
+    if let Some(n) = opts.maxrregcount {
+        flags.push(CString::new(format!("--maxrregcount={n}")).unwrap());
     }
     for ex in &opts.extras {
         flags.push(CString::new(ex.as_str()).unwrap());

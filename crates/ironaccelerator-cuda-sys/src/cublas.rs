@@ -21,11 +21,45 @@ pub enum CublasGemmAlgo {
     DefaultTensorOp = 99,
 }
 
+impl CublasGemmAlgo {
+    #[allow(non_upper_case_globals)] pub const CUBLAS_GEMM_DEFAULT: Self = Self::Default;
+    #[allow(non_upper_case_globals)] pub const CUBLAS_GEMM_DEFAULT_TENSOR_OP: Self = Self::DefaultTensorOp;
+}
+
+impl CublasMathMode {
+    #[allow(non_upper_case_globals)] pub const CUBLAS_DEFAULT_MATH: Self = Self::Default;
+    #[allow(non_upper_case_globals)] pub const CUBLAS_TENSOR_OP_MATH: Self = Self::TensorOpMath;
+    #[allow(non_upper_case_globals)] pub const CUBLAS_PEDANTIC_MATH: Self = Self::PedanticMath;
+    #[allow(non_upper_case_globals)] pub const CUBLAS_TF32_TENSOR_OP_MATH: Self = Self::Tf32TensorOpMath;
+}
+
+/// `cublasMath_t` — selects whether GEMM uses tensor cores.
+/// Required to enable tensor-core HGEMM (FP16 prefill hot path).
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CublasMathMode {
+    Default = 0,
+    TensorOpMath = 1,
+    PedanticMath = 2,
+    Tf32TensorOpMath = 3,
+    DisallowReducedPrecisionReduction = 16,
+}
+
 pub struct CublasFns {
     pub cublasCreate_v2: unsafe extern "C" fn(*mut CublasHandle) -> CublasStatus,
     pub cublasDestroy_v2: unsafe extern "C" fn(CublasHandle) -> CublasStatus,
     pub cublasSetStream_v2: unsafe extern "C" fn(CublasHandle, CUstream) -> CublasStatus,
     pub cublasGetVersion_v2: unsafe extern "C" fn(CublasHandle, *mut c_int) -> CublasStatus,
+
+    /// Enable tensor-core math mode. **Required for tensor-core HGEMM**
+    /// (FP16 prefill hot path); without this, GEMM falls back to CUDA cores.
+    pub cublasSetMathMode: unsafe extern "C" fn(CublasHandle, CublasMathMode) -> CublasStatus,
+
+    /// Bind a caller-managed workspace to the cuBLAS handle. Lets us avoid
+    /// per-call internal allocations (cuBLAS picks better algorithms when
+    /// it has a known workspace budget).
+    pub cublasSetWorkspace_v2:
+        unsafe extern "C" fn(CublasHandle, *mut c_void, usize) -> CublasStatus,
 
     pub cublasSgemm_v2: unsafe extern "C" fn(
         CublasHandle,
@@ -119,6 +153,8 @@ static FNS: LazyLock<Result<CublasFns, LoadError>> = LazyLock::new(|| {
             cublasDestroy_v2: sym(lib, "cublas", "cublasDestroy_v2")?,
             cublasSetStream_v2: sym(lib, "cublas", "cublasSetStream_v2")?,
             cublasGetVersion_v2: sym(lib, "cublas", "cublasGetVersion_v2")?,
+            cublasSetMathMode: sym(lib, "cublas", "cublasSetMathMode")?,
+            cublasSetWorkspace_v2: sym(lib, "cublas", "cublasSetWorkspace_v2")?,
             cublasSgemm_v2: sym(lib, "cublas", "cublasSgemm_v2")?,
             cublasGemmEx: sym(lib, "cublas", "cublasGemmEx")?,
             cublasGemmGroupedBatchedEx: sym_opt(lib, "cublasGemmGroupedBatchedEx"),
