@@ -625,6 +625,13 @@ pub struct DriverFns {
     /// transfers of the same buffer bandwidth-optimal.
     pub cuMemHostRegister_v2: unsafe extern "C" fn(*mut c_void, usize, c_uint) -> CUresult,
     pub cuMemHostUnregister: unsafe extern "C" fn(*mut c_void) -> CUresult,
+    /// Profiler control. Brackets between `cuProfilerStart`/`cuProfilerStop`
+    /// define a "capture range" that `nsys` / `ncu` with `--capture-range=
+    /// cudaProfilerApi` will exclusively trace. Required to measure
+    /// graph-replayed kernels (which `nsys` otherwise sees as one opaque
+    /// `cuGraphLaunch`).
+    pub cuProfilerStart: unsafe extern "C" fn() -> CUresult,
+    pub cuProfilerStop: unsafe extern "C" fn() -> CUresult,
 
     pub cuModuleLoadData: unsafe extern "C" fn(*mut CUmodule, *const c_void) -> CUresult,
     pub cuModuleUnload: unsafe extern "C" fn(CUmodule) -> CUresult,
@@ -906,6 +913,8 @@ fn load_fns(lib: &Library) -> LoaderResult<DriverFns> {
             cuMemFreeHost: g!(cuMemFreeHost),
             cuMemHostRegister_v2: g!(cuMemHostRegister_v2),
             cuMemHostUnregister: g!(cuMemHostUnregister),
+            cuProfilerStart: g!(cuProfilerStart),
+            cuProfilerStop: g!(cuProfilerStop),
             cuModuleLoadData: g!(cuModuleLoadData),
             cuModuleUnload: g!(cuModuleUnload),
             cuModuleGetFunction: g!(cuModuleGetFunction),
