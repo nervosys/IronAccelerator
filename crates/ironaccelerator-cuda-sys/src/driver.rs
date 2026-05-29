@@ -717,6 +717,10 @@ pub struct DriverFns {
 
     pub cuStreamBeginCapture_v2: unsafe extern "C" fn(CUstream, CUstreamCaptureMode) -> CUresult,
     pub cuStreamEndCapture: unsafe extern "C" fn(CUstream, *mut CUgraph) -> CUresult,
+    /// Capture-status query — out-param is a `CUstreamCaptureStatus` (C int:
+    /// 0=NONE, 1=ACTIVE, 2=INVALIDATED). Used to pin which op invalidates a
+    /// graph capture.
+    pub cuStreamIsCapturing: unsafe extern "C" fn(CUstream, *mut i32) -> CUresult,
     pub cuGraphDestroy: unsafe extern "C" fn(CUgraph) -> CUresult,
     pub cuGraphInstantiateWithFlags:
         unsafe extern "C" fn(*mut CUgraphExec, CUgraph, u64) -> CUresult,
@@ -931,6 +935,7 @@ fn load_fns(lib: &Library) -> LoaderResult<DriverFns> {
             ),
             cuStreamBeginCapture_v2: g!(cuStreamBeginCapture_v2),
             cuStreamEndCapture: g!(cuStreamEndCapture),
+            cuStreamIsCapturing: g!(cuStreamIsCapturing),
             cuGraphDestroy: g!(cuGraphDestroy),
             cuGraphInstantiateWithFlags: g!(cuGraphInstantiateWithFlags),
             cuGraphExecDestroy: g!(cuGraphExecDestroy),
