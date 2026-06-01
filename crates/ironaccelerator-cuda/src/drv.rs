@@ -457,6 +457,25 @@ impl Stream {
             )
         }
     }
+
+    /// Stream-ordered `cuMemsetD8Async` — set `bytes` bytes at `ptr` to
+    /// `value` on THIS stream. Capture-safe: when this stream is being
+    /// captured the memset is recorded into the graph. (cudarc's
+    /// `memset_zeros` issues on the buffer's owning stream — the legacy NULL
+    /// stream for pool buffers — which invalidates an in-progress capture of
+    /// another stream. Use this to keep the zeroing on the captured stream.)
+    #[inline]
+    pub fn memset_d8_async(&self, ptr: CUdeviceptr, value: u8, bytes: usize) -> Result<()> {
+        if bytes == 0 {
+            return Ok(());
+        }
+        unsafe {
+            check(
+                "cuMemsetD8Async",
+                (self.drv.cuMemsetD8Async)(ptr, value, bytes, self.handle),
+            )
+        }
+    }
 }
 
 unsafe impl Send for Stream {}
