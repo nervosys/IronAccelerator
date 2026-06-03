@@ -576,6 +576,7 @@ pub struct DriverFns {
     pub cuStreamCreateWithPriority: unsafe extern "C" fn(*mut CUstream, c_uint, c_int) -> CUresult,
     pub cuStreamDestroy_v2: unsafe extern "C" fn(CUstream) -> CUresult,
     pub cuStreamSynchronize: unsafe extern "C" fn(CUstream) -> CUresult,
+    pub cuStreamQuery: unsafe extern "C" fn(CUstream) -> CUresult,
     pub cuStreamWaitEvent: unsafe extern "C" fn(CUstream, CUevent, c_uint) -> CUresult,
     pub cuStreamGetPriorityRange: unsafe extern "C" fn(*mut c_int, *mut c_int) -> CUresult,
 
@@ -894,6 +895,7 @@ fn load_fns(lib: &Library) -> LoaderResult<DriverFns> {
             cuStreamCreateWithPriority: g!(cuStreamCreateWithPriority),
             cuStreamDestroy_v2: g!(cuStreamDestroy_v2),
             cuStreamSynchronize: g!(cuStreamSynchronize),
+            cuStreamQuery: g!(cuStreamQuery),
             cuStreamWaitEvent: g!(cuStreamWaitEvent),
             cuStreamGetPriorityRange: cu_stream_get_priority_range,
             cuEventCreate: g!(cuEventCreate),
