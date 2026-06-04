@@ -16,7 +16,7 @@ released minor; older minors are out of scope unless explicitly noted in
 **Do not open a public GitHub issue for security bugs.** Use one of the
 private channels below.
 
-- **Email** — `security@nervosys.ai` (preferred)
+- **Email** — `opensource@nervosys.ai` (preferred)
 - **GitHub Security Advisory** — open a draft advisory on
   <https://github.com/nervosys/IronAccelerator/security/advisories>
 

@@ -37,7 +37,7 @@ a **commercial license is available**. The commercial license removes the
 copyleft obligations of the AGPL and includes priority support and
 indemnification terms negotiated on a per-customer basis.
 
-Contact **Nervosys** for commercial licensing:
+Contact **NERVOSYS** for commercial licensing:
 
 - Email: **opensource@nervosys.ai**
 - Or open a [GitHub Discussion](https://github.com/nervosys/IronAccelerator/discussions)
@@ -63,4 +63,4 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 ```
 
 For files that are part of the commercial distribution, the identifier is
-`LicenseRef-Nervosys-Commercial`.
+`LicenseRef-NERVOSYS-Commercial`.

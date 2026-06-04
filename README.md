@@ -263,4 +263,4 @@ Driver-substrate work only — kernels, planners, and workload abstractions belo
 IronAccelerator is dual-licensed:
 
 - **AGPL-3.0-or-later** — see [`LICENSE`](LICENSE).
-- **Commercial license** — available from Nervosys for embedded, proprietary, or closed-source SaaS use cases. See [`LICENSING.md`](LICENSING.md) for the rationale and contact procedure.
+- **Commercial license** — available from NERVOSYS for embedded, proprietary, or closed-source SaaS use cases. See [`LICENSING.md`](LICENSING.md) for the rationale and contact procedure.
