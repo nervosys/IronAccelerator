@@ -30,13 +30,17 @@ fn try_init() -> Option<Ctx> {
     let fns = sys::fns().ok()?;
     let mut pool = sys::CUmemPool::default();
     unsafe {
-        if (fns.cuDeviceGetDefaultMemPool)(&mut pool, device.raw_device())
-            != sys::CUresult::Success
+        if (fns.cuDeviceGetDefaultMemPool)(&mut pool, device.raw_device()) != sys::CUresult::Success
         {
             return None;
         }
     }
-    Some(Ctx { device, stream, pool, fns })
+    Some(Ctx {
+        device,
+        stream,
+        pool,
+        fns,
+    })
 }
 
 fn set_threshold(ctx: &Ctx, threshold: u64) {

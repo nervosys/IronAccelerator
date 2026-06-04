@@ -1,8 +1,9 @@
-# Security audit — IronAccelerator 1.1.0
+# Security audit — IronAccelerator 1.2.0
 
 **Audit date:** 2026-06-04
-**Scope:** the IronAccelerator Rust workspace at git tag candidate `v1.1.0`
-(commit `fc21e82`). All 16 crates under `crates/`.
+**Scope:** the IronAccelerator Rust workspace at git tag candidate `v1.2.0`
+(commit `fc21e82`, plus the audit and release-prep commits that followed).
+All 16 crates under `crates/`.
 **Auditor:** automated review on `master` HEAD, working tree clean.
 
 This document satisfies the release pre-flight requirement to inventory the
@@ -23,7 +24,7 @@ and **CMMC 2.0** (Level 2, NIST SP 800-171 derived controls).
 | Supply-chain controls               | —       | —                | Pass + 2 recommendations |
 | CMMC 2.0 Level 2 control gaps       | 2       | Process          | Addressed below       |
 
-The crate is cleared for the 1.1.0 release. Two non-blocking process
+The crate is cleared for the 1.2.0 release. Two non-blocking process
 recommendations are listed in §6.
 
 ---
@@ -145,7 +146,7 @@ The crate has no authentication or access-control surface.
 ### Configuration Management (CM)
 | Control       | Status | Evidence                                                                                                       |
 | ------------- | ------ | -------------------------------------------------------------------------------------------------------------- |
-| CM.L2-3.4.1   | Pass   | `Cargo.lock` pinned at workspace root; workspace version (`1.1.0`) propagated through `[workspace.package]`. |
+| CM.L2-3.4.1   | Pass   | `Cargo.lock` pinned at workspace root; workspace version (`1.2.0`) propagated through `[workspace.package]`. |
 | CM.L2-3.4.2   | Pass   | Release profile in `Cargo.toml` enforces `lto = "fat"`, `strip = "symbols"`, `panic = "abort"`, `codegen-units = 1`. |
 | CM.L2-3.4.6   | Pass   | Minimal toolchain dependency surface — see `rust-version = "1.89"` and dependency list in workspace `Cargo.toml`. |
 | CM.L2-3.4.9   | Pass   | No build scripts execute arbitrary binaries; no `vendored*` features compile native code outside the published source. |
@@ -219,7 +220,7 @@ and never enter the source tree.
 ## 6. Recommendations (non-blocking)
 
 These are process improvements that bring the project up to "comfortable
-for a regulated downstream" rather than gating the 1.1.0 release.
+for a regulated downstream" rather than gating the 1.2.0 release.
 
 1. **Add `cargo audit` to CI.** Currently it's documented in `RELEASE.md`
    as a pre-flight step. Adding a `security` job to `.github/workflows/ci.yml`
@@ -231,7 +232,7 @@ for a regulated downstream" rather than gating the 1.1.0 release.
    to the GitHub Release page enables downstream supply-chain attestation
    (MITRE T1195 mitigation evidence).
 
-Neither is required for the 1.1.0 cut; both reduce friction for
+Neither is required for the 1.2.0 cut; both reduce friction for
 subsequent releases.
 
 ---
@@ -239,7 +240,7 @@ subsequent releases.
 ## 7. Sign-off
 
 The audit found no open vulnerabilities, no leaked private data, and no
-process gaps that block the 1.1.0 release. The crate is appropriate for
+process gaps that block the 1.2.0 release. The crate is appropriate for
 publication to crates.io.
 
 The two recommendations in §6 are tracked for the 1.1.x maintenance

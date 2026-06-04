@@ -521,8 +521,7 @@ pub mod result {
         let fns = iadrv::fns().map_err(|_| iadrv::CUresult::NotInitialized)?;
         let mut free: usize = 0;
         let mut total: usize = 0;
-        let r =
-            unsafe { (fns.cuMemGetInfo_v2)(&mut free as *mut _, &mut total as *mut _) };
+        let r = unsafe { (fns.cuMemGetInfo_v2)(&mut free as *mut _, &mut total as *mut _) };
         if r == iadrv::CUresult::Success {
             Ok((free, total))
         } else {

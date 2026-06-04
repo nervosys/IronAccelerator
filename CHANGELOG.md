@@ -7,6 +7,8 @@ versions may break API.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-06-04
+
 ### Highlights
 
 - **Drop-in replacement for `cudarc` 0.19**, with measurably lower wrapper
@@ -151,6 +153,21 @@ Ti box).
   CUDA crate directly via `ironaccelerator_cuda::drv` or
   `cudarc_compat`.
 - `tests/moe_smoke.rs` deleted.
+
+### Security
+
+- **Release-grade security audit** committed at `docs/SECURITY_AUDIT.md`:
+  0 open CVEs across 186 dependencies (cargo audit clean), 0 leaked
+  private data, 0 cryptographic primitives in scope (out of scope for
+  FIPS 140-3 validation), 618 `unsafe` blocks across 56 files reviewed
+  against MITRE ATT&CK supply-chain / memory-corruption / DLL-hijack
+  patterns, and a full CMMC 2.0 Level 2 control mapping.
+- **`SECURITY.md`** vulnerability-reporting policy added — private
+  channel is `opensource@nervosys.ai` or a GitHub Security Advisory.
+  Acknowledgement SLA: 3 business days. Fix SLA: 30 days for high.
+- **`cargo audit` wired into CI** as a dedicated `audit` job via
+  `rustsec/audit-check`. Closes CMMC SI.L2-3.14.3 / RA.L2-3.11.2 by
+  scanning every push and PR against the RustSec advisory database.
 
 ### Internal
 
@@ -362,6 +379,7 @@ Initial public release.
 - Scaffolds for ROCm, Metal, and QNN backends.
 - Ontology / strategy layer with heuristic scoring.
 
+[1.2.0]: https://github.com/nervosys/IronAccelerator/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/nervosys/IronAccelerator/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/nervosys/IronAccelerator/compare/v0.2.0...v1.0.0
 [0.2.0]: https://github.com/nervosys/IronAccelerator/compare/v0.1.0...v0.2.0

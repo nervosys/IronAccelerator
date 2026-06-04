@@ -22,15 +22,21 @@ pub enum CublasGemmAlgo {
 }
 
 impl CublasGemmAlgo {
-    #[allow(non_upper_case_globals)] pub const CUBLAS_GEMM_DEFAULT: Self = Self::Default;
-    #[allow(non_upper_case_globals)] pub const CUBLAS_GEMM_DEFAULT_TENSOR_OP: Self = Self::DefaultTensorOp;
+    #[allow(non_upper_case_globals)]
+    pub const CUBLAS_GEMM_DEFAULT: Self = Self::Default;
+    #[allow(non_upper_case_globals)]
+    pub const CUBLAS_GEMM_DEFAULT_TENSOR_OP: Self = Self::DefaultTensorOp;
 }
 
 impl CublasMathMode {
-    #[allow(non_upper_case_globals)] pub const CUBLAS_DEFAULT_MATH: Self = Self::Default;
-    #[allow(non_upper_case_globals)] pub const CUBLAS_TENSOR_OP_MATH: Self = Self::TensorOpMath;
-    #[allow(non_upper_case_globals)] pub const CUBLAS_PEDANTIC_MATH: Self = Self::PedanticMath;
-    #[allow(non_upper_case_globals)] pub const CUBLAS_TF32_TENSOR_OP_MATH: Self = Self::Tf32TensorOpMath;
+    #[allow(non_upper_case_globals)]
+    pub const CUBLAS_DEFAULT_MATH: Self = Self::Default;
+    #[allow(non_upper_case_globals)]
+    pub const CUBLAS_TENSOR_OP_MATH: Self = Self::TensorOpMath;
+    #[allow(non_upper_case_globals)]
+    pub const CUBLAS_PEDANTIC_MATH: Self = Self::PedanticMath;
+    #[allow(non_upper_case_globals)]
+    pub const CUBLAS_TF32_TENSOR_OP_MATH: Self = Self::Tf32TensorOpMath;
 }
 
 /// `cublasMath_t` — selects whether GEMM uses tensor cores.

@@ -20,7 +20,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.1.0"
+version = "1.2.0"
 edition = "2021"
 rust-version = "1.89"
 license = "AGPL-3.0-or-later"
@@ -32,21 +32,21 @@ keywords = ["cuda", "rocm", "gpu", "cudarc", "accelerator"]
 categories = ["api-bindings", "hardware-support", "science"]
 
 [workspace.dependencies]
-ironaccelerator-core      = { path = "crates/ironaccelerator-core",     version = "1.1.0" }
-ironaccelerator-ontology  = { path = "crates/ironaccelerator-ontology", version = "1.1.0" }
-ironaccelerator-cuda      = { path = "crates/ironaccelerator-cuda",     version = "1.1.0" }
-ironaccelerator-cuda-sys  = { path = "crates/ironaccelerator-cuda-sys", version = "1.1.0" }
-ironaccelerator-rocm      = { path = "crates/ironaccelerator-rocm",     version = "1.1.0" }
-ironaccelerator-rocm-sys  = { path = "crates/ironaccelerator-rocm-sys", version = "1.1.0" }
-ironaccelerator-metal     = { path = "crates/ironaccelerator-metal",    version = "1.1.0" }
-ironaccelerator-qnn       = { path = "crates/ironaccelerator-qnn",      version = "1.1.0" }
-ironaccelerator-qnn-sys   = { path = "crates/ironaccelerator-qnn-sys",  version = "1.1.0" }
-ironaccelerator-vulkan    = { path = "crates/ironaccelerator-vulkan",   version = "1.1.0" }
-ironaccelerator-opengl    = { path = "crates/ironaccelerator-opengl",   version = "1.1.0" }
-ironaccelerator-webgpu    = { path = "crates/ironaccelerator-webgpu",   version = "1.1.0" }
-ironaccelerator-tpu       = { path = "crates/ironaccelerator-tpu",      version = "1.1.0" }
-ironaccelerator-levelzero = { path = "crates/ironaccelerator-levelzero", version = "1.1.0" }
-ironaccelerator-neuron    = { path = "crates/ironaccelerator-neuron",   version = "1.1.0" }
+ironaccelerator-core      = { path = "crates/ironaccelerator-core",     version = "1.2.0" }
+ironaccelerator-ontology  = { path = "crates/ironaccelerator-ontology", version = "1.2.0" }
+ironaccelerator-cuda      = { path = "crates/ironaccelerator-cuda",     version = "1.2.0" }
+ironaccelerator-cuda-sys  = { path = "crates/ironaccelerator-cuda-sys", version = "1.2.0" }
+ironaccelerator-rocm      = { path = "crates/ironaccelerator-rocm",     version = "1.2.0" }
+ironaccelerator-rocm-sys  = { path = "crates/ironaccelerator-rocm-sys", version = "1.2.0" }
+ironaccelerator-metal     = { path = "crates/ironaccelerator-metal",    version = "1.2.0" }
+ironaccelerator-qnn       = { path = "crates/ironaccelerator-qnn",      version = "1.2.0" }
+ironaccelerator-qnn-sys   = { path = "crates/ironaccelerator-qnn-sys",  version = "1.2.0" }
+ironaccelerator-vulkan    = { path = "crates/ironaccelerator-vulkan",   version = "1.2.0" }
+ironaccelerator-opengl    = { path = "crates/ironaccelerator-opengl",   version = "1.2.0" }
+ironaccelerator-webgpu    = { path = "crates/ironaccelerator-webgpu",   version = "1.2.0" }
+ironaccelerator-tpu       = { path = "crates/ironaccelerator-tpu",      version = "1.2.0" }
+ironaccelerator-levelzero = { path = "crates/ironaccelerator-levelzero", version = "1.2.0" }
+ironaccelerator-neuron    = { path = "crates/ironaccelerator-neuron",   version = "1.2.0" }
 
 half      = { version = "2", default-features = false, features = ["num-traits"] }
 bitflags  = "2"
