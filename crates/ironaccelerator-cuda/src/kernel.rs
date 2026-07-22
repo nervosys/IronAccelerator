@@ -109,15 +109,37 @@ fn default_cuda_include_paths() -> Vec<String> {
     if let Ok(p) = std::env::var("CUDA_HOME") {
         push(format!("{p}/include"));
     }
-    // Common defaults.
+    // Common defaults. Scan install roots DYNAMICALLY (newest version first)
+    // instead of a hardcoded version list — a list goes stale the day a new
+    // toolkit ships (v13.3 on the dev box was missed by the old list, breaking
+    // every NVRTC compile whose PTX cache missed). Only dirs that actually
+    // contain cuda_fp16.h count (stub version dirs exist without headers).
     if cfg!(target_os = "linux") {
         push("/usr/local/cuda/include".into());
     }
-    if cfg!(target_os = "windows") {
-        for v in ["v13.2", "v13.1", "v13.0", "v12.9", "v12.8", "v12.5"] {
-            push(format!(
-                "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/{v}/include"
-            ));
+    let roots: &[&str] = if cfg!(target_os = "windows") {
+        &["C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA"]
+    } else {
+        &["/usr/local"] // cuda-12.x / cuda-13.x installs (DGX Spark)
+    };
+    for root in roots {
+        let Ok(entries) = std::fs::read_dir(root) else {
+            continue;
+        };
+        let mut vers: Vec<String> = entries
+            .flatten()
+            .filter_map(|e| {
+                let inc = e.path().join("include");
+                if inc.join("cuda_fp16.h").is_file() {
+                    Some(inc.to_string_lossy().into_owned())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        vers.sort();
+        for v in vers.into_iter().rev() {
+            push(v);
         }
     }
     out
