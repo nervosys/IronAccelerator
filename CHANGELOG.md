@@ -76,6 +76,18 @@ implies `ontology`.
   out), probes feature level, FP64, native 16-bit ops, UMA, and wave ops,
   and hands back an owned `ID3D12Device` from `drv::open`. Enabled with the
   `dx12` feature; included in `all`. New `BackendKind::Dx12`.
+- **`ironaccelerator_dx12::compute` — D3D12 compute submission.**
+  `Context` owns a COMPUTE queue, allocator, command list, and fence.
+  Committed buffers in the DEFAULT / UPLOAD / READBACK heaps, staged
+  `upload` / `download` with barriers and fence waits handled, root
+  signatures (`root_signature_with_uavs`, or `root_signature_from_blob` to
+  take a shader's embedded one), `compute_pipeline` from DXIL, and
+  `dispatch`. Buffers bind as root UAVs rather than through descriptor
+  tables, which avoids the `GetCPUDescriptorHandleForHeapStart`
+  by-value-return ABI trap entirely; textures and samplers would need the
+  heap path and are not supported. Shaders are not compiled here — bring
+  DXIL, as the CUDA backend takes PTX. Verified end to end on 2× RTX 3090 Ti
+  and an AMD integrated GPU.
 - `Runtime::devices_with(CapabilityFlags)` — hardware-only filter over the
   device survey, replacing the capability half of what `plan` did.
 - `Runtime::available_backends()` and `Runtime::capabilities(backend, device)`

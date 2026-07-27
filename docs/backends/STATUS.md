@@ -12,7 +12,7 @@ Module / Function / kernel compile / memcpy / library handles).
 | **ROCm**           | ✅ HIP full     | ✅ hipBLASLt scaffold | ⏳ hiprtc binding pending | ❌ no GPU here | ❌                  | ❌                  |
 | **Metal**          | ⚠️ scaffold     | ⏳ MPS scaffold | n/a (Metal Shading Language is offline) | ❌ no macOS here | ❌              | ❌                  |
 | **Vulkan**         | ✅ enumerate+compute | n/a   | ❌ bring your own SPIR-V | ⏳ device probe only | ❌            | ❌                  |
-| **D3D12**          | ✅ enumerate+device | n/a    | ❌ bring your own DXIL | ✅ 3 adapters enumerated | ❌         | ❌                  |
+| **D3D12**          | ✅ enumerate+compute | n/a   | ❌ bring your own DXIL | ✅ dispatch on 3 adapters | ❌        | ❌                  |
 | **Qualcomm (QNN)** | ⚠️ scaffold     | ⏳ QNN SDK FFI pending | n/a (QNN graphs are AOT) | ❌ no SDK here | ❌              | ❌                  |
 
 ✅ = shipped and exercised
@@ -113,20 +113,26 @@ layer (no graph optimizer, no quantization recipes — those layer on top).
 
 ### Direct3D 12
 
-Status: **enumeration + capability probing, verified on real hardware.**
+Status: **enumeration, capability probing, and compute dispatch — all
+verified on real hardware.** The only non-CUDA backend with an end-to-end
+live-GPU test.
 
 - `crates/ironaccelerator-dx12/src/drv.rs` — hand-written COM vtables for
   `IDXGIFactory1` / `IDXGIAdapter1` / `ID3D12Device`, `libloading` for
   `d3d12.dll` + `dxgi.dll`, adapter walk, `CheckFeatureSupport` probes,
   and `open()` returning an owned `ID3D12Device`.
+- `crates/ironaccelerator-dx12/src/compute.rs` — COMPUTE queue, allocator,
+  command list, fence, committed buffers in all three heaps, staged
+  upload/download with barriers, root signatures, compute pipelines from
+  DXIL, and dispatch.
 - `crates/ironaccelerator-dx12/src/backend.rs` — capability mapping.
 - Verified against 2× RTX 3090 Ti + an AMD integrated part: 3 adapters,
-  matching `Win32_VideoController` exactly in count and order.
+  matching `Win32_VideoController` exactly in count and order, and a
+  dispatch that correctly doubles 1024 floats on each.
 
-**Missing for full parity with CUDA:** command queues/allocators/lists,
-root signatures, descriptor heaps, compute pipelines, a `MemPool`
-equivalent, and a dispatch test. `drv::open` hands over a device and stops
-there for now.
+**Missing for full parity with CUDA:** descriptor heaps (textures and
+samplers), a `MemPool` equivalent, a cudarc-shaped surface, and async
+submission — `Context` blocks on a fence per submit.
 
 ### WebGPU / OpenGL / TPU / Level Zero / Neuron
 

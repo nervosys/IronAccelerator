@@ -51,7 +51,7 @@ Honest current state. **CUDA is the only backend that's production-ready today.*
 | Vulkan     | cross-vendor GPU compute           | ✅ enumerate + compute | ❌ bring your own SPIR-V | ❌              | ❌                   | ⏳ device probe only | Vulkan 1.3 ICD             |
 | QNN        | Qualcomm Hexagon NPU               | ⚠️ scaffold      | n/a (QNN is AOT)       | ❌                   | ❌                   | ❌ needs SDK + device | QNN SDK 2.22+              |
 | OpenGL     | legacy / embedded GPU fallback     | ✅ enumerate     | ⏳                     | ❌                   | ❌                   | ⏳ context probe only | GL 4.3+ compute            |
-| **D3D12**  | Windows, all vendors               | ✅ enumerate + device   | ❌ bring your own DXIL | ❌              | ❌                   | ✅ 3 adapters (2×3090 Ti + iGPU) | Windows 10 1507+ |
+| **D3D12**  | Windows, all vendors               | ✅ enumerate + compute | ❌ bring your own DXIL | ❌              | ❌                   | ✅ dispatch on 3 adapters | Windows 10 1507+ |
 | WebGPU     | browser / WASM only                | ✅ host-bound adapter   | n/a (host owns device) | ❌              | ❌                   | ⏳ needs browser harness | Chrome 113+ / Safari 17.4+ |
 | TPU (PJRT) | Google TPU v4 / v5 / v6e           | ⚠️ env probe     | n/a (PJRT plugin AOT)  | ❌                   | ❌                   | ❌ needs TPU VM | PJRT plugin (`libtpu.so`)      |
 | Level Zero | Intel GPU (Arc / Flex / PVC) + NPU | ✅ enumerate + compute | ⏳ SPIR-V        | ❌                   | ❌                   | ⏳ device probe only | `ze_loader` from Intel compute |

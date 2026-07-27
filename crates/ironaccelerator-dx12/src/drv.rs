@@ -27,7 +27,7 @@ use once_cell::sync::OnceCell;
 // ── COM primitives ─────────────────────────────────────────────────────────
 
 pub(crate) type Hresult = i32;
-const S_OK: Hresult = 0;
+pub(crate) const S_OK: Hresult = 0;
 /// `DXGI_ERROR_NOT_FOUND` — returned by `EnumAdapters1` past the last adapter.
 const DXGI_ERROR_NOT_FOUND: Hresult = 0x887A_0002u32 as i32;
 
@@ -65,7 +65,7 @@ struct IUnknownVtbl {
 }
 
 /// Release any COM pointer. Safe to call with null (no-op).
-unsafe fn com_release(obj: *mut c_void) {
+pub(crate) unsafe fn com_release(obj: *mut c_void) {
     if obj.is_null() {
         return;
     }
@@ -139,10 +139,16 @@ const DXGI_ADAPTER_FLAG_SOFTWARE: u32 = 2;
 
 // ── ID3D12Device ───────────────────────────────────────────────────────────
 
-/// `IUnknown` (3) → `ID3D12Object` (4) → `ID3D12Device`; we only need
-/// `CheckFeatureSupport`, which is the 7th `ID3D12Device` slot (index 13).
+/// `IUnknown` (3) → `ID3D12Object` (4) → `ID3D12Device` (37).
+///
+/// Declared out to `CreateFence` (index 36) because [`crate::compute`] needs
+/// slots scattered through the middle. Everything we do not call is an opaque
+/// pointer; the padding entries exist purely to hold later slots at the right
+/// index. Two of the skipped methods (`GetResourceAllocationInfo`,
+/// `GetCustomHeapProperties`) return structs by value and would need care to
+/// call — another reason to leave them opaque.
 #[repr(C)]
-struct ID3d12DeviceVtbl {
+pub(crate) struct ID3d12DeviceVtbl {
     _query_interface: *const c_void,
     _add_ref: *const c_void,
     _release: *const c_void,
@@ -151,12 +157,112 @@ struct ID3d12DeviceVtbl {
     _set_private_data_interface: *const c_void,
     _set_name: *const c_void,
     _get_node_count: *const c_void,
-    _create_command_queue: *const c_void,
-    _create_command_allocator: *const c_void,
+    // 8
+    pub(crate) create_command_queue: unsafe extern "system" fn(
+        *mut c_void,
+        *const c_void,
+        *const Guid,
+        *mut *mut c_void,
+    ) -> Hresult,
+    // 9
+    pub(crate) create_command_allocator:
+        unsafe extern "system" fn(*mut c_void, u32, *const Guid, *mut *mut c_void) -> Hresult,
     _create_graphics_pipeline_state: *const c_void,
-    _create_compute_pipeline_state: *const c_void,
-    _create_command_list: *const c_void,
-    check_feature_support: unsafe extern "system" fn(*mut c_void, u32, *mut c_void, u32) -> Hresult,
+    // 11
+    pub(crate) create_compute_pipeline_state: unsafe extern "system" fn(
+        *mut c_void,
+        *const c_void,
+        *const Guid,
+        *mut *mut c_void,
+    ) -> Hresult,
+    // 12
+    pub(crate) create_command_list: unsafe extern "system" fn(
+        *mut c_void,
+        u32,
+        u32,
+        *mut c_void,
+        *mut c_void,
+        *const Guid,
+        *mut *mut c_void,
+    ) -> Hresult,
+    // 13
+    pub(crate) check_feature_support:
+        unsafe extern "system" fn(*mut c_void, u32, *mut c_void, u32) -> Hresult,
+    _create_descriptor_heap: *const c_void,
+    _get_descriptor_handle_increment_size: *const c_void,
+    // 16
+    pub(crate) create_root_signature: unsafe extern "system" fn(
+        *mut c_void,
+        u32,
+        *const c_void,
+        usize,
+        *const Guid,
+        *mut *mut c_void,
+    ) -> Hresult,
+    _create_constant_buffer_view: *const c_void,
+    _create_shader_resource_view: *const c_void,
+    _create_unordered_access_view: *const c_void,
+    _create_render_target_view: *const c_void,
+    _create_depth_stencil_view: *const c_void,
+    _create_sampler: *const c_void,
+    _copy_descriptors: *const c_void,
+    _copy_descriptors_simple: *const c_void,
+    _get_resource_allocation_info: *const c_void,
+    _get_custom_heap_properties: *const c_void,
+    // 27
+    pub(crate) create_committed_resource: unsafe extern "system" fn(
+        *mut c_void,
+        *const HeapProperties,
+        u32,
+        *const ResourceDesc,
+        u32,
+        *const c_void,
+        *const Guid,
+        *mut *mut c_void,
+    ) -> Hresult,
+    _create_heap: *const c_void,
+    _create_placed_resource: *const c_void,
+    _create_reserved_resource: *const c_void,
+    _create_shared_handle: *const c_void,
+    _open_shared_handle: *const c_void,
+    _open_shared_handle_by_name: *const c_void,
+    _make_resident: *const c_void,
+    _evict: *const c_void,
+    // 36
+    pub(crate) create_fence:
+        unsafe extern "system" fn(*mut c_void, u64, u32, *const Guid, *mut *mut c_void) -> Hresult,
+}
+
+// ── Resource description structs (shared with `compute`) ───────────────────
+
+/// `D3D12_HEAP_PROPERTIES`.
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub(crate) struct HeapProperties {
+    pub(crate) type_: u32,
+    pub(crate) cpu_page_property: u32,
+    pub(crate) memory_pool_preference: u32,
+    pub(crate) creation_node_mask: u32,
+    pub(crate) visible_node_mask: u32,
+}
+
+/// `D3D12_RESOURCE_DESC`. `align(8)` matches the C layout, which is 8-aligned
+/// because of the `UINT64` members.
+#[repr(C, align(8))]
+#[derive(Clone, Copy, Default)]
+pub(crate) struct ResourceDesc {
+    pub(crate) dimension: u32,
+    pub(crate) _pad: u32,
+    pub(crate) alignment: u64,
+    pub(crate) width: u64,
+    pub(crate) height: u32,
+    pub(crate) depth_or_array_size: u16,
+    pub(crate) mip_levels: u16,
+    pub(crate) format: u32,
+    pub(crate) sample_count: u32,
+    pub(crate) sample_quality: u32,
+    pub(crate) layout: u32,
+    pub(crate) flags: u32,
 }
 
 // D3D12_FEATURE selectors.
@@ -256,12 +362,20 @@ type D3d12CreateDeviceFn = unsafe extern "system" fn(
     pp_device: *mut *mut c_void,
 ) -> Hresult;
 
+pub(crate) type D3d12SerializeRootSignatureFn = unsafe extern "system" fn(
+    desc: *const c_void,
+    version: u32,
+    pp_blob: *mut *mut c_void,
+    pp_error: *mut *mut c_void,
+) -> Hresult;
+
 pub(crate) struct Loaded {
     _dxgi: Library,
     _d3d12: Library,
     create_factory1: Option<CreateDxgiFactoryFn>,
     create_factory2: Option<CreateDxgiFactory2Fn>,
     create_device: D3d12CreateDeviceFn,
+    pub(crate) serialize_root_signature: Option<D3d12SerializeRootSignatureFn>,
 }
 
 // SAFETY: the fields are plain function pointers into libraries that are kept
@@ -320,12 +434,22 @@ fn load() -> Option<Loaded> {
         let create_device = *dev;
         drop(dev);
 
+        let serialize_root_signature = d3d12
+            .get::<D3d12SerializeRootSignatureFn>(b"D3D12SerializeRootSignature\0")
+            .ok()
+            .map(|s| {
+                let f = *s;
+                drop(s);
+                f
+            });
+
         Some(Loaded {
             _dxgi: dxgi,
             _d3d12: d3d12,
             create_factory1,
             create_factory2,
             create_device,
+            serialize_root_signature,
         })
     }
 }
@@ -551,6 +675,11 @@ impl Device {
     /// Raw `ID3D12Device` pointer. Borrowed — do not release it.
     pub fn as_raw(&self) -> *mut c_void {
         self.raw
+    }
+
+    /// The device's vtable, for sibling modules that call through it.
+    pub(crate) fn vtbl(&self) -> *mut ID3d12DeviceVtbl {
+        unsafe { *(self.raw as *mut *mut ID3d12DeviceVtbl) }
     }
 }
 

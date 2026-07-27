@@ -80,9 +80,15 @@ we tag `1.1.0`.
 - [x] `drv::open(ordinal)` → owned `ID3D12Device`, released on drop.
 - [x] Verified on real hardware (2× RTX 3090 Ti + AMD iGPU), matching
       `Win32_VideoController` in count and order.
-- [ ] Command queue / allocator / list wrappers.
-- [ ] Root signature + descriptor heap + compute pipeline from DXIL.
-- [ ] Dispatch test against a live adapter.
+- [x] Command queue / allocator / list wrappers + fence sync.
+- [x] Committed resources in the DEFAULT / UPLOAD / READBACK heaps, with
+      staged `upload` / `download` and resource barriers.
+- [x] Root signature (root UAVs) + compute pipeline from DXIL + dispatch.
+- [x] Dispatch test against live adapters — verified doubling 1024 floats
+      on 2× RTX 3090 Ti and an AMD iGPU.
+- [ ] Descriptor heaps, for textures and samplers. Needs the
+      `GetCPUDescriptorHandleForHeapStart` by-value-return ABI handled.
+- [ ] `MemPool` equivalent; `Context` currently blocks per submission.
 
 ### WebGPU (browser only)
 
