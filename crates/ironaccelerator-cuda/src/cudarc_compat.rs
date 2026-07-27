@@ -347,7 +347,7 @@ impl CudaStreamExt for Arc<CudaStream> {
                 msg: "length mismatch".into(),
             });
         }
-        let bytes = dst.len() * std::mem::size_of::<T>();
+        let bytes = std::mem::size_of_val(dst);
         self.synchronize()?;
         if !dst.is_empty() {
             let fns = self.device().drv();
@@ -432,7 +432,7 @@ impl Ptx {
         let s = src.as_ref();
         let mut bytes = s.as_bytes().to_vec();
         // Ensure NUL-terminated so `cuModuleLoadData` is happy.
-        if !bytes.last().is_some_and(|&b| b == 0) {
+        if bytes.last().is_none_or(|&b| b != 0) {
             bytes.push(0);
         }
         Self { ptx: bytes }
@@ -442,7 +442,7 @@ impl Ptx {
     /// `cudarc::nvrtc::Ptx::from_file`.
     pub fn from_file(path: impl AsRef<std::path::Path>) -> std::io::Result<Self> {
         let bytes = std::fs::read(path.as_ref())?;
-        Ok(Self::from_src(String::from_utf8_lossy(&bytes).into_owned()))
+        Ok(Self::from_src(String::from_utf8_lossy(&bytes)))
     }
 
     /// Return the PTX image as a UTF-8 string (cache-write path). Matches

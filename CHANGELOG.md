@@ -2,10 +2,11 @@
 
 All notable changes to **IronAccelerator** are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
-[SemVer](https://semver.org) with the caveat that we remain pre-1.0 — minor
-versions may break API.
+[SemVer](https://semver.org).
 
 ## [Unreleased]
+
+## [2.0.0] - 2026-07-27
 
 ### Removed (breaking)
 
@@ -68,6 +69,10 @@ implies `ontology`.
   `memory.rs` and `stream.rs` — which are now fixed. The crate's
   `#![cfg_attr(not(feature = "std"), no_std)]` was previously aspirational; no
   CI job built that configuration. Backend crates still require `std`.
+- `ironaccelerator-cuda` is clippy-clean under `-D warnings` again: elided two
+  redundant `KernelArg` lifetimes, simplified the `Ptx::from_src` NUL check and
+  the `from_file` UTF-8 conversion, and used `size_of_val` in
+  `dtoh_sync_copy_into`. All behaviour-preserving; no signature changed.
 
 ### Migration
 
@@ -450,6 +455,7 @@ Initial public release.
 - Scaffolds for ROCm, Metal, and QNN backends.
 - Ontology / strategy layer with heuristic scoring.
 
+[2.0.0]: https://github.com/nervosys/IronAccelerator/compare/v1.2.0...v2.0.0
 [1.2.0]: https://github.com/nervosys/IronAccelerator/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/nervosys/IronAccelerator/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/nervosys/IronAccelerator/compare/v0.2.0...v1.0.0

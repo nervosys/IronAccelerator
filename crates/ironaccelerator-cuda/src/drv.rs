@@ -1449,14 +1449,14 @@ impl<'a, T: Repr> KernelArg for DeviceViewMut<'a, T> {
 // cudarc-compatible: `&CudaSlice<T>` accepted directly as a kernel arg.
 // Forwards through `view()` so the call site can keep its `(buf1, buf2, ...)`
 // shape unchanged after migration from cudarc.
-impl<'a, T: Repr> KernelArg for &'a DeviceBuf<T> {
+impl<T: Repr> KernelArg for &DeviceBuf<T> {
     #[inline]
     fn write_into(self, slot: &mut u64) {
         *slot = self.device_ptr();
     }
 }
 
-impl<'a, T: Repr> KernelArg for &'a mut DeviceBuf<T> {
+impl<T: Repr> KernelArg for &mut DeviceBuf<T> {
     #[inline]
     fn write_into(self, slot: &mut u64) {
         *slot = self.device_ptr();

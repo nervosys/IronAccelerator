@@ -30,7 +30,7 @@ Last updated: **2026-07-26**
 | AWS Neuron     | `ironaccelerator-neuron`      | ✅ cores  | ⏳ NEFF load     | — |
 
 Workspace: `cargo build --workspace --features ironaccelerator/all` clean;
-`cargo test --workspace` green as of 2026-07-26 (workspace version `1.2.0`).
+`cargo test --workspace` green as of 2026-07-26 (workspace version `2.0.0`).
 
 ---
 

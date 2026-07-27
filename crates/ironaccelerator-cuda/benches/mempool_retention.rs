@@ -17,6 +17,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 struct Ctx {
+    /// Held to keep the context alive for the whole bench; not read directly.
+    #[allow(dead_code)]
     device: Arc<Device>,
     stream: Arc<Stream>,
     pool: sys::CUmemPool,
