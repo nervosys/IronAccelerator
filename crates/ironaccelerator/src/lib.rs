@@ -2,8 +2,8 @@
 //!
 //! Low-level, hardware-agnostic Rust interface over CUDA, ROCm, Metal, and
 //! other accelerators. This facade crate re-exports each backend behind a
-//! feature flag and exposes a `Runtime` that surveys available backends to
-//! dispatch a `Workload`. Most CUDA users will pull in
+//! feature flag and exposes a `Runtime` that surveys the backends and devices
+//! reachable from this process. Most CUDA users will pull in
 //! [`ironaccelerator-cuda`](::ironaccelerator_cuda) directly — it doubles as a
 //! [drop-in replacement for cudarc](::ironaccelerator_cuda::cudarc_compat)
 //! that's measurably faster on every host-side hot path.
@@ -20,6 +20,13 @@
 //! | `ironaccelerator-qnn`       | Qualcomm Hexagon NPU scaffold                              |
 //! | `ironaccelerator-vulkan` …  | cross-vendor + niche backends                              |
 //!
+//! ## Scope
+//!
+//! IronAccelerator stops at the driver. Workload descriptors, execution-strategy
+//! selection, tensor descriptors, quantization schemes, and the accelerator
+//! ontology used to rank kernel strategies live in the inference engine on top
+//! ([IronWorks](https://github.com/nervosys/ironworks)) — not here.
+//!
 //! ## Direct CUDA usage (recommended for CUDA-only consumers)
 //!
 //! ```no_run
@@ -32,27 +39,23 @@
 //! # Ok::<(), DriverError>(())
 //! ```
 //!
-//! ## Cross-backend dispatch (this facade)
+//! ## Cross-backend device survey (this facade)
 //!
 //! ```no_run
 //! use ironaccelerator::prelude::*;
 //!
 //! let runtime = ironaccelerator::init();
-//! let workload = Workload::gemm(8192, 8192, 8192, DType::F8E4M3);
-//! let plan = runtime.plan(&workload)?;
-//! println!("{plan:?}");
-//! # Ok::<(), Error>(())
+//! for dev in runtime.devices_with(CapabilityFlags::FP8_E4M3) {
+//!     println!("{} ({}) — {:?}", dev.name, dev.arch, dev.id.backend);
+//! }
 //! ```
 //!
-//! Note: the facade's `plan` covers backends that implement
+//! Note: the survey covers backends that implement
 //! [`ironaccelerator_core::Backend`]. The CUDA crate intentionally does **not**
-//! — it ships only driver wrappers, not workload planners. Use the CUDA crate
-//! directly when you want fine-grained driver control or the cudarc-shaped
-//! API.
+//! — it ships only driver wrappers. Use the CUDA crate directly when you want
+//! fine-grained driver control or the cudarc-shaped API.
 
 pub use ironaccelerator_core as core;
-#[cfg(feature = "ontology")]
-pub use ironaccelerator_ontology as ontology;
 
 #[cfg(feature = "cuda")]
 pub use ironaccelerator_cuda as cuda;
@@ -78,8 +81,7 @@ pub use ironaccelerator_webgpu as webgpu;
 pub mod prelude {
     pub use ironaccelerator_core::{
         Backend, BackendKind, Capability, CapabilityFlags, ComputeTier, DType, Device,
-        DeviceDescriptor, DeviceId, Error, Result, Strategy, StrategyHint, Vendor, Workload,
-        WorkloadKind, WorkloadShape,
+        DeviceDescriptor, DeviceId, Error, LaunchDims, MemoryKind, Result, Vendor,
     };
 }
 

@@ -7,7 +7,7 @@
 
 use crate::drv::{self, DeviceBuf, Stream};
 use iron_cuda_sys::cublas_lt as sys;
-use ironaccelerator_core::{Error, Result, Strategy};
+use ironaccelerator_core::{Error, Result};
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::ffi::c_void;
@@ -494,29 +494,4 @@ pub unsafe fn matmul(
             stream.raw(),
         ),
     )
-}
-
-// ─── Convenience: planner epilogue tag (unchanged from stub) ────────────────
-
-pub fn epilogue_for(strategy: &Strategy) -> &'static str {
-    match strategy {
-        Strategy::BlasLt { epilogue } => epilogue,
-        Strategy::TransformerEngine { .. } => "bias-gelu-fp8",
-        _ => "none",
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn epilogue_lookup() {
-        assert_eq!(
-            epilogue_for(&Strategy::BlasLt {
-                epilogue: "bias-gelu"
-            }),
-            "bias-gelu"
-        );
-        assert_eq!(epilogue_for(&Strategy::Reference), "none");
-    }
 }

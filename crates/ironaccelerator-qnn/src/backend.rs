@@ -4,8 +4,8 @@
 use crate::drv;
 use iron_qnn_sys::qnn::Target;
 use ironaccelerator_core::{
-    Backend, BackendKind, Capability, CapabilityFlags, ComputeTier, DType, DeviceDescriptor,
-    DeviceId, Result, Strategy, Vendor, Workload, WorkloadKind,
+    Backend, BackendKind, Capability, CapabilityFlags, ComputeTier, DeviceDescriptor, DeviceId,
+    Result, Vendor,
 };
 use once_cell::sync::Lazy;
 
@@ -109,24 +109,6 @@ impl Backend for QnnBackend {
             "unknown QNN ordinal",
         ))?;
         Ok(capability_for(t).flags)
-    }
-
-    fn plan(&self, _device: u32, w: &Workload) -> Result<Strategy> {
-        Ok(match (w.kind, w.input_dtype) {
-            (WorkloadKind::Gemm | WorkloadKind::Conv2d | WorkloadKind::Attention, DType::I8) => {
-                Strategy::QnnHtpGraph {
-                    precision: DType::I8,
-                }
-            }
-            (WorkloadKind::Gemm | WorkloadKind::Conv2d | WorkloadKind::Attention, _) => {
-                Strategy::QnnHtpGraph {
-                    precision: DType::F16,
-                }
-            }
-            _ => Strategy::QnnHtpGraph {
-                precision: DType::F16,
-            },
-        })
     }
 }
 

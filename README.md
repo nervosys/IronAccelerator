@@ -6,8 +6,11 @@ A high-performance, **low-level hardware-agnostic** Rust interface over NVIDIA, 
 > Each backend crate wraps the vendor driver/runtime (devices, streams,
 > events, memory, kernel compile + cache, handle plumbing for vendor
 > libraries like cuBLAS / cuDNN / NCCL / cuFFT). It does **not** ship
-> kernels, planners, FP8 recipes, attention/MoE implementations, or
-> workload autotuners — those belong to libraries layered on top.
+> kernels, planners, FP8 recipes, attention/MoE implementations, workload
+> autotuners, workload/strategy descriptors, tensor descriptors,
+> quantization schemes, CPU reference ops, or an accelerator ontology —
+> those all belong to libraries layered on top, and in our stack that means
+> [IronWorks](https://github.com/nervosys/ironworks).
 
 ## 30-second drop-in for `cudarc` users
 
@@ -251,6 +254,11 @@ If the driver lives somewhere non-standard, set `IRON_CUDA_LIBDIR` to prepend a 
 
 Driver-substrate work only — kernels, planners, and workload abstractions belong in downstream libraries.
 
+- [x] Scope cut completed: workload/strategy descriptors, tensor descriptors,
+      quantization + CPU reference ops, the heuristic planner, and the
+      `ironaccelerator-ontology` crate moved to
+      [IronWorks](https://github.com/nervosys/ironworks). `Backend` is now a
+      discovery-only trait and the facade `Runtime` is a device survey.
 - [x] `cuMemPool` direct wrappers + default-pool retention (`Device::open` sets `ReleaseThreshold = u64::MAX` on the default pool — retains memory across free/alloc, matching PyTorch/cudarc behaviour). Per-stream custom pools still TODO.
 - [ ] Optional Rust-side small-buffer free list to skip `cuMemFreeAsync` round-trips at very high alloc churn.
 - [ ] HIP FFI + safe wrapper for `ironaccelerator-rocm` matching the CUDA shape.

@@ -5,10 +5,7 @@
 //! for the rare cross-backend code paths. Hot paths (kernel launches, memcpys)
 //! live on the concrete backend type and are inlined.
 
-use crate::{
-    capability::CapabilityFlags, device::DeviceDescriptor, error::Result, strategy::Strategy,
-    workload::Workload,
-};
+use crate::{capability::CapabilityFlags, device::DeviceDescriptor, error::Result};
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -81,6 +78,10 @@ impl BackendKind {
 ///
 /// Object-safe; concrete backends typically also expose a non-trait API with
 /// inlined fast paths.
+///
+/// The trait is deliberately limited to *discovery* — identity, availability,
+/// devices, capability bits. Choosing what to run on a device is a planner
+/// concern and lives in the consumer, not here.
 pub trait Backend: Send + Sync + 'static {
     /// Static identity.
     fn kind(&self) -> BackendKind;
@@ -91,17 +92,9 @@ pub trait Backend: Send + Sync + 'static {
     /// Enumerate every visible device.
     fn enumerate(&self) -> Result<Vec<DeviceDescriptor>>;
 
-    /// Coarse capability bits used by [`Strategy`] selection.
+    /// Coarse capability bits for a device, translated from the vendor's
+    /// capability table into the common [`CapabilityFlags`] space.
     fn capabilities(&self, device: u32) -> Result<CapabilityFlags>;
-
-    /// Score a workload on the given device. Higher is better. The default
-    /// returns `0.0`; backends override with vendor-tuned heuristics.
-    fn score(&self, _device: u32, _workload: &Workload) -> f32 {
-        0.0
-    }
-
-    /// Pick the best execution strategy for a workload on a device.
-    fn plan(&self, device: u32, workload: &Workload) -> Result<Strategy>;
 }
 
 /// Process-wide registry of compiled-in backends. Backends register themselves

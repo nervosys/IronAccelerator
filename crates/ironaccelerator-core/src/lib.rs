@@ -1,10 +1,17 @@
 //! # `ironaccelerator-core`
 //!
 //! Backend-agnostic foundation for **IronAccelerator** — a high-performance,
-//! agentic-first acceleration library spanning CUDA, ROCm, Metal, and Qualcomm
+//! agentic-first *driver substrate* spanning CUDA, ROCm, Metal, and Qualcomm
 //! NPUs. This crate intentionally contains *no* backend bindings; it defines
-//! the trait surface that every backend implements and the lightweight
-//! description types used by the discovery / ontology layer.
+//! the trait surface every backend implements plus the vendor-neutral
+//! descriptions of the things a driver actually owns: devices, capability
+//! bits, memory, streams, events, and kernel launch geometry.
+//!
+//! **Scope.** Nothing above the driver lives here. Workload descriptors,
+//! execution-strategy selection, tensor descriptors, quantization schemes,
+//! and CPU reference kernels belong to the inference engine layered on top
+//! ([IronWorks](https://github.com/nervosys/ironworks)), not to the substrate
+//! that talks to the driver.
 //!
 //! IronAccelerator prioritises **throughput over guard-rails**. Where a
 //! traditional safe wrapper would add bounds checks, allocation tracking, or
@@ -17,7 +24,6 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-pub mod activation;
 pub mod backend;
 pub mod capability;
 pub mod device;
@@ -26,12 +32,7 @@ pub mod error;
 pub mod handle;
 pub mod kernel;
 pub mod memory;
-pub mod quant;
-pub mod simd;
-pub mod strategy;
 pub mod stream;
-pub mod tensor;
-pub mod workload;
 
 pub use backend::{Backend, BackendKind, BackendRegistry};
 pub use capability::{Capability, CapabilityFlags, ComputeTier};
@@ -40,7 +41,4 @@ pub use dtype::{DType, NumericClass};
 pub use error::{Error, Result};
 pub use kernel::{KernelLaunch, LaunchDims};
 pub use memory::{Allocation, MemoryKind, MemoryPool};
-pub use strategy::{Strategy, StrategyHint, StrategyScore};
 pub use stream::{Event, Stream};
-pub use tensor::{Layout, TensorDesc};
-pub use workload::{Precision, Workload, WorkloadKind, WorkloadShape};

@@ -4,17 +4,23 @@ Live progress tracker. Each section is a milestone; each bullet is a
 deliverable with a status box. Move items to **Shipped** with the version
 they land in. When all **Path to 1.1** boxes are ticked, we cut 1.1.
 
-Last updated: **2026-04-18**
+Last updated: **2026-07-26**
+
+> **Scope.** IronAccelerator is a driver substrate. Kernels, planners,
+> workload/strategy types, quantization schemes, CPU reference ops, and the
+> accelerator ontology all live in [IronWorks](https://github.com/nervosys/ironworks),
+> the inference engine that consumes this crate. Roadmap items below are
+> driver-level only.
 
 ---
 
 ## Status snapshot
 
-| backend        | crate                         | enumerate | compute scaffold | real kernels |
-|----------------|-------------------------------|-----------|------------------|--------------|
-| CUDA           | `ironaccelerator-cuda`        | ✅        | ✅               | ✅ (BLAS / cuDNN / FA-3 / MoE) |
+| backend        | crate                         | enumerate | compute scaffold | vendor-library plumbing |
+|----------------|-------------------------------|-----------|------------------|-------------------------|
+| CUDA           | `ironaccelerator-cuda`        | ✅        | ✅               | ✅ (cuBLASLt / cuDNN / NCCL / cuFFT handles) |
 | ROCm           | `ironaccelerator-rocm`        | ✅        | ✅               | ✅ (hipBLASLt) |
-| Metal          | `ironaccelerator-metal`       | ✅ Apple  | ✅ Apple         | ✅ (MPS GEMM) |
+| Metal          | `ironaccelerator-metal`       | ✅ Apple  | ✅ Apple         | ✅ (MPSMatrix wrapper) |
 | QNN (Hexagon)  | `ironaccelerator-qnn`         | ✅        | ⚠️ needs HDK     | — |
 | Vulkan         | `ironaccelerator-vulkan`      | ✅        | ✅ (compute.rs)  | SAXPY (WGSL→SPIR-V via naga) |
 | OpenGL 4.3+    | `ironaccelerator-opengl`      | ✅ ctx    | ✅ (compute.rs)  | SAXPY |
@@ -22,11 +28,9 @@ Last updated: **2026-04-18**
 | TPU (PJRT)     | `ironaccelerator-tpu`         | ✅ env    | ⏳ PJRT client   | — |
 | Level Zero     | `ironaccelerator-levelzero`   | ✅        | ✅ (compute.rs)  | — |
 | AWS Neuron     | `ironaccelerator-neuron`      | ✅ cores  | ⏳ NEFF load     | — |
-| CPU SIMD       | `ironaccelerator-core::simd`  | n/a       | ✅ AVX2 quant    | scalar + quant |
 
 Workspace: `cargo build --workspace --features ironaccelerator/all` clean;
-`cargo test --workspace` = **79 passing, 0 failed** as of 2026-04-18
-(workspace version `1.1.0`).
+`cargo test --workspace` green as of 2026-07-26 (workspace version `1.2.0`).
 
 ---
 
@@ -43,13 +47,11 @@ we tag `1.1.0`.
 - [x] Feature flags on the umbrella crate for every backend + `all`.
 - [x] `BackendRegistry::describe_all()` — one-shot enumerate across
       every available backend.
-- [x] `Strategy` variants for graphics-compute + NPU backends:
-      `SpirvCompute`, `GlslCompute`, `Wgsl`, `Pjrt`, `Neuron`,
-      `LevelZero`. Every new-backend `plan()` returns one of these
-      (no more `Strategy::Custom` stubs).
-- [x] Integration test that spins up `Runtime::new()` and asserts at
-      least the CPU path returns a plan for a reference GEMM workload.
+- [x] Integration test that spins up `Runtime::new()` and surveys devices
+      + capability bits across every registered backend.
       (`crates/ironaccelerator/tests/runtime_smoke.rs`)
+- [x] `Backend` trait reduced to discovery only — `kind`, `is_available`,
+      `enumerate`, `capabilities`. Strategy selection moved to IronWorks.
 
 ### Vulkan
 
@@ -123,7 +125,7 @@ we tag `1.1.0`.
 - [x] `nrt_load` a NEFF binary into a NeuronCore
       (`runtime::Model::load`).
 - [x] `nrt_execute` with tensor I/O (`runtime::Model::execute`,
-      `runtime::TensorSet`), surfaced as `Strategy::Neuron`.
+      `runtime::TensorSet`).
 - [ ] Trn2 FP8 path documentation.
 
 ### QNN
@@ -133,30 +135,18 @@ we tag `1.1.0`.
 - [ ] Serialise + rehydrate a compiled graph through a temp file
       round-trip in CI.
 
-### Quant / SIMD / core
+### Moved out of scope
 
-- [x] `QuantScheme` + `CalibStats` + `QuantParams`.
-- [x] CPU INT8 per-channel + INT4 per-group reference + roundtrip
-      tests.
-- [x] AVX2 `quant_i8_row` / `dequant_i8_row` runtime dispatch.
-- [x] NEON equivalents (`aarch64` runtime feature dispatch in
-      `simd.rs`).
-- [x] Asymmetric INT8 per-tensor quant/dequant
-      (`quant_i8_per_tensor_asym` / `dequant_i8_per_tensor_asym`).
-- [x] FP8 (E4M3 / E5M2) scale-calibration helper
-      (`fp8_scale_from_absmax`, `fp8_scale_from_history`) for the CUDA
-      + ROCm transformer-engine paths.
+Shipped in 1.0/1.1, removed from IronAccelerator in the driver-substrate
+cut. Tracked in IronWorks from here on — see the CHANGELOG's
+`Removed (breaking)` entry for the full symbol list.
 
-### Flash MoE
-
-- [x] `FlashMoePlan` with per-expert matmul loop (CUDA).
-- [ ] cuBLASLt **grouped GEMM** — single launch covering every expert;
-      bump CUDA minimum to 12.5.
-- [ ] BF16 and FP8 I/O variants.
-- [x] SwiGLU (up + gate split) reference in
-      `ironaccelerator_core::activation::{swiglu, swiglu_interleaved}`.
-      CUDA fused variant tracked post-1.1.
-- [ ] Device-side dispatch — eliminate the `offsets` D2H sync.
+- Quantization schemes + calibration (`QuantScheme`, `CalibStats`,
+  `QuantParams`, FP8 scale calibration).
+- CPU reference / SIMD oracles (`core::simd`, `core::activation`).
+- Workload + strategy descriptors and the heuristic planner.
+- The accelerator ontology crate (`ironaccelerator-ontology`).
+- Flash MoE, grouped GEMM, and every other kernel-level deliverable.
 
 ### Docs + release engineering
 
@@ -181,20 +171,21 @@ we tag `1.1.0`.
 
 ## Post-1.1 parking lot
 
-Known-useful work that isn't blocking the next minor:
+Known-useful driver-level work that isn't blocking the next minor:
 
-- Grouped-GEMM kernel replacing per-expert loop for MoE.
 - CoreML / ANE bridge via `objc2-core-ml`.
-- MLX-style JIT kernels for Apple Silicon.
-- Python bindings (`pyo3`) once 1.1 API is frozen.
+- Python bindings (`pyo3`) once the API is frozen.
 - `#[no_std]` feature for embedded NPU targets.
-- MIOpen safe wrapper (ROCm convolution + fused ops).
+- MIOpen handle plumbing (ROCm convolution + fused ops).
 - rocFFT / rocRAND / rocSOLVER / rocSPARSE safe wrappers.
-- Composable Kernel template front-end (ROCm CUTLASS analogue).
-- Triton-style kernel JIT for cross-backend fused attention.
-- FlashAttention-3 BF16 + FP8 variants on Hopper.
-- NVLink / xGMI / NVSwitch topology-aware collective planning.
+- HIPRTC runtime compile + disk cache, matching the CUDA NVRTC shape.
+- Per-stream custom `cuMemPool` wrappers (default-pool retention shipped).
+- NVLink / xGMI / NVSwitch topology *reporting* (planning is a consumer
+  concern).
 - WASM compute benchmarks vs. native Vulkan + Metal.
+
+Kernel- and planner-level ideas that used to live here (grouped GEMM,
+FlashAttention variants, Triton-style JIT, MLX kernels) belong to IronWorks.
 
 ---
 

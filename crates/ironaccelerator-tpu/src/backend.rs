@@ -3,7 +3,7 @@
 
 use ironaccelerator_core::{
     Backend, BackendKind, Capability, CapabilityFlags, ComputeTier, DeviceDescriptor, DeviceId,
-    Result, Strategy, Vendor, Workload,
+    Result, Vendor,
 };
 
 pub struct TpuBackend;
@@ -53,21 +53,6 @@ impl Backend for TpuBackend {
             .map(|t| detect_generation(&t.accelerator_type))
             .unwrap_or(TpuGen::Unknown);
         Ok(capability_flags(gen))
-    }
-
-    fn plan(&self, _device: u32, _w: &Workload) -> Result<Strategy> {
-        let accel = match crate::drv::topology()
-            .map(|t| detect_generation(&t.accelerator_type))
-            .unwrap_or(TpuGen::Unknown)
-        {
-            TpuGen::V4 => "tpu-v4",
-            TpuGen::V5 => "tpu-v5",
-            TpuGen::V5e => "tpu-v5e",
-            TpuGen::V5p => "tpu-v5p",
-            TpuGen::V6e => "tpu-v6e",
-            TpuGen::Unknown => "tpu",
-        };
-        Ok(Strategy::Pjrt { accelerator: accel })
     }
 }
 

@@ -2,7 +2,7 @@
 
 use ironaccelerator_core::{
     Backend, BackendKind, Capability, CapabilityFlags, ComputeTier, DeviceDescriptor, DeviceId,
-    Result, Strategy, Vendor, Workload,
+    Result, Vendor,
 };
 
 use crate::drv::AdapterInfo;
@@ -29,12 +29,6 @@ impl Backend for WebGpuBackend {
 
     fn capabilities(&self, _device: u32) -> Result<CapabilityFlags> {
         Ok(CapabilityFlags::FP32 | CapabilityFlags::FP16 | CapabilityFlags::MULTI_STREAM)
-    }
-
-    fn plan(&self, _device: u32, _w: &Workload) -> Result<Strategy> {
-        Ok(Strategy::Wgsl {
-            workgroup: (64, 1, 1),
-        })
     }
 }
 

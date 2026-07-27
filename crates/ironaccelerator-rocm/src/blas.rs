@@ -6,7 +6,7 @@
 use crate::drv::{self, DeviceBuf, Stream};
 use iron_rocm_sys::hip::HipDeviceptr;
 use iron_rocm_sys::hipblaslt as sys;
-use ironaccelerator_core::{BackendKind, Error, Result, Strategy};
+use ironaccelerator_core::{BackendKind, Error, Result};
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::ffi::c_void;
@@ -423,28 +423,4 @@ pub unsafe fn matmul(
             stream.raw(),
         ),
     )
-}
-
-// ─── Convenience: planner epilogue tag ──────────────────────────────────────
-
-pub fn epilogue_for(strategy: &Strategy) -> &'static str {
-    match strategy {
-        Strategy::BlasLt { epilogue } => epilogue,
-        _ => "none",
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn epilogue_lookup() {
-        assert_eq!(
-            epilogue_for(&Strategy::BlasLt {
-                epilogue: "bias-gelu"
-            }),
-            "bias-gelu"
-        );
-        assert_eq!(epilogue_for(&Strategy::Reference), "none");
-    }
 }

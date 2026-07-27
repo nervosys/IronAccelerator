@@ -580,7 +580,6 @@ dependencies = [
  "ironaccelerator-levelzero",
  "ironaccelerator-metal",
  "ironaccelerator-neuron",
- "ironaccelerator-ontology",
  "ironaccelerator-opengl",
  "ironaccelerator-qnn",
  "ironaccelerator-rocm",
@@ -651,16 +650,6 @@ dependencies = [
  "ironaccelerator-core",
  "libloading 0.9.0",
  "once_cell",
-]
-
-[[package]]
-name = "ironaccelerator-ontology"
-version = "1.2.0"
-dependencies = [
- "ironaccelerator-core",
- "once_cell",
- "serde",
- "serde_json",
 ]
 
 [[package]]

@@ -7,6 +7,77 @@ versions may break API.
 
 ## [Unreleased]
 
+### Removed (breaking)
+
+The 1.2.0 scope cut removed the kernels; this one removes the *front end* that
+sat above the driver. Everything below has moved to
+[IronWorks](https://github.com/nervosys/ironworks), the inference engine that
+consumes IronAccelerator. IronAccelerator is now a driver substrate top to
+bottom: devices, capability bits, memory, streams, events, kernel launch
+geometry, runtime compile, and vendor-library handle plumbing — nothing above
+that line.
+
+**`ironaccelerator-core` — six modules deleted:**
+
+- `workload` — `Workload`, `WorkloadKind`, `WorkloadShape`, `Precision`,
+  `Phase`.
+- `strategy` — `Strategy` (all 17 variants), `StrategyHint`, `StrategyScore`,
+  `FlashVariant`.
+- `tensor` — `TensorDesc`, `Layout`.
+- `quant` — `QuantScheme`, `QuantGranularity`, `QuantParams`, `CalibStats`,
+  `Fp8Format`, `fp8_scale_from_absmax`, `fp8_scale_from_history`, and the CPU
+  reference quant/dequant entry points (INT8 per-tensor/per-channel sym+asym,
+  packed-nibble INT4 per-group).
+- `simd` — runtime-dispatched AVX2 / NEON `quant_i8_row` / `dequant_i8_row`.
+- `activation` — `silu`, `silu_inplace`, `swiglu`, `swiglu_interleaved`.
+
+**`Backend` trait narrowed to discovery.** `fn plan(&self, device, &Workload)
+-> Result<Strategy>` and `fn score(&self, device, &Workload) -> f32` are gone;
+the trait is now `kind` / `is_available` / `enumerate` / `capabilities`. Every
+backend crate's `plan` impl was removed with it. Implementors get a smaller
+trait to satisfy; callers that dispatched through `plan` must select in their
+own planner.
+
+**`ironaccelerator-ontology` deleted.** The whole crate — `Ontology`,
+`HardwareNode`, `WorkloadClass`, `StrategyClass`, `Optimization`, `Edge`,
+`Relation`, `Recommendation`, `FilterSpec`, `RankBy`, `Explanation`, the
+`dump` binary, and the compiled-in hardware/workload/strategy graph. Ranking
+kernel strategies per part is planner work. The facade's `ontology` feature
+and the `agent_plan` example are gone too; `ironaccelerator/all` no longer
+implies `ontology`.
+
+**Also removed:**
+
+- `ironaccelerator_cuda::blas::epilogue_for` and
+  `ironaccelerator_rocm::blas::epilogue_for` — mapped a `Strategy` to an
+  epilogue tag. Set the epilogue directly via `MatmulDesc::set_epilogue_raw`.
+- `Runtime::plan`, `Runtime::plan_with`, and `Plan` on the facade.
+
+### Added
+
+- `Runtime::devices_with(CapabilityFlags)` — hardware-only filter over the
+  device survey, replacing the capability half of what `plan` did.
+- `Runtime::available_backends()` and `Runtime::capabilities(backend, device)`
+  for live per-device capability queries.
+
+### Fixed
+
+- `ironaccelerator-core` now actually compiles with
+  `--no-default-features` (`no_std`). Removing the six std-heavy front-end
+  modules cut this from 43 errors to 2 — missing `alloc::boxed::Box` imports in
+  `memory.rs` and `stream.rs` — which are now fixed. The crate's
+  `#![cfg_attr(not(feature = "std"), no_std)]` was previously aspirational; no
+  CI job built that configuration. Backend crates still require `std`.
+
+### Migration
+
+Consumers of the CUDA driver surface (`drv`, `kernel`, `pool`, `graph`,
+`cudarc_compat`, the vendor-library modules, `sys`) are **unaffected** — no
+symbol in that surface changed. This break only touches code that used
+`ironaccelerator-core`'s workload/strategy vocabulary, the ontology, or the
+facade's planner — pin `ironaccelerator-core = "1.2"` if you need that
+vocabulary from here, or take it from IronWorks.
+
 ## [1.2.0] - 2026-06-04
 
 ### Highlights

@@ -1,6 +1,7 @@
 //! Coarse capability flags. Backends translate vendor-specific capability
 //! tables (CUDA compute capability, ROCm gfx, Metal feature sets, QNN HTP
-//! version) into this common space so the strategy layer can reason uniformly.
+//! version) into this common space so callers can reason about hardware
+//! uniformly without parsing vendor version strings.
 
 use bitflags::bitflags;
 

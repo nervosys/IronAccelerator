@@ -7,10 +7,10 @@
 //! - **HVX** — fallback Hexagon vector path for ops not yet supported by HMX.
 //! - **Adreno GPU** — alternative target for FP16 graphs.
 //!
-//! IronAccelerator builds QNN graphs from the same [`Workload`](ironaccelerator_core::Workload)
-//! description used by the CUDA/ROCm planners. Quantisation calibration is
-//! handled lazily — the first execution with `Phase::Calibration` produces a
-//! per-tensor scale table cached on disk.
+//! Scope is the same as every other backend here: probe the runtime, enumerate
+//! targets, report capability bits. QNN graphs are built ahead of time by the
+//! SDK, so graph construction and quantisation calibration belong to the
+//! consumer, not to this crate.
 //!
 //! ## Status
 //!

@@ -2,7 +2,7 @@
 
 use ironaccelerator_core::{
     Backend, BackendKind, Capability, CapabilityFlags, ComputeTier, DeviceDescriptor, DeviceId,
-    Result, Strategy, Vendor, Workload,
+    Result, Vendor,
 };
 
 use crate::drv::NeuronGen;
@@ -53,12 +53,6 @@ impl Backend for NeuronBackend {
 
     fn capabilities(&self, _device: u32) -> Result<CapabilityFlags> {
         Ok(capability_flags(crate::drv::detect_generation()))
-    }
-
-    fn plan(&self, _device: u32, _w: &Workload) -> Result<Strategy> {
-        Ok(Strategy::Neuron {
-            num_cores: crate::drv::total_cores(),
-        })
     }
 }
 

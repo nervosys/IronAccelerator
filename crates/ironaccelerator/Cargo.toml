@@ -7,7 +7,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Facade crate for IronAccelerator — re-exports the per-backend driver wrappers and a cross-backend Runtime/planner."
+description = "Facade crate for IronAccelerator — re-exports the per-backend driver wrappers and a cross-backend Runtime that surveys available devices."
 keywords = ["cuda", "rocm", "gpu", "accelerator", "cudarc"]
 categories = ["api-bindings", "hardware-support"]
 documentation = "https://docs.rs/ironaccelerator"
@@ -15,7 +15,6 @@ readme = "../../README.md"
 
 [dependencies]
 ironaccelerator-core     = { workspace = true }
-ironaccelerator-ontology = { workspace = true, optional = true }
 ironaccelerator-cuda     = { workspace = true, optional = true }
 ironaccelerator-rocm     = { workspace = true, optional = true }
 ironaccelerator-metal    = { workspace = true, optional = true }
@@ -30,8 +29,7 @@ parking_lot = { workspace = true }
 once_cell   = { workspace = true }
 
 [features]
-default   = ["cuda", "rocm", "metal", "qnn", "ontology"]
-ontology  = ["dep:ironaccelerator-ontology"]
+default   = ["cuda", "rocm", "metal", "qnn"]
 cuda      = ["dep:ironaccelerator-cuda"]
 rocm      = ["dep:ironaccelerator-rocm"]
 metal     = ["dep:ironaccelerator-metal"]
@@ -43,8 +41,4 @@ tpu       = ["dep:ironaccelerator-tpu"]
 levelzero = ["dep:ironaccelerator-levelzero"]
 neuron    = ["dep:ironaccelerator-neuron"]
 all       = ["cuda", "rocm", "metal", "qnn", "vulkan", "opengl", "webgpu",
-             "tpu", "levelzero", "neuron", "ontology"]
-
-[[example]]
-name = "agent_plan"
-required-features = ["ontology"]
+             "tpu", "levelzero", "neuron"]

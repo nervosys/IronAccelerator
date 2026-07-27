@@ -3,7 +3,7 @@
 
 use ironaccelerator_core::{
     Backend, BackendKind, Capability, CapabilityFlags, ComputeTier, DeviceDescriptor, DeviceId,
-    Result, Strategy, Vendor, Workload,
+    Result, Vendor,
 };
 
 pub struct OpenGlBackend;
@@ -56,12 +56,6 @@ impl Backend for OpenGlBackend {
 
     fn capabilities(&self, _device: u32) -> Result<CapabilityFlags> {
         Ok(CapabilityFlags::FP32 | CapabilityFlags::FP16)
-    }
-
-    fn plan(&self, _device: u32, _w: &Workload) -> Result<Strategy> {
-        Ok(Strategy::GlslCompute {
-            workgroup: (64, 1, 1),
-        })
     }
 }
 

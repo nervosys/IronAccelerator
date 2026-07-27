@@ -1,10 +1,7 @@
 //! Metal `Backend` impl. Enumerates live `MTLDevice`s on Apple hosts; on
 //! non-Apple hosts the backend reports unavailable and enumerates nothing.
 
-use ironaccelerator_core::{
-    Backend, BackendKind, CapabilityFlags, DeviceDescriptor, Result, Strategy, Workload,
-    WorkloadKind,
-};
+use ironaccelerator_core::{Backend, BackendKind, CapabilityFlags, DeviceDescriptor, Result};
 #[cfg(target_vendor = "apple")]
 use ironaccelerator_core::{Capability, ComputeTier, DeviceId, Vendor};
 
@@ -75,14 +72,6 @@ impl Backend for MetalBackend {
             | CapabilityFlags::UNIFIED_MEMORY
             | CapabilityFlags::ANE
             | CapabilityFlags::MULTI_STREAM)
-    }
-
-    fn plan(&self, _device: u32, w: &Workload) -> Result<Strategy> {
-        Ok(match w.kind {
-            WorkloadKind::Gemm | WorkloadKind::BatchedGemm => Strategy::MpsGraph,
-            WorkloadKind::FlashAttention | WorkloadKind::Attention => Strategy::MpsGraph,
-            _ => Strategy::MpsGraph,
-        })
     }
 }
 

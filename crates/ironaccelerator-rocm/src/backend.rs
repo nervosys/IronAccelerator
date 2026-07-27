@@ -3,8 +3,8 @@
 use crate::drv::{Device, Result as DrvResult};
 use iron_rocm_sys::hip::HipDeviceAttribute as Attr;
 use ironaccelerator_core::{
-    strategy::FlashVariant, Backend, BackendKind, Capability, CapabilityFlags, ComputeTier,
-    DeviceDescriptor, DeviceId, Result, Strategy, Vendor, Workload, WorkloadKind,
+    Backend, BackendKind, Capability, CapabilityFlags, ComputeTier, DeviceDescriptor, DeviceId,
+    Result, Vendor,
 };
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
@@ -81,21 +81,6 @@ impl Backend for RocmBackend {
 
     fn capabilities(&self, device: u32) -> Result<CapabilityFlags> {
         Ok(self.capability(device)?.flags)
-    }
-
-    fn plan(&self, _device: u32, w: &Workload) -> Result<Strategy> {
-        Ok(match w.kind {
-            WorkloadKind::Gemm | WorkloadKind::BatchedGemm => Strategy::BlasLt {
-                epilogue: "bias-gelu",
-            },
-            WorkloadKind::FlashAttention | WorkloadKind::Attention => Strategy::FusedAttention {
-                variant: FlashVariant::V2,
-            },
-            _ => Strategy::CutlassTemplate {
-                tile: (256, 128, 32),
-                stages: 2,
-            },
-        })
     }
 }
 

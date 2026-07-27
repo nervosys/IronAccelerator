@@ -1,9 +1,12 @@
 //! Vendor-neutral memory abstractions. Backends provide concrete `Allocation`
 //! and `Stream` types; this module defines the trait surface and the
-//! categories used by strategy selection.
+//! categories of memory a driver can hand out.
 
 use crate::error::Result;
 use core::ptr::NonNull;
+
+#[cfg(not(feature = "std"))]
+use alloc::boxed::Box;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

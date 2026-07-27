@@ -42,11 +42,11 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            features: "cuda,rocm,vulkan,opengl,webgpu,levelzero,tpu,neuron,ontology"
+            features: "cuda,rocm,vulkan,opengl,webgpu,levelzero,tpu,neuron"
           - os: windows-latest
-            features: "cuda,vulkan,opengl,webgpu,levelzero,ontology"
+            features: "cuda,vulkan,opengl,webgpu,levelzero"
           - os: macos-latest
-            features: "metal,webgpu,opengl,ontology"
+            features: "metal,webgpu,opengl"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

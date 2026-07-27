@@ -3,7 +3,7 @@
 
 use ironaccelerator_core::{
     Backend, BackendKind, Capability, CapabilityFlags, ComputeTier, DeviceDescriptor, DeviceId,
-    Result, Strategy, Vendor, Workload,
+    Result, Vendor,
 };
 
 use crate::drv::{EnumeratedDevice, ZE_DEVICE_TYPE_GPU, ZE_DEVICE_TYPE_VPU};
@@ -29,12 +29,6 @@ impl Backend for LevelZeroBackend {
             | CapabilityFlags::FP16
             | CapabilityFlags::INT8
             | CapabilityFlags::MULTI_STREAM)
-    }
-
-    fn plan(&self, _device: u32, _w: &Workload) -> Result<Strategy> {
-        Ok(Strategy::LevelZero {
-            device_type: "auto",
-        })
     }
 }
 

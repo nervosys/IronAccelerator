@@ -1,21 +1,16 @@
-//! Process-wide runtime: registry of available backends + a planner that
-//! routes a [`Workload`] to a `(backend, device, strategy)` tuple.
+//! Process-wide runtime: a registry of the backends compiled into this build,
+//! plus device discovery across all of them.
+//!
+//! This is a *survey*, not a planner. It answers "what hardware can I reach
+//! from this process, and what can each part do?" — deciding what to run where
+//! is the consumer's job.
 
 use ironaccelerator_core::{
-    Backend, BackendKind, BackendRegistry, DeviceDescriptor, Error, Result, Strategy, StrategyHint,
-    Workload,
+    BackendKind, BackendRegistry, CapabilityFlags, DeviceDescriptor, Result,
 };
 
 pub struct Runtime {
     registry: BackendRegistry,
-}
-
-#[derive(Debug, Clone)]
-pub struct Plan {
-    pub backend: BackendKind,
-    pub device: u32,
-    pub strategy: Strategy,
-    pub score: f32,
 }
 
 impl Runtime {
@@ -24,9 +19,8 @@ impl Runtime {
 
         // NOTE: ironaccelerator-cuda is intentionally NOT registered here.
         // The CUDA crate is a low-level hardware-agnostic interface (a cudarc
-        // drop-in replacement); it doesn't implement workload kernels or
-        // planners, so it has no `Backend` impl. Use the CUDA crate directly
-        // via `ironaccelerator_cuda::drv` / `cudarc_compat`.
+        // drop-in replacement) and has no `Backend` impl. Use the CUDA crate
+        // directly via `ironaccelerator_cuda::drv` / `cudarc_compat`.
         #[cfg(feature = "rocm")]
         ironaccelerator_rocm::register(&mut registry);
         #[cfg(feature = "metal")]
@@ -53,7 +47,15 @@ impl Runtime {
         &self.registry
     }
 
-    /// Enumerate every visible device across every available backend.
+    /// Every backend that located its runtime libraries on this host.
+    pub fn available_backends(&self) -> Vec<BackendKind> {
+        self.registry.available().map(|b| b.kind()).collect()
+    }
+
+    /// Enumerate every visible device across every available backend. A
+    /// backend that fails to enumerate contributes nothing rather than
+    /// masking the rest — iterate [`Runtime::registry`] directly if you need
+    /// per-backend error visibility.
     pub fn devices(&self) -> Vec<DeviceDescriptor> {
         self.registry
             .available()
@@ -61,45 +63,26 @@ impl Runtime {
             .collect()
     }
 
-    /// Plan a workload with no caller hints — picks the highest-scoring
-    /// (backend, device) pair.
-    pub fn plan(&self, workload: &Workload) -> Result<Plan> {
-        self.plan_with(workload, &StrategyHint::default())
+    /// Devices whose capability bits are a superset of `required`. Pure
+    /// hardware filtering — no workload knowledge involved.
+    pub fn devices_with(&self, required: CapabilityFlags) -> Vec<DeviceDescriptor> {
+        self.devices()
+            .into_iter()
+            .filter(|d| d.capability.flags.contains(required))
+            .collect()
     }
 
-    pub fn plan_with(&self, workload: &Workload, hint: &StrategyHint) -> Result<Plan> {
-        let mut best: Option<Plan> = None;
-
-        let backends: Vec<&'static dyn Backend> = if hint.prefer_backends.is_empty() {
-            self.registry.available().collect()
-        } else {
-            hint.prefer_backends
-                .iter()
-                .filter_map(|k| self.registry.get(*k).filter(|b| b.is_available()))
-                .collect()
-        };
-
-        for b in backends {
-            let devs = b.enumerate().unwrap_or_default();
-            for d in devs {
-                let score = b.score(d.id.ordinal, workload);
-                if score <= 0.0 {
-                    continue;
-                }
-                let strategy = b.plan(d.id.ordinal, workload)?;
-                let candidate = Plan {
-                    backend: b.kind(),
-                    device: d.id.ordinal,
-                    strategy,
-                    score,
-                };
-                if best.as_ref().is_none_or(|b| candidate.score > b.score) {
-                    best = Some(candidate);
-                }
-            }
-        }
-
-        best.ok_or(Error::BackendUnavailable("no backend produced a plan"))
+    /// Capability bits for one device on one backend, queried live from the
+    /// backend rather than read off a cached descriptor.
+    pub fn capabilities(
+        &self,
+        backend: BackendKind,
+        device: u32,
+    ) -> Option<Result<CapabilityFlags>> {
+        self.registry
+            .get(backend)
+            .filter(|b| b.is_available())
+            .map(|b| b.capabilities(device))
     }
 }
 

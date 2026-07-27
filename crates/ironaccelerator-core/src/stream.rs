@@ -4,6 +4,9 @@
 
 use crate::error::Result;
 
+#[cfg(not(feature = "std"))]
+use alloc::boxed::Box;
+
 pub trait Stream: Send + Sync {
     /// Submit a no-op barrier and return when GPU has caught up.
     fn synchronize(&self) -> Result<()>;

@@ -17,9 +17,6 @@ impl Backend for DummyBackend {
     fn capabilities(&self, _: u32) -> Result<CapabilityFlags> {
         Ok(CapabilityFlags::FP32)
     }
-    fn plan(&self, _: u32, _: &Workload) -> Result<Strategy> {
-        Ok(Strategy::Reference)
-    }
 }
 
 static DUMMY: DummyBackend = DummyBackend;
@@ -35,15 +32,12 @@ fn registry_round_trip() {
 }
 
 #[test]
-fn workload_constructor_picks_correct_accumulator() {
-    let w = Workload::gemm(128, 128, 128, DType::Bf16);
-    assert_eq!(w.accum_dtype, DType::F32);
-
-    let w = Workload::gemm(128, 128, 128, DType::F32);
-    assert_eq!(w.accum_dtype, DType::F32);
-
-    let w = Workload::gemm(128, 128, 128, DType::F8E4M3);
-    assert_eq!(w.accum_dtype, DType::F32);
+fn registry_reports_capabilities_per_device() {
+    let mut reg = BackendRegistry::new();
+    reg.register(&DUMMY);
+    let b = reg.get(BackendKind::Cpu).expect("registered");
+    assert_eq!(b.capabilities(0).unwrap(), CapabilityFlags::FP32);
+    assert!(reg.describe_all().is_empty());
 }
 
 #[test]
