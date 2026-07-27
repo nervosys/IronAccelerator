@@ -24,12 +24,29 @@ impl Backend for LevelZeroBackend {
         Ok(crate::drv::enumerate().into_iter().map(describe).collect())
     }
 
-    fn capabilities(&self, _device: u32) -> Result<CapabilityFlags> {
-        Ok(CapabilityFlags::FP32
-            | CapabilityFlags::FP16
-            | CapabilityFlags::INT8
-            | CapabilityFlags::MULTI_STREAM)
+    fn capabilities(&self, device: u32) -> Result<CapabilityFlags> {
+        crate::drv::enumerate()
+            .into_iter()
+            .find(|d| d.ordinal == device)
+            .map(|d| flags_for(&d))
+            .ok_or(ironaccelerator_core::Error::InvalidArgument(
+                "level-zero device ordinal out of range",
+            ))
     }
+}
+
+/// Level Zero GPUs expose BF16 from Xe-HPG/HPC on; NPU (VPU) advertises
+/// BF16 + INT8 from Meteor Lake onward. Expose the common superset.
+fn flags_for(d: &EnumeratedDevice) -> CapabilityFlags {
+    let mut flags = CapabilityFlags::FP32
+        | CapabilityFlags::FP16
+        | CapabilityFlags::BF16
+        | CapabilityFlags::INT8
+        | CapabilityFlags::MULTI_STREAM;
+    if d.type_ == ZE_DEVICE_TYPE_GPU {
+        flags |= CapabilityFlags::WMMA | CapabilityFlags::INT4;
+    }
+    flags
 }
 
 fn describe(d: EnumeratedDevice) -> DeviceDescriptor {
@@ -40,18 +57,9 @@ fn describe(d: EnumeratedDevice) -> DeviceDescriptor {
         _ => Vendor::Other,
     };
 
-    // Level Zero GPUs expose BF16 from Xe-HPG/HPC on; NPU (VPU) advertises
-    // BF16 + INT8 from Meteor Lake onward. Expose the common superset.
-    let mut flags = CapabilityFlags::FP32
-        | CapabilityFlags::FP16
-        | CapabilityFlags::BF16
-        | CapabilityFlags::INT8
-        | CapabilityFlags::MULTI_STREAM;
+    let flags = flags_for(&d);
     let (tier, arch_prefix) = match d.type_ {
-        ZE_DEVICE_TYPE_GPU => {
-            flags |= CapabilityFlags::WMMA | CapabilityFlags::TENSOR_CORES | CapabilityFlags::INT4;
-            (ComputeTier::Consumer, "xe")
-        }
+        ZE_DEVICE_TYPE_GPU => (ComputeTier::Consumer, "xe"),
         ZE_DEVICE_TYPE_VPU => (ComputeTier::Mobile, "vpu"),
         _ => (ComputeTier::Baseline, "ze"),
     };

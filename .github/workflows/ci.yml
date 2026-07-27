@@ -86,6 +86,10 @@ jobs:
       - run: cargo build -p ironaccelerator-webgpu --target wasm32-unknown-unknown
       - run: cargo build -p ironaccelerator-core --target wasm32-unknown-unknown
       - run: cargo build -p ironaccelerator-core --target wasm32-unknown-unknown --no-default-features
+      # Compile the binding tests for wasm32 too. Executing them needs a
+      # headless browser (`wasm-pack test --headless --chrome`); compiling is
+      # what keeps the `wasm-bindgen-test` harness from bit-rotting.
+      - run: cargo test -p ironaccelerator-webgpu --target wasm32-unknown-unknown --no-run
 
   # The GPU-bound integration tests (`Device::open`, benches) require a live
   # CUDA / ROCm runtime and are gated behind an env flag. CI only runs the

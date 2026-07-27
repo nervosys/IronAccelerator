@@ -26,14 +26,14 @@ use once_cell::sync::OnceCell;
 
 // ── COM primitives ─────────────────────────────────────────────────────────
 
-pub type Hresult = i32;
+pub(crate) type Hresult = i32;
 const S_OK: Hresult = 0;
 /// `DXGI_ERROR_NOT_FOUND` — returned by `EnumAdapters1` past the last adapter.
 const DXGI_ERROR_NOT_FOUND: Hresult = 0x887A_0002u32 as i32;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct Guid {
+pub(crate) struct Guid {
     pub data1: u32,
     pub data2: u16,
     pub data3: u16,
@@ -114,14 +114,14 @@ struct IDxgiAdapter1Vtbl {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct Luid {
+pub(crate) struct Luid {
     pub low_part: u32,
     pub high_part: i32,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct DxgiAdapterDesc1 {
+pub(crate) struct DxgiAdapterDesc1 {
     pub description: [u16; 128],
     pub vendor_id: u32,
     pub device_id: u32,
@@ -256,7 +256,7 @@ type D3d12CreateDeviceFn = unsafe extern "system" fn(
     pp_device: *mut *mut c_void,
 ) -> Hresult;
 
-pub struct Loaded {
+pub(crate) struct Loaded {
     _dxgi: Library,
     _d3d12: Library,
     create_factory1: Option<CreateDxgiFactoryFn>,

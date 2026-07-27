@@ -83,6 +83,18 @@ implies `ontology`.
 - CI jobs for two configurations nothing was building: `no_std`
   `ironaccelerator-core` (three feature combinations) and
   `wasm32-unknown-unknown`. Both had rotted undetected — see *Fixed*.
+- `ironaccelerator-webgpu` binding tests that compile for both native and
+  `wasm32`, runnable in a headless browser via `wasm-bindgen-test`.
+- `ironaccelerator` gains a `survey` example, replacing the `agent_plan`
+  example that the planner removal deleted.
+
+### Removed (housekeeping)
+
+- `ironaccelerator-core`'s `half` dependency and its `f16` feature, plus its
+  `thiserror` dependency. None were referenced anywhere in the crate — the
+  error type is hand-written. `ironaccelerator-cuda` keeps its own `half` and
+  its own self-contained `f16` feature, which is what the CUDA `f16` paths
+  actually use; nothing routed through core's copy.
 
 ### Changed (breaking)
 
@@ -106,6 +118,20 @@ implies `ontology`.
 
 ### Fixed
 
+- **`Backend::capabilities(device)` ignored its argument in six backends.**
+  Vulkan, Level Zero, Metal, OpenGL, TPU, and Neuron returned a constant, so
+  `Runtime::capabilities(kind, n)` could disagree with
+  `devices()[n].capability.flags` for the same device on the same host — on a
+  machine with a Vulkan ICD, `capabilities` reported `FP32 | FP16 |
+  MULTI_STREAM` while `enumerate` reported `FP32 | FP16 | INT8 | WMMA |
+  MULTI_STREAM`. Vulkan and Level Zero now derive both from one shared
+  `flags_for`, and all six reject an ordinal they never enumerated instead of
+  answering for it. A cross-backend test in `runtime_smoke` pins the agreement.
+- **Vulkan over-reported `TENSOR_CORES`.** Presence of
+  `VK_KHR_cooperative_matrix` set both `WMMA` and `TENSOR_CORES`. The
+  extension can be implemented on general ALUs, so it does not establish
+  dedicated matrix silicon; only `WMMA` is set now. Level Zero's blanket
+  `TENSOR_CORES` for every Xe GPU is dropped for the same reason.
 - `ironaccelerator-core` now actually compiles with
   `--no-default-features` (`no_std`). Removing the six std-heavy front-end
   modules cut this from 43 errors to 2 — missing `alloc::boxed::Box` imports in

@@ -48,7 +48,14 @@ impl Backend for TpuBackend {
             .collect())
     }
 
-    fn capabilities(&self, _device: u32) -> Result<CapabilityFlags> {
+    fn capabilities(&self, device: u32) -> Result<CapabilityFlags> {
+        // All chips in a TPU slice are the same generation; validate the
+        // ordinal so this agrees with `enumerate` on what exists.
+        if !self.enumerate()?.iter().any(|d| d.id.ordinal == device) {
+            return Err(ironaccelerator_core::Error::InvalidArgument(
+                "tpu chip ordinal out of range",
+            ));
+        }
         let gen = crate::drv::topology()
             .map(|t| detect_generation(&t.accelerator_type))
             .unwrap_or(TpuGen::Unknown);

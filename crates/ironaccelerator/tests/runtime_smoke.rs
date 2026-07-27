@@ -26,6 +26,45 @@ fn capability_filter_is_a_subset_of_the_full_survey() {
     }
 }
 
+/// Every backend must answer `capabilities(ordinal)` consistently with the
+/// descriptor `enumerate()` produced for that same ordinal.
+///
+/// Several backends used to ignore the ordinal entirely and return a constant,
+/// so `Runtime::capabilities(Vulkan, 0)` could disagree with
+/// `devices()[0].capability.flags` on the same machine. This pins that shut.
+#[test]
+fn per_device_capabilities_match_enumerated_descriptors() {
+    let rt = Runtime::new();
+    for b in rt.registry().available() {
+        for d in b.enumerate().unwrap_or_default() {
+            let live = b
+                .capabilities(d.id.ordinal)
+                .unwrap_or_else(|e| panic!("{:?} ordinal {}: {e}", b.kind(), d.id.ordinal));
+            assert_eq!(
+                live,
+                d.capability.flags,
+                "{:?} ordinal {} disagrees between capabilities() and enumerate()",
+                b.kind(),
+                d.id.ordinal
+            );
+        }
+    }
+}
+
+/// An ordinal past the end must be a typed error, never a plausible answer.
+#[test]
+fn out_of_range_ordinals_are_rejected() {
+    let rt = Runtime::new();
+    for b in rt.registry().available() {
+        let n = b.enumerate().map(|d| d.len()).unwrap_or(0) as u32;
+        assert!(
+            b.capabilities(n.max(1) + 1_000).is_err(),
+            "{:?} answered for an ordinal it never enumerated",
+            b.kind()
+        );
+    }
+}
+
 #[test]
 fn available_backends_are_registered_and_queryable() {
     let rt = Runtime::new();

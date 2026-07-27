@@ -37,9 +37,45 @@ impl Backend for VulkanBackend {
         }
     }
 
-    fn capabilities(&self, _device: u32) -> Result<CapabilityFlags> {
-        Ok(CapabilityFlags::FP32 | CapabilityFlags::FP16 | CapabilityFlags::MULTI_STREAM)
+    fn capabilities(&self, device: u32) -> Result<CapabilityFlags> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            crate::drv::enumerate()
+                .into_iter()
+                .find(|pd| pd.ordinal == device)
+                .map(|pd| flags_for(&pd))
+                .ok_or(ironaccelerator_core::Error::InvalidArgument(
+                    "vulkan physical-device ordinal out of range",
+                ))
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = device;
+            Err(ironaccelerator_core::Error::BackendUnavailable("vulkan"))
+        }
     }
+}
+
+/// Translate probed Vulkan features into the common flag space.
+///
+/// `VK_KHR_cooperative_matrix` maps to `WMMA` — wavefront matrix-multiply ops
+/// are exactly what it exposes — but deliberately *not* to `TENSOR_CORES`.
+/// That bit means dedicated matrix silicon (Volta+, CDNA, AMX), and the
+/// extension can be implemented on general ALUs, so presence alone does not
+/// establish it.
+#[cfg(not(target_arch = "wasm32"))]
+fn flags_for(pd: &crate::drv::PhysicalDevice) -> CapabilityFlags {
+    let mut flags = CapabilityFlags::FP32 | CapabilityFlags::MULTI_STREAM;
+    if pd.shader_float16 {
+        flags |= CapabilityFlags::FP16;
+    }
+    if pd.shader_int8 {
+        flags |= CapabilityFlags::INT8;
+    }
+    if pd.cooperative_matrix {
+        flags |= CapabilityFlags::WMMA;
+    }
+    flags
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -61,16 +97,7 @@ fn describe(pd: crate::drv::PhysicalDevice) -> DeviceDescriptor {
         _ => ComputeTier::Baseline,
     };
 
-    let mut flags = CapabilityFlags::FP32 | CapabilityFlags::MULTI_STREAM;
-    if pd.shader_float16 {
-        flags |= CapabilityFlags::FP16;
-    }
-    if pd.shader_int8 {
-        flags |= CapabilityFlags::INT8;
-    }
-    if pd.cooperative_matrix {
-        flags |= CapabilityFlags::WMMA | CapabilityFlags::TENSOR_CORES;
-    }
+    let flags = flags_for(&pd);
 
     let arch = format!(
         "vk{}.{}",

@@ -14,12 +14,9 @@ documentation = "https://docs.rs/ironaccelerator-core"
 
 [dependencies]
 bitflags = { workspace = true }
-thiserror = { workspace = true }
 serde = { workspace = true, optional = true }
-half = { workspace = true, optional = true }
 
 [features]
-default = ["std", "f16", "serde"]
+default = ["std", "serde"]
 std = []
-f16 = ["dep:half"]
 serde = ["dep:serde", "bitflags/serde"]

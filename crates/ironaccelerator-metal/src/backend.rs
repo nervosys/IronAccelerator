@@ -65,7 +65,15 @@ impl Backend for MetalBackend {
         }
     }
 
-    fn capabilities(&self, _device: u32) -> Result<CapabilityFlags> {
+    fn capabilities(&self, device: u32) -> Result<CapabilityFlags> {
+        // Every Metal device on a host shares a capability set; the lookup is
+        // here so an ordinal that does not exist is an error rather than a
+        // plausible-looking answer.
+        if !self.enumerate()?.iter().any(|d| d.id.ordinal == device) {
+            return Err(ironaccelerator_core::Error::InvalidArgument(
+                "metal device ordinal out of range",
+            ));
+        }
         Ok(CapabilityFlags::FP32
             | CapabilityFlags::FP16
             | CapabilityFlags::BF16

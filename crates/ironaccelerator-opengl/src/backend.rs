@@ -54,7 +54,13 @@ impl Backend for OpenGlBackend {
         }])
     }
 
-    fn capabilities(&self, _device: u32) -> Result<CapabilityFlags> {
+    fn capabilities(&self, device: u32) -> Result<CapabilityFlags> {
+        // OpenGL exposes exactly one current context, at ordinal 0.
+        if !self.enumerate()?.iter().any(|d| d.id.ordinal == device) {
+            return Err(ironaccelerator_core::Error::InvalidArgument(
+                "opengl exposes a single context at ordinal 0",
+            ));
+        }
         Ok(CapabilityFlags::FP32 | CapabilityFlags::FP16)
     }
 }

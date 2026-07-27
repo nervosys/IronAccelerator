@@ -51,7 +51,14 @@ impl Backend for NeuronBackend {
             .collect())
     }
 
-    fn capabilities(&self, _device: u32) -> Result<CapabilityFlags> {
+    fn capabilities(&self, device: u32) -> Result<CapabilityFlags> {
+        // All NeuronCores on an instance are the same generation; validate the
+        // ordinal so this agrees with `enumerate` on what exists.
+        if !self.enumerate()?.iter().any(|d| d.id.ordinal == device) {
+            return Err(ironaccelerator_core::Error::InvalidArgument(
+                "neuron core ordinal out of range",
+            ));
+        }
         Ok(capability_flags(crate::drv::detect_generation()))
     }
 }
