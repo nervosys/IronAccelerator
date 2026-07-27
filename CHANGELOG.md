@@ -49,6 +49,14 @@ implies `ontology`.
 
 **Also removed:**
 
+- `ironaccelerator_vulkan::shader` — `wgsl_to_spirv` and `ShaderError`, along
+  with the direct `naga` dependency. Shader translation is a toolchain
+  concern, not a driver one; `naga` also now lives inside `wgpu` rather than
+  standing alone. Build pipelines from SPIR-V you supply, via
+  `compute::ComputePipeline` — the same bring-your-own-image contract the CUDA
+  backend has with PTX. (`naga` still appears in `Cargo.lock` as a transitive
+  dep of `wgpu`, which `ironaccelerator-webgpu` uses; that is wgpu's own
+  internal use, not ours.)
 - `ironaccelerator_cuda::blas::epilogue_for` and
   `ironaccelerator_rocm::blas::epilogue_for` — mapped a `Strategy` to an
   epilogue tag. Set the epilogue directly via `MatmulDesc::set_epilogue_raw`.

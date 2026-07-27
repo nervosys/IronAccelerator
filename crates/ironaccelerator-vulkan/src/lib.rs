@@ -4,9 +4,11 @@
 //! GPUs that expose a Vulkan ICD, plus the Rust→WASM compute path on browsers
 //! that expose WebGPU on top of a Vulkan driver.
 //!
-//! The crate is deliberately thin: enumerate physical devices, surface their
-//! compute queue family + subgroup + FP16/INT8 support to the planner, and
-//! let higher layers build pipelines out of SPIR-V modules. It intentionally
+//! The crate is deliberately thin: enumerate physical devices, report their
+//! compute queue family + subgroup + FP16/INT8 support as capability bits, and
+//! let higher layers build pipelines out of SPIR-V modules. Shader translation
+//! is not this crate's job — bring your own SPIR-V, the same way the CUDA
+//! backend takes PTX. It intentionally
 //! avoids wrapping every Vulkan object in a safe RAII type — the same
 //! "throughput over guard-rails" stance the rest of IronAccelerator takes.
 
@@ -17,8 +19,6 @@ pub mod backend;
 pub mod compute;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod drv;
-#[cfg(not(target_arch = "wasm32"))]
-pub mod shader;
 
 pub use backend::{VulkanBackend, VULKAN_BACKEND};
 

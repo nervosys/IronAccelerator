@@ -713,7 +713,6 @@ version = "2.0.0"
 dependencies = [
  "ash",
  "ironaccelerator-core",
- "naga",
  "once_cell",
 ]
 
