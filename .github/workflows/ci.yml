@@ -44,7 +44,7 @@ jobs:
           - os: ubuntu-latest
             features: "cuda,rocm,vulkan,opengl,webgpu,levelzero,tpu,neuron"
           - os: windows-latest
-            features: "cuda,vulkan,opengl,webgpu,levelzero"
+            features: "cuda,vulkan,opengl,dx12,webgpu,levelzero"
           - os: macos-latest
             features: "metal,webgpu,opengl"
     runs-on: ${{ matrix.os }}
@@ -53,6 +53,39 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo build -p ironaccelerator --no-default-features --features "${{ matrix.features }}"
+
+  # `ironaccelerator-core` declares `#![cfg_attr(not(feature = "std"), no_std)]`.
+  # Nothing else in CI builds that configuration, so without this job the
+  # no_std path rots silently — it had in fact been broken for several
+  # releases before 2.0.0. Each feature combination is built separately
+  # because feature unification inside a workspace build would mask a
+  # missing `alloc` import.
+  no-std:
+    name: no_std / core
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build -p ironaccelerator-core --no-default-features
+      - run: cargo build -p ironaccelerator-core --no-default-features --features serde
+      - run: cargo build -p ironaccelerator-core
+
+  # The WebGPU backend exists for the browser, so wasm32 is its real target.
+  # It was previously impossible to build there — an ungated call to a
+  # native-only `wgpu` method — and no CI job would have caught it.
+  wasm:
+    name: wasm32 / webgpu + core
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build -p ironaccelerator-webgpu --target wasm32-unknown-unknown
+      - run: cargo build -p ironaccelerator-core --target wasm32-unknown-unknown
+      - run: cargo build -p ironaccelerator-core --target wasm32-unknown-unknown --no-default-features
 
   # The GPU-bound integration tests (`Device::open`, benches) require a live
   # CUDA / ROCm runtime and are gated behind an env flag. CI only runs the

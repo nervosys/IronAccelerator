@@ -12,6 +12,7 @@ members = [
     "crates/ironaccelerator-qnn-sys",
     "crates/ironaccelerator-vulkan",
     "crates/ironaccelerator-opengl",
+    "crates/ironaccelerator-dx12",
     "crates/ironaccelerator-webgpu",
     "crates/ironaccelerator-tpu",
     "crates/ironaccelerator-levelzero",
@@ -41,6 +42,7 @@ ironaccelerator-qnn       = { path = "crates/ironaccelerator-qnn",      version 
 ironaccelerator-qnn-sys   = { path = "crates/ironaccelerator-qnn-sys",  version = "2.0.0" }
 ironaccelerator-vulkan    = { path = "crates/ironaccelerator-vulkan",   version = "2.0.0" }
 ironaccelerator-opengl    = { path = "crates/ironaccelerator-opengl",   version = "2.0.0" }
+ironaccelerator-dx12      = { path = "crates/ironaccelerator-dx12",     version = "2.0.0" }
 ironaccelerator-webgpu    = { path = "crates/ironaccelerator-webgpu",   version = "2.0.0" }
 ironaccelerator-tpu       = { path = "crates/ironaccelerator-tpu",      version = "2.0.0" }
 ironaccelerator-levelzero = { path = "crates/ironaccelerator-levelzero", version = "2.0.0" }

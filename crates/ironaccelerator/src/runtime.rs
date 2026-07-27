@@ -31,6 +31,8 @@ impl Runtime {
         ironaccelerator_vulkan::register(&mut registry);
         #[cfg(feature = "opengl")]
         ironaccelerator_opengl::register(&mut registry);
+        #[cfg(feature = "dx12")]
+        ironaccelerator_dx12::register(&mut registry);
         #[cfg(feature = "webgpu")]
         ironaccelerator_webgpu::register(&mut registry);
         #[cfg(feature = "tpu")]

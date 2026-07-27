@@ -62,6 +62,7 @@ cargo publish -p ironaccelerator-qnn
 cargo publish -p ironaccelerator-metal
 cargo publish -p ironaccelerator-vulkan
 cargo publish -p ironaccelerator-opengl
+cargo publish -p ironaccelerator-dx12
 cargo publish -p ironaccelerator-webgpu
 cargo publish -p ironaccelerator-tpu
 cargo publish -p ironaccelerator-levelzero

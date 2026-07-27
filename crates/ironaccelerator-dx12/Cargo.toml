@@ -1,0 +1,21 @@
+[package]
+name = "ironaccelerator-dx12"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Direct3D 12 backend for IronAccelerator — adapter enumeration and capability probing on Windows."
+keywords = ["direct3d", "d3d12", "gpu", "windows", "compute"]
+categories = ["api-bindings", "hardware-support", "graphics"]
+documentation = "https://docs.rs/ironaccelerator-dx12"
+
+[dependencies]
+ironaccelerator-core = { workspace = true }
+libloading = { workspace = true }
+once_cell = { workspace = true }
+
+[features]
+default = []

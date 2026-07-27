@@ -27,12 +27,13 @@ pub enum BackendKind {
     QualcommNpu,
     /// CPU SIMD reference path (used as a fallback / oracle).
     Cpu,
-    /// Vulkan Compute — cross-vendor GPU compute, including the Rust→WASM
-    /// compute path on browsers that expose WebGPU-over-Vulkan.
+    /// Vulkan Compute — cross-vendor GPU compute.
     Vulkan,
     /// OpenGL 4.3+ compute shaders — legacy / embedded GPU fallback.
     OpenGl,
-    /// WebGPU — native (via `wgpu`) and the primary WASM compute path.
+    /// Direct3D 12 — the Windows-native GPU API, across all vendors.
+    Dx12,
+    /// WebGPU in the browser — the WASM compute path.
     WebGpu,
     /// Google TPU (v4 / v5 / v6e) via the PJRT plugin interface.
     Tpu,
@@ -51,6 +52,7 @@ impl BackendKind {
         BackendKind::Cpu,
         BackendKind::Vulkan,
         BackendKind::OpenGl,
+        BackendKind::Dx12,
         BackendKind::WebGpu,
         BackendKind::Tpu,
         BackendKind::LevelZero,
@@ -66,6 +68,7 @@ impl BackendKind {
             BackendKind::Cpu => "cpu",
             BackendKind::Vulkan => "vulkan",
             BackendKind::OpenGl => "opengl",
+            BackendKind::Dx12 => "dx12",
             BackendKind::WebGpu => "webgpu",
             BackendKind::Tpu => "tpu",
             BackendKind::LevelZero => "level-zero",

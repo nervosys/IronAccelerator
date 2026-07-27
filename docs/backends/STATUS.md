@@ -11,7 +11,8 @@ Module / Function / kernel compile / memcpy / library handles).
 | **CUDA**           | ✅ full         | ✅ 11 libs  | ✅ NVRTC + disk cache | ✅ 45 tests | ✅ `cudarc_compat`   | ✅ `MemPool`        |
 | **ROCm**           | ✅ HIP full     | ✅ hipBLASLt scaffold | ⏳ hiprtc binding pending | ❌ no GPU here | ❌                  | ❌                  |
 | **Metal**          | ⚠️ scaffold     | ⏳ MPS scaffold | n/a (Metal Shading Language is offline) | ❌ no macOS here | ❌              | ❌                  |
-| **Vulkan**         | ✅ enumerate+compute | n/a   | ✅ WGSL → SPIR-V via naga | ⏳ device probe only | ❌            | ❌                  |
+| **Vulkan**         | ✅ enumerate+compute | n/a   | ❌ bring your own SPIR-V | ⏳ device probe only | ❌            | ❌                  |
+| **D3D12**          | ✅ enumerate+device | n/a    | ❌ bring your own DXIL | ✅ 3 adapters enumerated | ❌         | ❌                  |
 | **Qualcomm (QNN)** | ⚠️ scaffold     | ⏳ QNN SDK FFI pending | n/a (QNN graphs are AOT) | ❌ no SDK here | ❌              | ❌                  |
 
 ✅ = shipped and exercised
@@ -78,13 +79,12 @@ Status: **driver substrate present; cross-vendor.**
 - `crates/ironaccelerator-vulkan/src/compute.rs` — `Context`, `Buffer`,
   `ComputePipeline` — the minimum to load a SPIR-V module and dispatch a
   compute shader.
-- `crates/ironaccelerator-vulkan/src/shader.rs` — runtime WGSL → SPIR-V
-  via `naga 22`. This is the kernel-compile primitive (driver-substrate,
-  not a kernel itself).
-
-**Recently removed:** `src/kernels.rs` shipped SAXPY/GEMM kernel source.
-That violates the "no kernels in backend crates" scope rule we apply
-across the workspace. Removed.
+**Recently removed:** `src/kernels.rs` shipped SAXPY/GEMM kernel source,
+which violates the "no kernels in backend crates" scope rule. `src/shader.rs`
+followed in 2.0.0 — it did WGSL → SPIR-V via `naga`, but shader translation
+is a toolchain concern rather than a driver one, and `naga` has moved inside
+`wgpu` rather than standing alone. Vulkan ingests SPIR-V, so the backend
+takes SPIR-V.
 
 **Missing for full parity with CUDA:**
 - `cudarc`-style ergonomic wrappers (Vulkan's compute API is more
@@ -111,12 +111,31 @@ Per the user's [no-Huawei feedback](../../README.md) and the scope rule,
 QNN's eventual implementation must also stay at the driver-substrate
 layer (no graph optimizer, no quantization recipes — those layer on top).
 
+### Direct3D 12
+
+Status: **enumeration + capability probing, verified on real hardware.**
+
+- `crates/ironaccelerator-dx12/src/drv.rs` — hand-written COM vtables for
+  `IDXGIFactory1` / `IDXGIAdapter1` / `ID3D12Device`, `libloading` for
+  `d3d12.dll` + `dxgi.dll`, adapter walk, `CheckFeatureSupport` probes,
+  and `open()` returning an owned `ID3D12Device`.
+- `crates/ironaccelerator-dx12/src/backend.rs` — capability mapping.
+- Verified against 2× RTX 3090 Ti + an AMD integrated part: 3 adapters,
+  matching `Win32_VideoController` exactly in count and order.
+
+**Missing for full parity with CUDA:** command queues/allocators/lists,
+root signatures, descriptor heaps, compute pipelines, a `MemPool`
+equivalent, and a dispatch test. `drv::open` hands over a device and stops
+there for now.
+
 ### WebGPU / OpenGL / TPU / Level Zero / Neuron
 
-These are smaller cross-vendor or niche scaffolds. WebGPU + OpenGL both
-just lost their `kernels.rs` files in the same scope-cleanup pass that
-trimmed Vulkan. TPU / Level Zero / Neuron stay at the probe/enumerate
-layer until there's a concrete consumer to drive the work.
+WebGPU is the browser path only as of 2.0.0 — host-bound, zero
+dependencies, no native path (D3D12 covers the Windows gap that the
+`wgpu`-based native path had been reaching for). OpenGL lost its
+`kernels.rs` in the same scope-cleanup pass that trimmed Vulkan.
+TPU / Level Zero / Neuron stay at the probe/enumerate layer until there's
+a concrete consumer to drive the work.
 
 ## What "full hardware support" honestly requires
 
@@ -124,7 +143,9 @@ For each non-CUDA backend to reach CUDA-equivalent parity:
 
 1. Runtime kernel compile primitive (NVRTC analogue, where applicable):
    HIPRTC for ROCm, `metal::Library::newLibraryWithSource_options_error`
-   for Metal, naga (already done) for Vulkan, AOT-only for QNN.
+   for Metal, AOT-only for QNN. Vulkan and D3D12 take pre-compiled
+   SPIR-V / DXIL by design — translating shader source is a toolchain
+   job, not a driver one.
 2. cudarc-shaped compatibility surface — same `Device`/`Slice`/`Stream`
    shapes, same method names, so downstream code can portably target
    the right backend at compile time.

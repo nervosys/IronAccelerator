@@ -5,7 +5,9 @@ feature — no static link.
 
 ## Build time
 
-Pulls in `naga 22` for WGSL → SPIR-V.
+Nothing beyond `ash`. Shader translation is not this crate's job — bring
+your own SPIR-V, the same contract the CUDA backend has with PTX. The
+`naga`-backed WGSL front-end was removed in 2.0.0.
 
 ## Runtime
 
@@ -20,6 +22,6 @@ Pulls in `naga 22` for WGSL → SPIR-V.
 - `compute::Context` (queue + command pool), `compute::Buffer`
   (device-local + host-visible), `compute::ComputePipeline` (SPIR-V +
   descriptor set).
-- `kernels::axpy_f32` — SAXPY compiled from shared WGSL at runtime
-  (`shader::wgsl_to_spirv`).
-- `VK_KHR_cooperative_matrix` GEMM planned for 1.1.
+
+Kernels are not provided; `compute::ComputePipeline` takes a SPIR-V
+`&[u32]` and builds a pipeline from it.

@@ -22,9 +22,10 @@ Last updated: **2026-07-26**
 | ROCm           | `ironaccelerator-rocm`        | ✅        | ✅               | ✅ (hipBLASLt) |
 | Metal          | `ironaccelerator-metal`       | ✅ Apple  | ✅ Apple         | ✅ (MPSMatrix wrapper) |
 | QNN (Hexagon)  | `ironaccelerator-qnn`         | ✅        | ⚠️ needs HDK     | — |
-| Vulkan         | `ironaccelerator-vulkan`      | ✅        | ✅ (compute.rs)  | SAXPY (WGSL→SPIR-V via naga) |
-| OpenGL 4.3+    | `ironaccelerator-opengl`      | ✅ ctx    | ✅ (compute.rs)  | SAXPY |
-| WebGPU         | `ironaccelerator-webgpu`      | ✅        | ✅ (compute.rs)  | — |
+| Vulkan         | `ironaccelerator-vulkan`      | ✅        | ✅ (compute.rs)  | — (bring your own SPIR-V) |
+| OpenGL 4.3+    | `ironaccelerator-opengl`      | ✅ ctx    | ✅ (compute.rs)  | — |
+| Direct3D 12    | `ironaccelerator-dx12`        | ✅ probed | ⏳ device only   | — (bring your own DXIL) |
+| WebGPU (WASM)  | `ironaccelerator-webgpu`      | ✅ bound  | — (host owns device) | — |
 | TPU (PJRT)     | `ironaccelerator-tpu`         | ✅ env    | ⏳ PJRT client   | — |
 | Level Zero     | `ironaccelerator-levelzero`   | ✅        | ✅ (compute.rs)  | — |
 | AWS Neuron     | `ironaccelerator-neuron`      | ✅ cores  | ⏳ NEFF load     | — |
@@ -64,27 +65,38 @@ we tag `1.1.0`.
 - [x] `compute::ComputePipeline` (SPIR-V + descriptor set + storage
       buffers).
 - [x] One-shot `Context::dispatch` (submit + wait).
-- [x] SAXPY kernel compiled from WGSL at runtime via `naga`, wired
-      as `kernels::axpy_f32`. First real Vulkan payload.
-- [x] WGSL→SPIR-V fallback via `naga` (`shader::wgsl_to_spirv`) so
-      Vulkan and WebGPU share one kernel source.
-- [ ] `GemmPlan` with `VK_KHR_cooperative_matrix` on discrete GPUs,
-      fall-through tiled GEMM for integrated.
 
-### WebGPU
+> The SAXPY/GEMM WGSL kernels and the `naga`-backed `shader::wgsl_to_spirv`
+> that compiled them were removed — kernels in 1.2.0, the shader front-end
+> in 2.0.0. Both sat above the driver line. `ComputePipeline` takes SPIR-V
+> you supply.
 
-- [x] Adapter enumeration across Vulkan/Metal/DX12/GLES on native,
-      browser adapter on WASM.
-- [x] `compute::Context` (adapter pick + device + queue).
-- [x] `compute::ComputePipeline::from_wgsl` + `dispatch` helper.
-- [x] `bind_device` for WASM pre-selected devices.
-- [x] SAXPY WGSL kernel exposed as `webgpu::kernels::axpy_f32`.
-- [x] Naive tiled GEMM in WGSL
-      (`kernels::GEMM_F32_WGSL` + `kernels::gemm_f32`); shared with
-      Vulkan backend (`ironaccelerator_vulkan::kernels::gemm_f32`).
-      Subgroup-optimized variant parks until the WebGPU `SUBGROUP`
-      feature is stable in browsers.
+### Direct3D 12
+
+- [x] `libloading` probe of `d3d12.dll` + `dxgi.dll`, hand-written COM
+      vtables, DXGI adapter walk with software adapters filtered out.
+- [x] `CheckFeatureSupport` probes: feature level, FP64, native 16-bit
+      ops, UMA, wave ops + lane counts.
+- [x] `drv::open(ordinal)` → owned `ID3D12Device`, released on drop.
+- [x] Verified on real hardware (2× RTX 3090 Ti + AMD iGPU), matching
+      `Win32_VideoController` in count and order.
+- [ ] Command queue / allocator / list wrappers.
+- [ ] Root signature + descriptor heap + compute pipeline from DXIL.
+- [ ] Dispatch test against a live adapter.
+
+### WebGPU (browser only)
+
+- [x] Host-bound `AdapterInfo` model — the host awaits `requestAdapter()`
+      / `requestDevice()` and registers the result; the `GPUDevice` stays
+      with the host.
+- [x] Zero dependencies; builds for `wasm32-unknown-unknown` (it could
+      not before 2.0.0) and is covered by a CI job.
+- [x] Fallback (software) adapters recorded but never offered.
 - [ ] WASM smoke-test harness using `wasm-bindgen-test`.
+
+> The native `wgpu` path was removed in 2.0.0. On native it reached
+> nothing Vulkan / Metal / D3D12 / OpenGL do not, at the cost of 98
+> transitive dependencies and a layer of indirection above the driver.
 
 ### OpenGL
 
@@ -147,18 +159,25 @@ cut. Tracked in IronWorks from here on — see the CHANGELOG's
 - Workload + strategy descriptors and the heuristic planner.
 - The accelerator ontology crate (`ironaccelerator-ontology`).
 - Flash MoE, grouped GEMM, and every other kernel-level deliverable.
+- WGSL → SPIR-V translation (`vulkan::shader`) and the `naga` dependency.
+- The native `wgpu` WebGPU path; D3D12 now covers the Windows gap it
+  was reaching for, directly.
 
 ### Docs + release engineering
 
 - [x] `README.md` matrix of backends + minimum vendor-SDK versions.
 - [x] `docs/backends/` one file per backend with build-time + runtime
-      prerequisites (10 backend files).
+      prerequisites (11 backend files).
 - [x] CI matrix: Linux (CUDA / ROCm / Level Zero / Vulkan / Neuron /
-      TPU), Windows (CUDA / Vulkan / WebGPU / Level Zero), macOS
+      TPU), Windows (CUDA / Vulkan / OpenGL / D3D12 / Level Zero), macOS
       (Metal / WebGPU / OpenGL) — `.github/workflows/ci.yml`
       `feature-matrix` job compiles the umbrella crate under each
       feature combination; no vendor SDK linked, every backend loads
       via `libloading`.
+- [x] `no-std` job building `ironaccelerator-core` without default
+      features, and a `wasm32-unknown-unknown` job for the WebGPU
+      backend. Both configurations had rotted undetected before 2.0.0
+      because nothing in CI built them.
 - [ ] Public-API review: no `#[doc(hidden)]` leaks, every `pub`
       item documented. Pre-existing broken intra-doc links in the
       0.1-era CUDA sys / metal / cuda crates must be fixed before we

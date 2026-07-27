@@ -21,6 +21,7 @@ ironaccelerator-metal    = { workspace = true, optional = true }
 ironaccelerator-qnn      = { workspace = true, optional = true }
 ironaccelerator-vulkan    = { workspace = true, optional = true }
 ironaccelerator-opengl    = { workspace = true, optional = true }
+ironaccelerator-dx12      = { workspace = true, optional = true }
 ironaccelerator-webgpu    = { workspace = true, optional = true }
 ironaccelerator-tpu       = { workspace = true, optional = true }
 ironaccelerator-levelzero = { workspace = true, optional = true }
@@ -36,9 +37,10 @@ metal     = ["dep:ironaccelerator-metal"]
 qnn       = ["dep:ironaccelerator-qnn"]
 vulkan    = ["dep:ironaccelerator-vulkan"]
 opengl    = ["dep:ironaccelerator-opengl"]
+dx12      = ["dep:ironaccelerator-dx12"]
 webgpu    = ["dep:ironaccelerator-webgpu"]
 tpu       = ["dep:ironaccelerator-tpu"]
 levelzero = ["dep:ironaccelerator-levelzero"]
 neuron    = ["dep:ironaccelerator-neuron"]
-all       = ["cuda", "rocm", "metal", "qnn", "vulkan", "opengl", "webgpu",
-             "tpu", "levelzero", "neuron"]
+all       = ["cuda", "rocm", "metal", "qnn", "vulkan", "opengl", "dx12",
+             "webgpu", "tpu", "levelzero", "neuron"]

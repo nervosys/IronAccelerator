@@ -1,6 +1,6 @@
 # IronAccelerator
 
-A high-performance, **low-level hardware-agnostic** Rust interface over NVIDIA, AMD, Apple, Qualcomm, Intel, Google, and AWS accelerators plus open cross-vendor APIs (Vulkan / OpenGL / WebGPU). **Agent-first**: predictable shapes, terse APIs that an LLM can reason about without docs, errors that name the operation that failed.
+A high-performance, **low-level hardware-agnostic** Rust interface over NVIDIA, AMD, Apple, Qualcomm, Intel, Google, and AWS accelerators plus the platform and cross-vendor APIs (Vulkan / Direct3D 12 / OpenGL / WebGPU). **Agent-first**: predictable shapes, terse APIs that an LLM can reason about without docs, errors that name the operation that failed.
 
 > **Scope.** IronAccelerator is a *driver substrate*, not a kernel library.
 > Each backend crate wraps the vendor driver/runtime (devices, streams,
@@ -48,10 +48,11 @@ Honest current state. **CUDA is the only backend that's production-ready today.*
 | **CUDA**   | NVIDIA                             | ✅ full          | ✅ NVRTC + disk cache  | ✅ `cudarc_compat`   | ✅ `MemPool` (~75× cudarc) | ✅ 45 tests | CUDA 12.5+ driver (13.x tested) |
 | ROCm       | AMD                                | ✅ HIP full      | ⏳ HIPRTC pending      | ❌                   | ❌                   | ❌ no AMD GPU on CI host | ROCm 6.2+                |
 | Metal      | Apple                              | ⚠️ scaffold      | n/a (MSL is offline)   | ❌                   | ❌                   | ❌ needs macOS | macOS 14+ / iOS 17+              |
-| Vulkan     | cross-vendor GPU compute           | ✅ enumerate + compute | ✅ WGSL → SPIR-V via naga | ❌              | ❌                   | ⏳ device probe only | Vulkan 1.3 ICD             |
+| Vulkan     | cross-vendor GPU compute           | ✅ enumerate + compute | ❌ bring your own SPIR-V | ❌              | ❌                   | ⏳ device probe only | Vulkan 1.3 ICD             |
 | QNN        | Qualcomm Hexagon NPU               | ⚠️ scaffold      | n/a (QNN is AOT)       | ❌                   | ❌                   | ❌ needs SDK + device | QNN SDK 2.22+              |
 | OpenGL     | legacy / embedded GPU fallback     | ✅ enumerate     | ⏳                     | ❌                   | ❌                   | ⏳ context probe only | GL 4.3+ compute            |
-| WebGPU     | native (Vk/Metal/DX12) + browser   | ✅ enumerate + compute | ⏳ (WGSL inline)  | ❌                   | ❌                   | ⏳ adapter probe only | wgpu 22 / Chrome 113+    |
+| **D3D12**  | Windows, all vendors               | ✅ enumerate + device   | ❌ bring your own DXIL | ❌              | ❌                   | ✅ 3 adapters (2×3090 Ti + iGPU) | Windows 10 1507+ |
+| WebGPU     | browser / WASM only                | ✅ host-bound adapter   | n/a (host owns device) | ❌              | ❌                   | ⏳ needs browser harness | Chrome 113+ / Safari 17.4+ |
 | TPU (PJRT) | Google TPU v4 / v5 / v6e           | ⚠️ env probe     | n/a (PJRT plugin AOT)  | ❌                   | ❌                   | ❌ needs TPU VM | PJRT plugin (`libtpu.so`)      |
 | Level Zero | Intel GPU (Arc / Flex / PVC) + NPU | ✅ enumerate + compute | ⏳ SPIR-V        | ❌                   | ❌                   | ⏳ device probe only | `ze_loader` from Intel compute |
 | AWS Neuron | Trainium / Inferentia              | ⚠️ cores probe   | n/a (NEFF AOT)         | ❌                   | ❌                   | ❌ needs trn/inf instance | `libnrt` (Neuron SDK 2.x)  |
@@ -114,7 +115,8 @@ crates/
   ironaccelerator-qnn/        # Qualcomm Hexagon NPU wrappers
   ironaccelerator-vulkan/     # cross-vendor Vulkan compute
   ironaccelerator-opengl/     # legacy GL 4.3+ compute fallback
-  ironaccelerator-webgpu/     # wgpu (native + browser)
+  ironaccelerator-dx12/       # Direct3D 12 (Windows, all vendors)
+  ironaccelerator-webgpu/     # browser/WASM path, host-bound
   ironaccelerator-tpu/        # PJRT plugin loader
   ironaccelerator-levelzero/  # Intel oneAPI / Level Zero
   ironaccelerator-neuron/     # AWS Trainium / Inferentia

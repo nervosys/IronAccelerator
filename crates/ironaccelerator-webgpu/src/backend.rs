@@ -1,8 +1,8 @@
-//! WebGPU `Backend` impl via `wgpu`. One descriptor per adapter.
+//! WebGPU `Backend` impl over the host-bound adapter.
 
 use ironaccelerator_core::{
     Backend, BackendKind, Capability, CapabilityFlags, ComputeTier, DeviceDescriptor, DeviceId,
-    Result, Vendor,
+    Error, Result, Vendor,
 };
 
 use crate::drv::AdapterInfo;
@@ -16,7 +16,7 @@ impl Backend for WebGpuBackend {
     }
 
     fn is_available(&self) -> bool {
-        !crate::drv::enumerate().is_empty()
+        crate::drv::is_available()
     }
 
     fn enumerate(&self) -> Result<Vec<DeviceDescriptor>> {
@@ -27,59 +27,144 @@ impl Backend for WebGpuBackend {
             .collect())
     }
 
-    fn capabilities(&self, _device: u32) -> Result<CapabilityFlags> {
-        Ok(CapabilityFlags::FP32 | CapabilityFlags::FP16 | CapabilityFlags::MULTI_STREAM)
+    fn capabilities(&self, device: u32) -> Result<CapabilityFlags> {
+        if device != 0 {
+            return Err(Error::InvalidArgument(
+                "webgpu exposes a single bound adapter at ordinal 0",
+            ));
+        }
+        crate::drv::bound_adapter()
+            .map(|a| flags_for(&a))
+            .ok_or(Error::BackendUnavailable("webgpu: no adapter bound"))
     }
 }
 
-fn describe(ordinal: u32, info: AdapterInfo) -> DeviceDescriptor {
-    let vendor = match info.vendor {
-        0x10DE => Vendor::Nvidia,
-        0x1002 | 0x1022 => Vendor::Amd,
-        0x8086 => Vendor::Intel,
-        0x106B => Vendor::Apple,
-        0x5143 => Vendor::Qualcomm,
+/// Translate the granted WebGPU feature set into the common flag space.
+///
+/// WebGPU's compute surface is small by design, so this stays minimal: FP32 is
+/// guaranteed, FP16 only with `"shader-f16"`, and nothing above that is
+/// expressible. There is no INT8 dot product, no matrix engine, and no
+/// query for either.
+fn flags_for(a: &AdapterInfo) -> CapabilityFlags {
+    let mut flags = CapabilityFlags::FP32;
+    if a.shader_f16 {
+        flags |= CapabilityFlags::FP16;
+    }
+    flags
+}
+
+fn describe(ordinal: u32, a: AdapterInfo) -> DeviceDescriptor {
+    // WebGPU reports a lowercase vendor string, not a PCI ID.
+    let vendor = match a.vendor.as_str() {
+        "nvidia" => Vendor::Nvidia,
+        "amd" => Vendor::Amd,
+        "intel" => Vendor::Intel,
+        "apple" => Vendor::Apple,
+        "qualcomm" => Vendor::Qualcomm,
         _ => Vendor::Other,
     };
-    let tier = match info.device_type {
-        wgpu::DeviceType::DiscreteGpu => ComputeTier::Consumer,
-        wgpu::DeviceType::IntegratedGpu => ComputeTier::Mobile,
-        wgpu::DeviceType::VirtualGpu => ComputeTier::Mobile,
-        wgpu::DeviceType::Cpu => ComputeTier::Baseline,
-        wgpu::DeviceType::Other => ComputeTier::Baseline,
+
+    // The browser tells us nothing about discrete-vs-integrated or silicon
+    // class, and guessing from the vendor string would be fiction.
+    let tier = ComputeTier::Baseline;
+
+    let name = if !a.description.is_empty() {
+        a.description.clone()
+    } else if !a.device.is_empty() {
+        a.device.clone()
+    } else if !a.vendor.is_empty() {
+        a.vendor.clone()
+    } else {
+        "webgpu adapter".to_string()
     };
-    let mut flags = CapabilityFlags::FP32 | CapabilityFlags::FP16 | CapabilityFlags::MULTI_STREAM;
-    if info.subgroup_support {
-        flags |= CapabilityFlags::WMMA;
-    }
-    let arch = format!(
-        "wgpu-{}",
-        match info.backend {
-            wgpu::Backend::Vulkan => "vk",
-            wgpu::Backend::Metal => "mtl",
-            wgpu::Backend::Dx12 => "dx12",
-            wgpu::Backend::Gl => "gl",
-            wgpu::Backend::BrowserWebGpu => "web",
-            wgpu::Backend::Empty => "none",
-        }
-    );
+
+    let arch = if a.architecture.is_empty() {
+        "webgpu".to_string()
+    } else {
+        format!("webgpu-{}", a.architecture)
+    };
+
     DeviceDescriptor {
         id: DeviceId {
             backend: BackendKind::WebGpu,
             ordinal,
         },
         vendor,
-        name: info.name,
+        name,
         arch,
-        total_memory_bytes: info.max_buffer_size,
+        // Not a memory size: WebGPU never reports one. This is the largest
+        // single allocation the adapter will honour, which is the only
+        // capacity figure available.
+        total_memory_bytes: a.max_buffer_size,
         multiprocessor_count: 0,
         clock_khz: 0,
         capability: Capability {
-            flags,
+            flags: flags_for(&a),
             tier,
             fp16_tflops: None,
             fp8_tflops: None,
             mem_bandwidth_gbs: None,
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::drv::{bind_adapter, unbind_adapter};
+    use std::sync::Mutex;
+
+    static GUARD: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn unbound_backend_reports_unavailable() {
+        let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        unbind_adapter();
+        assert!(!WEBGPU_BACKEND.is_available());
+        assert!(WEBGPU_BACKEND.enumerate().unwrap().is_empty());
+        assert!(WEBGPU_BACKEND.capabilities(0).is_err());
+    }
+
+    #[test]
+    fn bound_adapter_is_described_and_capable() {
+        let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        bind_adapter(AdapterInfo {
+            vendor: "amd".into(),
+            architecture: "rdna-3".into(),
+            shader_f16: true,
+            max_buffer_size: 4096,
+            ..Default::default()
+        });
+
+        let devices = WEBGPU_BACKEND.enumerate().unwrap();
+        assert_eq!(devices.len(), 1);
+        assert_eq!(devices[0].vendor, Vendor::Amd);
+        assert_eq!(devices[0].arch, "webgpu-rdna-3");
+        assert_eq!(devices[0].name, "amd");
+        assert_eq!(devices[0].total_memory_bytes, 4096);
+
+        let flags = WEBGPU_BACKEND.capabilities(0).unwrap();
+        assert_eq!(flags, CapabilityFlags::FP32 | CapabilityFlags::FP16);
+        assert_eq!(flags, devices[0].capability.flags);
+
+        assert!(
+            WEBGPU_BACKEND.capabilities(1).is_err(),
+            "only ordinal 0 exists"
+        );
+        unbind_adapter();
+    }
+
+    #[test]
+    fn without_shader_f16_only_fp32() {
+        let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        bind_adapter(AdapterInfo {
+            vendor: "intel".into(),
+            ..Default::default()
+        });
+        assert_eq!(
+            WEBGPU_BACKEND.capabilities(0).unwrap(),
+            CapabilityFlags::FP32
+        );
+        unbind_adapter();
     }
 }

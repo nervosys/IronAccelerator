@@ -13,7 +13,8 @@ reports `BackendUnavailable` at runtime.
 | QNN (Hexagon)  | [`qnn.md`](qnn.md)       |
 | Vulkan         | [`vulkan.md`](vulkan.md) |
 | OpenGL         | [`opengl.md`](opengl.md) |
-| WebGPU         | [`webgpu.md`](webgpu.md) |
+| Direct3D 12    | [`dx12.md`](dx12.md)     |
+| WebGPU (WASM)  | [`webgpu.md`](webgpu.md) |
 | TPU (PJRT)     | [`tpu.md`](tpu.md)       |
 | Level Zero     | [`levelzero.md`](levelzero.md) |
 | AWS Neuron     | [`neuron.md`](neuron.md) |
@@ -24,7 +25,7 @@ Every backend is an optional dependency on the umbrella `ironaccelerator`
 crate. Enable exactly the ones you want:
 
 ```toml
-ironaccelerator = { version = "1", default-features = false, features = ["cuda", "vulkan"] }
+ironaccelerator = { version = "2", default-features = false, features = ["cuda", "vulkan"] }
 ```
 
 `features = ["all"]` enables every backend (heavy compile — only do this

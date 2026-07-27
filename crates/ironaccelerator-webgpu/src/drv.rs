@@ -1,94 +1,153 @@
-//! WebGPU driver wrappers — instance + adapter enumeration via `wgpu`.
+//! Host-bound WebGPU adapter registration.
 //!
-//! On native we iterate every available adapter across all compiled-in
-//! backends. On WASM the browser hands out exactly one adapter; hosts that
-//! want to preselect can stash a ready `wgpu::Device` via [`bind_device`].
+//! WebGPU has no synchronous enumeration. `navigator.gpu.requestAdapter()` and
+//! `GPUAdapter.requestDevice()` both return promises, and [`Backend`] is a
+//! synchronous trait — so this crate cannot negotiate an adapter itself
+//! without blocking, which is not permitted on a browser's main thread.
+//!
+//! The host therefore does the async negotiation and registers the result with
+//! [`bind_adapter`]. Everything downstream — [`enumerate`], the [`Backend`]
+//! impl, `Runtime::devices()` — reads what was bound. Until a host binds, the
+//! backend honestly reports unavailable.
+//!
+//! [`Backend`]: ironaccelerator_core::Backend
 
-use once_cell::sync::OnceCell;
 use std::sync::Mutex;
 
-static INSTANCE: OnceCell<wgpu::Instance> = OnceCell::new();
-static BOUND: OnceCell<Mutex<Option<BoundDevice>>> = OnceCell::new();
-
-pub struct BoundDevice {
-    pub device: wgpu::Device,
-    pub queue: wgpu::Queue,
-    pub info: AdapterInfo,
-}
-
-#[derive(Debug, Clone)]
+/// What a host learned about its adapter, in WebGPU's own vocabulary.
+///
+/// The fields mirror `GPUAdapterInfo`, `GPUSupportedLimits`, and the two
+/// optional `GPUFeatureName`s that matter for compute. WebGPU deliberately
+/// does not expose PCI vendor/device IDs — `vendor` and `architecture` are
+/// lowercase strings such as `"nvidia"` / `"ampere"`, and may be empty when
+/// the browser chooses to withhold them for fingerprinting reasons.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AdapterInfo {
-    pub name: String,
-    pub vendor: u32,
-    pub device_id: u32,
-    pub backend: wgpu::Backend,
-    pub device_type: wgpu::DeviceType,
-    pub driver: String,
-    pub driver_info: String,
+    /// `GPUAdapterInfo.vendor`, e.g. `"nvidia"`, `"amd"`, `"intel"`, `"apple"`.
+    pub vendor: String,
+    /// `GPUAdapterInfo.architecture`, e.g. `"ampere"`, `"rdna-3"`.
+    pub architecture: String,
+    /// `GPUAdapterInfo.device` — often empty in browsers.
+    pub device: String,
+    /// `GPUAdapterInfo.description` — often empty in browsers.
+    pub description: String,
+    /// `GPUAdapter.isFallbackAdapter` — a software rasteriser.
+    pub is_fallback: bool,
+    /// The `"shader-f16"` feature was granted on the device.
+    pub shader_f16: bool,
+    /// The `"subgroups"` feature was granted on the device.
+    pub subgroups: bool,
+    /// `GPUSupportedLimits.maxBufferSize`.
     pub max_buffer_size: u64,
-    pub max_storage_buffer_binding_size: u32,
+    /// `GPUSupportedLimits.maxStorageBufferBindingSize`.
+    pub max_storage_buffer_binding_size: u64,
+    /// `GPUSupportedLimits.maxComputeWorkgroupSizeX`.
     pub max_compute_workgroup_size_x: u32,
-    pub subgroup_support: bool,
+    /// `GPUSupportedLimits.maxComputeInvocationsPerWorkgroup`.
+    pub max_compute_invocations_per_workgroup: u32,
 }
 
-fn instance() -> &'static wgpu::Instance {
-    INSTANCE.get_or_init(|| {
-        wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..Default::default()
-        })
-    })
+static BOUND: Mutex<Option<AdapterInfo>> = Mutex::new(None);
+
+/// Register the adapter this host negotiated. Replaces any previous binding.
+///
+/// Call after `requestAdapter()` / `requestDevice()` resolve. The `GPUDevice`
+/// itself stays with the host — this crate records what the adapter *is* so it
+/// appears in the device survey, and does not take ownership of the handle.
+pub fn bind_adapter(info: AdapterInfo) {
+    *BOUND.lock().unwrap_or_else(|e| e.into_inner()) = Some(info);
 }
 
+/// Drop the current binding. After this the backend reports unavailable again.
+pub fn unbind_adapter() {
+    *BOUND.lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
+/// The currently bound adapter, if any.
+pub fn bound_adapter() -> Option<AdapterInfo> {
+    BOUND.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// Whether a host has bound an adapter.
+pub fn is_available() -> bool {
+    BOUND
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .is_some_and(|a| !a.is_fallback)
+}
+
+/// The bound adapter as a one-element list, or empty. WebGPU exposes exactly
+/// one adapter per `requestAdapter` call; there is no multi-device survey.
 pub fn enumerate() -> Vec<AdapterInfo> {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        instance()
-            .enumerate_adapters(wgpu::Backends::all())
-            .into_iter()
-            .map(|a| describe(&a))
-            .collect()
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        BOUND
-            .get()
-            .and_then(|m| {
-                m.lock()
-                    .ok()
-                    .and_then(|g| g.as_ref().map(|b| b.info.clone()))
-            })
-            .map(|i| vec![i])
-            .unwrap_or_default()
+    match bound_adapter() {
+        Some(a) if !a.is_fallback => vec![a],
+        _ => Vec::new(),
     }
 }
 
-pub(crate) fn describe(a: &wgpu::Adapter) -> AdapterInfo {
-    let info = a.get_info();
-    let limits = a.limits();
-    let features = a.features();
-    AdapterInfo {
-        name: info.name,
-        vendor: info.vendor,
-        device_id: info.device,
-        backend: info.backend,
-        device_type: info.device_type,
-        driver: info.driver,
-        driver_info: info.driver_info,
-        max_buffer_size: limits.max_buffer_size,
-        max_storage_buffer_binding_size: limits.max_storage_buffer_binding_size,
-        max_compute_workgroup_size_x: limits.max_compute_workgroup_size_x,
-        subgroup_support: features.contains(wgpu::Features::SUBGROUP),
-    }
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// WASM / preselected path: stash an already-requested device + queue so the
-/// backend can enumerate without redoing adapter negotiation.
-pub fn bind_device(device: wgpu::Device, queue: wgpu::Queue, info: AdapterInfo) {
-    let slot = BOUND.get_or_init(|| Mutex::new(None));
-    *slot.lock().unwrap() = Some(BoundDevice {
-        device,
-        queue,
-        info,
-    });
+    /// Serialises the tests below: they share one process-wide binding.
+    fn with_clean_binding<T>(f: impl FnOnce() -> T) -> T {
+        static GUARD: Mutex<()> = Mutex::new(());
+        let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        unbind_adapter();
+        let out = f();
+        unbind_adapter();
+        out
+    }
+
+    fn sample() -> AdapterInfo {
+        AdapterInfo {
+            vendor: "nvidia".into(),
+            architecture: "ampere".into(),
+            shader_f16: true,
+            subgroups: true,
+            max_buffer_size: 1 << 31,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn unbound_is_unavailable_and_enumerates_empty() {
+        with_clean_binding(|| {
+            assert!(!is_available());
+            assert!(enumerate().is_empty());
+        });
+    }
+
+    #[test]
+    fn bound_adapter_round_trips() {
+        with_clean_binding(|| {
+            bind_adapter(sample());
+            assert!(is_available());
+            assert_eq!(enumerate(), vec![sample()]);
+            assert_eq!(bound_adapter(), Some(sample()));
+        });
+    }
+
+    #[test]
+    fn fallback_adapter_is_not_offered() {
+        with_clean_binding(|| {
+            bind_adapter(AdapterInfo {
+                is_fallback: true,
+                ..sample()
+            });
+            assert!(!is_available(), "software fallback must not be offered");
+            assert!(enumerate().is_empty());
+        });
+    }
+
+    #[test]
+    fn unbind_clears() {
+        with_clean_binding(|| {
+            bind_adapter(sample());
+            unbind_adapter();
+            assert!(!is_available());
+            assert_eq!(bound_adapter(), None);
+        });
+    }
 }

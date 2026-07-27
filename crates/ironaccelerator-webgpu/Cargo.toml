@@ -7,16 +7,13 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "WebGPU backend for IronAccelerator — native via wgpu, primary WASM compute path."
-keywords = ["webgpu", "wgpu", "wasm", "gpu", "compute"]
+description = "WebGPU backend for IronAccelerator — the browser/WASM compute path, host-bound and dependency-free."
+keywords = ["webgpu", "wasm", "gpu", "browser", "compute"]
 categories = ["api-bindings", "hardware-support", "wasm"]
 documentation = "https://docs.rs/ironaccelerator-webgpu"
 
 [dependencies]
 ironaccelerator-core = { workspace = true }
-once_cell = { workspace = true }
-wgpu = "22"
-pollster = "0.4"
 
 [features]
 default = []

@@ -64,10 +64,45 @@ implies `ontology`.
 
 ### Added
 
+- **`ironaccelerator-dx12` — new Direct3D 12 backend.** Covers the one GPU
+  API on Windows no other backend here reached; every vendor exposes D3D12
+  on Windows whether or not a Vulkan ICD is installed, and on Arm-based
+  Windows devices it is often the only path. `d3d12.dll` / `dxgi.dll` load
+  via `libloading` — never linked — so the crate builds on every target and
+  reports unavailable where they are absent. COM is hand-written (vtables
+  for `IDXGIFactory1` / `IDXGIAdapter1` / `ID3D12Device`); `windows-sys`
+  dropped its Direct3D bindings in 0.60 and the `windows` crate would link
+  rather than load. Enumerates hardware adapters (software/WARP filtered
+  out), probes feature level, FP64, native 16-bit ops, UMA, and wave ops,
+  and hands back an owned `ID3D12Device` from `drv::open`. Enabled with the
+  `dx12` feature; included in `all`. New `BackendKind::Dx12`.
 - `Runtime::devices_with(CapabilityFlags)` — hardware-only filter over the
   device survey, replacing the capability half of what `plan` did.
 - `Runtime::available_backends()` and `Runtime::capabilities(backend, device)`
   for live per-device capability queries.
+- CI jobs for two configurations nothing was building: `no_std`
+  `ironaccelerator-core` (three feature combinations) and
+  `wasm32-unknown-unknown`. Both had rotted undetected — see *Fixed*.
+
+### Changed (breaking)
+
+- **`ironaccelerator-webgpu` is the browser path only, and no longer depends
+  on `wgpu`.** On native it reached nothing Vulkan / Metal / D3D12 / OpenGL
+  do not, while costing 98 transitive dependencies and placing a portability
+  layer between this workspace and the drivers it exists to wrap. The crate
+  now has *no dependencies* beyond `ironaccelerator-core`.
+
+  Because WebGPU adapter negotiation is asynchronous and `Backend` is not,
+  the host now negotiates and registers the result via
+  `drv::bind_adapter(AdapterInfo)`; the `GPUDevice` stays with the host.
+  `AdapterInfo` is plain data in WebGPU's own vocabulary (`vendor` and
+  `architecture` are strings — WebGPU deliberately does not expose PCI IDs)
+  and no longer re-exports `wgpu` types.
+
+  Removed with it: `compute::Context`, `compute::ComputePipeline`,
+  `compute::dispatch`, `Context::storage_buffer{,_init}`, and
+  `drv::bind_device`. Buffers and pipelines need the live `GPUDevice`, which
+  the host owns — call WebGPU directly from there.
 
 ### Fixed
 
@@ -77,6 +112,16 @@ implies `ontology`.
   `memory.rs` and `stream.rs` — which are now fixed. The crate's
   `#![cfg_attr(not(feature = "std"), no_std)]` was previously aspirational; no
   CI job built that configuration. Backend crates still require `std`.
+- **`ironaccelerator-webgpu` could not compile for `wasm32` at all**, despite
+  being the WASM backend. `compute.rs` called `Instance::enumerate_adapters`,
+  which `wgpu` gates behind `#[cfg(native)]`, with no `cfg` of its own.
+  `drv.rs` gated it correctly; `compute.rs` did not. The rewrite removes the
+  call entirely, and a CI job now builds the target.
+- **`drv::bind_device` never affected `Context`.** Both module docs stated
+  that `Context::new` would use a pre-bound device when one was present, but
+  `Context::new` never read the `BOUND` cell — it always ran adapter
+  negotiation. The documented WASM path was unreachable. Binding is now the
+  only path, so the two cannot diverge again.
 - `ironaccelerator-cuda` is clippy-clean under `-D warnings` again: elided two
   redundant `KernelArg` lifetimes, simplified the `Ptx::from_src` NUL check and
   the `from_file` UTF-8 conversion, and used `size_of_val` in
