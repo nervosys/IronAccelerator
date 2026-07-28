@@ -6,6 +6,16 @@ All notable changes to **IronAccelerator** are documented here. Format follows
 
 ## [Unreleased]
 
+### Security
+
+- Refreshed `docs/SECURITY_AUDIT.md` for 2.0.0 against CVE/RustSec, NIST FIPS
+  140-3, MITRE ATT&CK, and CMMC 2.0. `cargo audit` reports 0 vulnerabilities
+  over 120 dependencies (1 informational dev-only `unmaintained` advisory);
+  no build scripts, no network egress in the shipped graph, no embedded
+  secrets, no cryptographic module. All CMMC L2 gaps from the 1.2.0 audit are
+  closed (advisory scanning now runs in CI). Bumped the `SECURITY.md`
+  supported-versions table to 2.0.x.
+
 ### Docs
 
 - Rewrote the README performance section into a single coherent cudarc

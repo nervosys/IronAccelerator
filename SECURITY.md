@@ -8,8 +8,8 @@ released minor; older minors are out of scope unless explicitly noted in
 
 | Version | Supported |
 | ------- | --------- |
-| 1.2.x   | ✅        |
-| < 1.2   | ❌        |
+| 2.0.x   | ✅        |
+| < 2.0   | ❌        |
 
 ## Reporting a vulnerability
 
