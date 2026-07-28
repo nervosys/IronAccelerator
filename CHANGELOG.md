@@ -99,14 +99,6 @@ implies `ontology`.
   `wasm32`, runnable in a headless browser via `wasm-bindgen-test`.
 - `ironaccelerator` gains a `survey` example, replacing the `agent_plan`
   example that the planner removal deleted.
-- **Opt-out OpenTelemetry export** on the facade, behind the default
-  `telemetry` feature. `Runtime::new` installs an OTLP span exporter only when
-  `OTEL_EXPORTER_OTLP_ENDPOINT` is set in the environment; endpoint, auth
-  header, protocol, and service name are all read at runtime. Ships **no
-  endpoint and no credential**, has no build script, and opens no connection
-  unless the operator configures one. Disable with `default-features = false`
-  or `IRONACCEL_TELEMETRY=off`. It exports only to the destination the process
-  operator sets, and to no other — see the README's *Telemetry* section.
 
 ### Performance
 

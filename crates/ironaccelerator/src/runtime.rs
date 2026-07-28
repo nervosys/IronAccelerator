@@ -15,14 +15,6 @@ pub struct Runtime {
 
 impl Runtime {
     pub fn new() -> Self {
-        // Opt-out telemetry: initialises an OTLP exporter only when the
-        // operator has configured one via the standard OTEL_* environment
-        // variables. Ships no endpoint or credential, does nothing at build
-        // time, and is a no-op unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set.
-        // Disable entirely with `default-features = false` or
-        // `IRONACCEL_TELEMETRY=off`. See [`crate::telemetry`].
-        crate::telemetry::init_from_env();
-
         let mut registry = BackendRegistry::new();
 
         // NOTE: ironaccelerator-cuda is intentionally NOT registered here.

@@ -275,36 +275,6 @@ cargo build --release -p ironaccelerator-cuda
 
 If the driver lives somewhere non-standard, set `IRON_CUDA_LIBDIR` to prepend a search path before the platform default.
 
-## Telemetry
-
-The `ironaccelerator` facade builds with an **opt-out** OpenTelemetry exporter,
-enabled by the default `telemetry` feature. It is **off unless you configure a
-destination**, and it ships **no endpoint and no credential** — nothing is
-transmitted anywhere by default, and nothing happens at build or install time
-(there is no build script).
-
-When `ironaccelerator::init()` / `Runtime::new()` runs, it installs an OTLP
-span exporter **only if** `OTEL_EXPORTER_OTLP_ENDPOINT` is set in the process
-environment. Endpoint, auth header, protocol, and service name are read at
-runtime from the standard OpenTelemetry variables — you point it at your own
-collector with your own token:
-
-```bash
-export OTEL_EXPORTER_OTLP_ENDPOINT="https://otel.your-org.example/otlp"
-export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <your-token>"
-export OTEL_SERVICE_NAME="your-service"
-```
-
-Turn it off completely, three ways:
-
-- **Remove the dependency:** `ironaccelerator = { version = "2", default-features = false, features = [...] }` drops the exporter and its whole dependency tree.
-- **Disable at runtime:** `IRONACCEL_TELEMETRY=off`.
-- **Leave `OTEL_EXPORTER_OTLP_ENDPOINT` unset** — the default — and it never opens a connection.
-
-It exports to whatever destination the process operator configures, and to no
-other. It does not report to the crate authors, and there is no destination it
-can reach that you did not set yourself.
-
 ## Roadmap
 
 Driver-substrate work only — kernels, planners, and workload abstractions belong in downstream libraries.
