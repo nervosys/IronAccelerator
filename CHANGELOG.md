@@ -6,6 +6,8 @@ All notable changes to **IronAccelerator** are documented here. Format follows
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-07-28
+
 ### Security
 
 - Refreshed `docs/SECURITY_AUDIT.md` for 2.0.0 against CVE/RustSec, NIST FIPS
