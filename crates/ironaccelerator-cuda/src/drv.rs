@@ -410,6 +410,8 @@ struct CopyPool {
 /// concurrent staged copies cannot consume each other's completions.
 type Pending = std::sync::Arc<(parking_lot::Mutex<usize>, parking_lot::Condvar)>;
 
+/// A slice of work for the pool. A null `src` means "prefault this range"
+/// rather than "copy into it".
 struct CopyJob {
     src: *const u8,
     dst: *mut u8,
@@ -439,7 +441,18 @@ fn copy_pool() -> Option<&'static CopyPool> {
                     .name("ia-stage-copy".into())
                     .spawn(move || {
                         while let Ok(job) = rx.recv() {
-                            unsafe { core::ptr::copy_nonoverlapping(job.src, job.dst, job.len) };
+                            unsafe {
+                                if job.src.is_null() {
+                                    // Prefault: touch one byte per page.
+                                    let mut o = 0;
+                                    while o < job.len {
+                                        job.dst.add(o).write_volatile(0);
+                                        o += 4096;
+                                    }
+                                } else {
+                                    core::ptr::copy_nonoverlapping(job.src, job.dst, job.len);
+                                }
+                            }
                             let (lock, cv) = &*job.done;
                             *lock.lock() -= 1;
                             cv.notify_all();
@@ -491,6 +504,72 @@ unsafe fn wide_copy(src: *const u8, dst: *mut u8, len: usize) {
     // The submitting thread takes the remainder rather than idling.
     core::ptr::copy_nonoverlapping(src.add(off), dst.add(off), len - off);
 
+    let (lock, cv) = &*done;
+    let mut n = lock.lock();
+    while *n > 0 {
+        cv.wait(&mut n);
+    }
+}
+
+/// Only worth it once the destination is large enough that the allocator maps
+/// fresh pages rather than recycling resident ones. Measured: a clear win at
+/// 16 MiB (1.00x -> 1.24x), a loss at 1 MiB (1.00x -> 0.95x), where the pages
+/// are usually already resident and the pass is pure overhead.
+const PREFAULT_MIN: usize = 8 << 20;
+
+/// Touch every page of `dst`, in parallel, before something else writes it.
+///
+/// A destination `Vec` handed back by a device→host copy is freshly mapped, so
+/// the copy itself takes a page fault per 4 KiB — thousands of them for a large
+/// transfer, serialised against the transfer. Faulting them in first, spread
+/// over the copy pool, moves that cost off the critical path and parallelises
+/// what was inherently serial.
+///
+/// # Safety
+/// `dst` must be valid for writes of `len` bytes, and every byte must be about
+/// to be overwritten — this writes zeroes.
+unsafe fn prefault(dst: *mut u8, len: usize) {
+    const PAGE: usize = 4096;
+    if len < PREFAULT_MIN {
+        return;
+    }
+    let Some(pool) = copy_pool() else {
+        let mut off = 0;
+        while off < len {
+            dst.add(off).write_volatile(0);
+            off += PAGE;
+        }
+        return;
+    };
+    let parts = pool.work.len() + 1;
+    let step = (len / parts).next_multiple_of(PAGE);
+    let done: Pending =
+        std::sync::Arc::new((parking_lot::Mutex::new(0), parking_lot::Condvar::new()));
+    let mut off = 0;
+    for tx in pool.work.iter() {
+        if off + step >= len {
+            break;
+        }
+        *done.0.lock() += 1;
+        if tx
+            .send(CopyJob {
+                src: core::ptr::null(),
+                dst: dst.add(off),
+                len: step,
+                done: done.clone(),
+            })
+            .is_err()
+        {
+            *done.0.lock() -= 1;
+            break;
+        }
+        off += step;
+    }
+    let mut o = off;
+    while o < len {
+        dst.add(o).write_volatile(0);
+        o += PAGE;
+    }
     let (lock, cv) = &*done;
     let mut n = lock.lock();
     while *n > 0 {
@@ -632,6 +711,30 @@ impl Stream {
     #[inline]
     pub fn synchronize(&self) -> Result<()> {
         unsafe {
+            check(
+                "cuStreamSynchronize",
+                (self.drv.cuStreamSynchronize)(self.handle),
+            )
+        }
+    }
+
+    /// Ensure the stream is idle, preferring a non-blocking poll.
+    ///
+    /// `cuStreamQuery` answers "is there anything outstanding" without entering
+    /// the wait path that `cuStreamSynchronize` sets up, and in a
+    /// synchronous-copy loop the stream is almost always already idle. When it
+    /// is not, this falls through to the real wait, so the postcondition is
+    /// identical — the driver, not a flag of ours, decides.
+    ///
+    /// This is what makes it sound where a "dirty" bit would not be: work
+    /// enqueued on this stream by a vendor library holding our raw handle is
+    /// invisible to us but perfectly visible to `cuStreamQuery`.
+    #[inline]
+    pub fn drain(&self) -> Result<()> {
+        unsafe {
+            if (self.drv.cuStreamQuery)(self.handle) == sys::CUresult::Success {
+                return Ok(());
+            }
             check(
                 "cuStreamSynchronize",
                 (self.drv.cuStreamSynchronize)(self.handle),
@@ -1017,7 +1120,7 @@ impl<T: Repr> DeviceBuf<T> {
         // itself was handed out by the stream-ordered allocator, so the stream
         // has to be drained before the copy may touch it. This is a
         // correctness requirement, not a precaution.
-        self.stream.synchronize()?;
+        self.stream.drain()?;
         let bytes = self.len * std::mem::size_of::<T>();
         unsafe {
             check(
@@ -1068,9 +1171,13 @@ impl<T: Repr> DeviceBuf<T> {
         if self.len == 0 {
             return Ok(());
         }
-        self.stream.synchronize()?;
+        self.stream.drain()?;
         let bytes = self.len * std::mem::size_of::<T>();
         unsafe {
+            // Every byte of `dst` is about to be overwritten, so faulting the
+            // pages in first is free of observable effect and takes the fault
+            // storm off the copy's critical path.
+            prefault(dst.as_mut_ptr() as *mut u8, bytes);
             check(
                 "cuMemcpyDtoH_v2",
                 (self.stream.drv.cuMemcpyDtoH_v2)(dst.as_mut_ptr() as *mut c_void, self.ptr, bytes),
