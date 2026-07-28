@@ -6,6 +6,17 @@ All notable changes to **IronAccelerator** are documented here. Format follows
 
 ## [Unreleased]
 
+### Docs
+
+- Rewrote the README performance section into a single coherent cudarc
+  comparison. The stale 1.2.0 criterion transfer table — which pre-dated the
+  2.0.0 pinned-staging work and showed host→device as a cudarc win on some
+  sizes — is replaced by the paired-method results (host→device 1.08–1.31×
+  CI-confirmed, device→host at parity). Control-plane wins (MemPool ~90×,
+  alloc/free ~2×, sync ~1.5×) kept and relabelled by measurement method. Fixed
+  the broken `#performance-posture` anchor and unified the MemPool figure to
+  ~90× throughout (was a mix of ~75× and ~90×).
+
 ## [2.0.0] - 2026-07-28
 
 ### Removed (breaking)

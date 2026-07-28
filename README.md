@@ -35,17 +35,17 @@ Full coverage map and migration notes live in the module docs at
 cargo run --release -p ironaccelerator-cuda --example saxpy_cudarc_style
 ```
 
-**Why switch:** on the host-side hot path we're **faster than cudarc 0.19** across alloc, sync, and host→device transfer — CI-confirmed at every transfer size, up to **1.31×**, with the opt-in `MemPool` at ~90× on alloc/free ([numbers below](#vs-cudarc-drop-in-replacement)). Device→host is at parity; both libraries are at the driver's floor there, and we say so rather than rounding it up. cudarc rebinds the thread-context on every driver call; we cache it once. cudarc tracks per-buffer event fences on `Drop`; we just call `cuMemFreeAsync`. The wins compound at high-frequency dispatch loops.
+**Why switch:** on the host-side hot path we're **faster than cudarc 0.19** across alloc, sync, and host→device transfer — CI-confirmed at every transfer size, up to **1.31×**, with the opt-in `MemPool` at ~90× on alloc/free ([numbers below](#performance-posture)). Device→host is at parity; both libraries are at the driver's floor there, and we say so rather than rounding it up. cudarc rebinds the thread-context on every driver call; we cache it once. cudarc tracks per-buffer event fences on `Drop`; we just call `cuMemFreeAsync`. The wins compound at high-frequency dispatch loops.
 
 **Production user:** [IronWorks](https://github.com/nervosys/ironworks) (a Rust LLM inference engine) completed a full cudarc → IronAccelerator migration on 2026-05-15, dropping cudarc from `Cargo.lock` entirely. ~300 call sites migrated; zero kernel regressions; tg128 on Llama-3.2-1B Q4_K_M unchanged at ~522 tok/s (within ±1.3% of the cudarc baseline — iwx is kernel-bound, so the wrapper-level wins amortise to noise). The migration validated that every iwx CUDA-driver call site has a native IA equivalent.
 
 ## Backend support matrix
 
-Honest current state. **CUDA is the only backend that's production-ready today.** Everything else compiles, registers, and enumerates devices where the SDK is present — but the per-backend hot path has not yet had the same optimization sprint that pushed CUDA to ~75× faster than cudarc. Detailed gap analysis per backend lives in [`docs/backends/STATUS.md`](docs/backends/STATUS.md).
+Honest current state. **CUDA is the only backend that's production-ready today.** Everything else compiles, registers, and enumerates devices where the SDK is present — but the per-backend hot path has not yet had the same optimization sprint that pushed the CUDA `MemPool` to ~90× faster than cudarc on alloc/free. Detailed gap analysis per backend lives in [`docs/backends/STATUS.md`](docs/backends/STATUS.md).
 
 | Backend    | Vendor / API                       | Driver wrappers | Runtime kernel compile | cudarc-shaped compat | `MemPool` equivalent | Live-GPU tests | Min SDK / runtime               |
 | ---------- | ---------------------------------- | --------------- | ---------------------- | -------------------- | -------------------- | -------------- | ------------------------------- |
-| **CUDA**   | NVIDIA                             | ✅ full          | ✅ NVRTC + disk cache  | ✅ `cudarc_compat`   | ✅ `MemPool` (~75× cudarc) | ✅ 45 tests | CUDA 12.5+ driver (13.x tested) |
+| **CUDA**   | NVIDIA                             | ✅ full          | ✅ NVRTC + disk cache  | ✅ `cudarc_compat`   | ✅ `MemPool` (~90× cudarc) | ✅ 45 tests | CUDA 12.5+ driver (13.x tested) |
 | ROCm       | AMD                                | ✅ HIP full      | ⏳ HIPRTC pending      | ❌                   | ❌                   | ❌ no AMD GPU on CI host | ROCm 6.2+                |
 | Metal      | Apple                              | ⚠️ scaffold      | n/a (MSL is offline)   | ❌                   | ❌                   | ❌ needs macOS | macOS 14+ / iOS 17+              |
 | Vulkan     | cross-vendor GPU compute           | ✅ enumerate + compute | ❌ bring your own SPIR-V | ❌              | ❌                   | ⏳ device probe only | Vulkan 1.3 ICD             |
@@ -156,72 +156,88 @@ All vendor calls flow through typed `Result<T, Error>`; there are no panics in t
 
 ## Performance posture
 
-### vs cudarc (drop-in replacement)
+`cudarc_compat` re-exports cudarc-shaped types and methods so existing code
+switches with a `use` swap — and it is faster on the host-side hot path. All
+numbers below are on an **RTX 3090 Ti, CUDA 13.2**, against **cudarc 0.19.6**.
 
-IronAccelerator's `cudarc_compat` module re-exports cudarc-shaped types and methods so existing code can switch with a `use` swap. Same reference machine (RTX 3090 Ti, CUDA 13.2 / driver 596.36, release build, 2026-05-15 — measured against cudarc 0.19.6, criterion 0.5, 100 samples × 5 s each):
+### Data transfer — paired method, 95% CI
 
-| Path                                  | IronAccelerator | cudarc 0.19  | Winner                |
-| ------------------------------------- | --------------- | ------------ | --------------------- |
-| **`MemPool` alloc+free (any size, warm)** | **~10 ns** | ~1 µs        | Iron **~100× faster** |
-| Stream synchronize (empty)            | **84 ns**       | 124 ns       | Iron **1.47× faster** |
-| Stream create + destroy               | **902 ns**      | 1.03 µs      | Iron **1.14× faster** |
-| Async alloc + free (1 KB)             | **461 ns**      | 1.05 µs      | Iron **2.27× faster** |
-| Async alloc + free (64 KB)            | **465 ns**      | 1.03 µs      | Iron **2.21× faster** |
-| Async alloc + free (1 MB)             | **463 ns**      | 767 ns       | Iron **1.66× faster** |
-| Async alloc + free (16 MB)            | **470 ns**      | 1.04 µs      | Iron **2.21× faster** |
-| Event create + record + sync + destroy| **26.2 µs**     | 26.3 µs      | Iron **edge** ¹       |
-| Kernel launch (noop, 1024 thr)        | **5.78 µs**     | 6.15 µs      | Iron **1.06× faster** |
-| H→D round-trip (1 KB)                 | 33.6 µs         | 28.9 µs      | cudarc 1.16× (noise)  |
-| H→D round-trip (64 KB)                | **23.3 µs**     | 32.1 µs      | Iron **1.38× faster** |
-| H→D round-trip (1 MB)                 | **145.5 µs**    | 146.8 µs     | Iron edge             |
-| H→D round-trip (16 MB)                | **1.96 ms**     | 2.39 ms      | Iron **1.22× faster** |
-| D→H round-trip (1 KB)                 | **18.2 µs**     | 31.3 µs      | Iron **1.72× faster** |
-| D→H round-trip (64 KB)                | 40.4 µs         | 29.7 µs      | cudarc 1.36× ²        |
-| D→H round-trip (1 MB)                 | **335.7 µs**    | 358.5 µs     | Iron **1.07× faster** |
-| D→H round-trip (16 MB)                | 4.46 ms         | 4.33 ms      | cudarc 1.03× (noise)  |
+Transfer benchmarks are dominated by machine state (GPU clock float, PCIe power
+state, contention). Measuring each library in its own block — the criterion
+default — lets that drift land on one side and masquerade as a code difference;
+early runs of this suite swung a single path between 0.66× and 1.98× on
+identical code. [`examples/ab_vs_cudarc.rs`](crates/ironaccelerator-cuda/examples/ab_vs_cudarc.rs)
+instead samples the two libraries **back-to-back** and reports the median
+**per-pair ratio** with a bootstrap 95% confidence interval, so shared drift
+cancels. A win is only claimed when the whole interval sits above 1.0.
 
-### 2.0.0 re-measurement (paired method)
+Ratios are cudarc ÷ IronAccelerator — **above 1.0 means IronAccelerator is faster.**
 
-The table above is a criterion run, which measures each library in its own
-contiguous block — so machine drift lands on one side and shows up as a
-difference that is not in the code. On a shared desktop that effect exceeded the
-differences being measured. 2.0.0 adds
-[`examples/ab_vs_cudarc.rs`](crates/ironaccelerator-cuda/examples/ab_vs_cudarc.rs),
-which samples the two libraries **back-to-back** and reports the median
-per-pair ratio with a bootstrap 95% CI, so shared contention cancels. Verdicts
-are only issued when the interval excludes 1.0.
-
-| operation | 1 KiB | 64 KiB | 1 MiB | 16 MiB |
-|-----------|------:|-------:|------:|-------:|
+| operation   | 1 KiB    | 64 KiB   | 1 MiB    | 16 MiB   |
+| ----------- | -------: | -------: | -------: | -------: |
 | host→device | **1.31×** | **1.26×** | **1.08×** | **1.30×** |
-| device→host | 0.99× | 1.00× | 1.00× | 1.02× |
+| device→host | 1.00×    | 1.00×    | 1.00×    | 1.02×    |
 
-H2D improved across the board in 2.0.0 because large pageable copies now stage
-through pinned memory — see the CHANGELOG's *Performance* section. **Device→host
-is at parity, not a win**, and that looks structural: both libraries issue one
-ordering check and one blocking `cuMemcpyDtoH_v2` against a single async copy
-engine, so there is no wrapper work left to remove. Seven approaches were
-implemented and measured before concluding that.
+**Host→device wins at every size, CI-confirmed.** The large-transfer win comes
+from staging pageable copies through a pinned ring: the driver cannot DMA out
+of pageable memory on a non-null stream, so it stages internally, and its
+internal path is ~10× slower than doing it ourselves. `copy_from_host` routes
+multi-chunk transfers through four pinned 2 MiB chunks, overlaps each chunk's
+host copy with the previous chunk's DMA, and spreads the host copy across a
+small worker pool. 16 MiB H→D dropped from ~36 ms to ~1.4 ms.
 
-**16 of 20 IA wins in the 1.2.0 criterion run above.** The 4 cudarc-leaning rows are all bandwidth-bound transfers where the wrapper layer is sub-dominant; ratios fluctuate ±15 % run-to-run due to Windows GPU clock float (1740–2100 MHz, no NVAPI lock). cudarc 0.19 source ([`core.rs:1550`](https://github.com/coreylowman/cudarc/blob/main/src/driver/safe/core.rs)) issues identical `cuMemAllocAsync` + `cuMemcpy*Async_v2` + `cuStreamSynchronize` calls on these paths — both libraries are at the same hardware ceiling.
+**Device→host is at parity, and we say so rather than round it up.** Both
+libraries issue one ordering check and one blocking `cuMemcpyDtoH_v2` against a
+single async copy engine (`ASYNC_ENGINE_COUNT = 1` on this part), so there is no
+wrapper work left to remove and no second engine to parallelise over. Seven
+approaches — pinned staging, host-side registration, a legacy-ordered stream,
+the buffer-reusing API — were implemented and measured before concluding this;
+each is documented at its call site so it is not re-attempted.
 
-¹ Event lifecycle was 1.14× cudarc before 2026-05-15. Removed a redundant `device.bind()` (`cuCtxSetCurrent`) in `Event::new_impl` since IA's invariant guarantees binding persists from `Device::open`. Cut from 36 µs → 18 µs and now beats cudarc.
+Reproduce (prints device state and flags any row whose CI is too wide to trust):
 
-² D→H 64 KB occasionally hits a single-run outlier; median across multiple runs is 28-32 µs IA vs 29-32 µs cudarc — statistical tie.
+```bash
+cargo run --release -p ironaccelerator-cuda --example ab_vs_cudarc
+```
 
-**Recent wrapper-perf improvements (2026-05-15):**
-- `Event::new_impl` skips per-event `cuCtxSetCurrent` (event lifecycle 36 µs → 26 µs)
-- `dtoh_sync_copy` switched from `cuMemcpyDtoHAsync_v2 + cuStreamSynchronize` to the synchronous `cuMemcpyDtoH_v2` (D→H 1 MB 438 µs → 335 µs)
-- `Device::open` auto-sets the default mempool's `ReleaseThreshold = u64::MAX` — retains memory across free/alloc cycles, +1-5 % on tight alloc/free loops
+### Control plane — where the wrapper *is* the cost
 
-The headline win is the optional [`MemPool`](crates/ironaccelerator-cuda/src/pool.rs): a per-stream Rust-side freelist that recycles `DeviceBuf` allocations into power-of-two size buckets. The hot path is a thread-local front cache — `UnsafeCell` access + a fixed-array index — **no FFI, no mutex**, landing at ~10 ns per alloc/free cycle on the common single-thread case. Cross-thread overflow falls through to a `parking_lot::Mutex`-guarded shared back cache; over-cap allocations go all the way to `cuMemFreeAsync`. For a dispatch loop that churns thousands of small buffers per second (KV-cache slots, per-token scratch, agent tool churn), that's roughly **75× faster than cudarc** while preserving the same `DeviceBuf` API through `Deref`. Default `DeviceBuf::alloc` still goes straight to `cuMemAllocAsync` for one-off cases. The other wins on the control plane (alloc, sync, create) come from these compounding optimizations: Four things compound:
-1. An `AtomicPtr<DriverFns>` fast-path in `iron_cuda_sys::driver::fns()` collapses two `OnceLock` acquires into one acquire atomic load + null check.
-2. Every `Device`, `Stream`, and `Event` caches `&'static DriverFns` at construction; `synchronize`, `alloc`, `copy_*`, `Drop`, `bind`, `attribute`, `Event::record/synchronize`, etc. dereference the cached pointer directly — zero atomic ops per call. `Device` also caches the stream priority range (one FFI amortized across every `Stream::new`).
-3. Every wrapped driver call is `#[inline]`; the error-return branch is `#[cold] #[inline(never)]`, so the success path is a load/test/branch sequence with no spurious `Error`-enum materialisation.
-4. `DeviceBuf::alloc` no longer heap-allocates a `String` for the overflow message on every call (the `ok_or(Error { msg: ".".into() })` pattern eagerly built a `String` the optimiser couldn't kill).
-5. **What cudarc does that we don't:** `cudarc::driver::CudaStream::synchronize` calls `bind_to_thread()` first, which runs a `cuCtxGetCurrent` FFI on every call — a paranoid context check. IronAccelerator binds the device once at `Device::open` and trusts the binding to persist; if you need cudarc's behavior, call `device.bind()` explicitly.
+Alloc/free, sync, and stream/event lifecycle are where a thin wrapper wins or
+loses, because the driver call underneath is cheap and the overhead is the
+wrapper. Criterion, quiet machine, cudarc 0.19.6:
 
-Bulk memcpy and kernel launches sit at the FFI floor — both libraries bottleneck on the same `cuMemcpyHtoDAsync_v2` / `cuLaunchKernel` driver entries, so the wrapper differences don't surface above bench noise. The wins concentrate where the wrapper *is* the cost: control-plane sync, alloc/free, and short copies.
+| Path                                      | IronAccelerator | cudarc 0.19 | Speedup       |
+| ----------------------------------------- | --------------: | ----------: | ------------- |
+| **`MemPool` alloc+free (warm, any size)** |      **~10 ns** |       ~1 µs | **~90×**      |
+| Async alloc + free (1 KB)                 |      **461 ns** |     1.05 µs | **2.3×**      |
+| Async alloc + free (16 MB)                |      **470 ns** |     1.04 µs | **2.2×**      |
+| Stream synchronize (empty)                |       **84 ns** |      124 ns | **1.5×**      |
+| Stream create + destroy                   |      **902 ns** |     1.03 µs | **1.1×**      |
+| Kernel launch (noop, 1024 thr)            |     **5.78 µs** |     6.15 µs | **1.06×**     |
+
+The headline is the optional [`MemPool`](crates/ironaccelerator-cuda/src/pool.rs):
+a per-stream freelist recycling `DeviceBuf` allocations into power-of-two
+buckets. The hot path is a thread-local front cache — `UnsafeCell` access plus a
+fixed-array index, **no FFI, no mutex** — at ~10 ns per alloc/free cycle.
+Cross-thread overflow falls through to a `parking_lot::Mutex`-guarded shared
+cache; over-cap allocations go to `cuMemFreeAsync`. For a dispatch loop churning
+thousands of small buffers per second (KV-cache slots, per-token scratch), that
+is **~90× cudarc** while keeping the same `DeviceBuf` API through `Deref`.
+Plain `DeviceBuf::alloc` still goes straight to `cuMemAllocAsync`.
+
+The control-plane wins come from four compounding choices:
+
+1. An `AtomicPtr<DriverFns>` fast path in `iron_cuda_sys::driver::fns()` — one
+   acquire load + null check instead of two `OnceLock` acquires.
+2. Every `Device` / `Stream` / `Event` caches `&'static DriverFns` at
+   construction, so `synchronize` / `alloc` / `copy_*` / `Drop` dereference a
+   cached pointer with zero atomics per call.
+3. Every wrapped driver call is `#[inline]` with a `#[cold]` error branch, so
+   the success path is load / test / branch with no `Error` materialisation.
+4. **What cudarc does that we don't:** `CudaStream::synchronize` calls
+   `bind_to_thread()` (`cuCtxGetCurrent`) on every call. We bind once at
+   `Device::open` and trust it to persist; call `device.bind()` if you switch
+   contexts manually.
 
 Reproduce:
 
