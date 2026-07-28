@@ -42,6 +42,10 @@ harness = false
 name = "mempool_retention"
 harness = false
 
+[[bench]]
+name = "h2d_probe"
+harness = false
+
 [features]
 default = ["driver", "runtime", "cublas", "cublaslt", "cudnn", "nvrtc",
            "curand", "nccl", "cusparse", "cusolver", "cufft", "cutensor",
