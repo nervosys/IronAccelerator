@@ -375,9 +375,11 @@ const STAGE_CHUNK: usize = 2 << 20;
 /// Two slots is what buys the overlap: the host fills one while the DMA drains
 /// the other. More slots stop helping once the copy is bandwidth-bound.
 const STAGE_SLOTS: usize = 4;
-/// Below this, the driver's own pageable path already wins — the event
-/// round-trip and pinned bookkeeping cost more than they save.
-const STAGE_THRESHOLD: usize = 256 << 10;
+/// Staging only earns its host-side `memcpy` once there is a second chunk for
+/// the transfer of the first to overlap with. At a single chunk the copy is
+/// strictly serial — measured 300 µs for 1 MiB against 211 µs for a plain
+/// blocking copy — so below two chunks the direct paths win.
+const STAGE_THRESHOLD: usize = 2 * STAGE_CHUNK;
 // Note: there is deliberately no staging on the device→host path. It was
 // implemented and measured, and it lost: on H2D the host `memcpy` into pinned
 // memory happens *before* the DMA, so staging converts a slow driver-staged
@@ -814,10 +816,10 @@ impl<T: Repr> DeviceBuf<T> {
             return Ok(());
         }
         let bytes = self.len * std::mem::size_of::<T>();
-        // Large pageable sources go through the pinned staging ring: the driver
-        // cannot DMA out of pageable memory on a non-null stream, and its
-        // internal staging is roughly an order of magnitude slower than doing
-        // it ourselves. Below the threshold the direct call still wins.
+        // Multi-chunk pageable sources go through the pinned staging ring: the
+        // driver cannot DMA out of pageable memory on a non-null stream, and its
+        // internal staging is roughly an order of magnitude slower than doing it
+        // ourselves once there is enough work to pipeline.
         if bytes >= STAGE_THRESHOLD {
             return self.copy_from_host_staged(src.as_ptr() as *const u8, bytes);
         }
@@ -881,6 +883,62 @@ impl<T: Repr> DeviceBuf<T> {
             off += n;
         }
         Ok(())
+    }
+
+    /// Blocking host→device copy: returns once `src` has been consumed.
+    ///
+    /// The right primitive behind a *synchronous* API below the staging
+    /// threshold. `cuMemcpyHtoDAsync` on a non-null stream has to stage a
+    /// pageable source internally; `cuMemcpyHtoD_v2` takes the driver's
+    /// optimised blocking path, which measured 211 µs for 1 MiB against 477 µs
+    /// for the async call and 300 µs for single-chunk staging. Above the
+    /// threshold the staged path wins by far more, so callers should prefer
+    /// [`DeviceBuf::copy_from_host`] there.
+    pub fn copy_from_host_blocking(&mut self, src: &[T]) -> Result<()> {
+        if src.len() != self.len {
+            return Err(Error::Precondition {
+                op: "DeviceBuf::copy_from_host_blocking",
+                msg: format!("length mismatch: dst={} src={}", self.len, src.len()),
+            });
+        }
+        if self.len == 0 {
+            return Ok(());
+        }
+        // `cuMemcpyHtoD_v2` is not ordered against this stream, and the buffer
+        // itself was handed out by the stream-ordered allocator, so the stream
+        // has to be drained before the copy may touch it. This is a
+        // correctness requirement, not a precaution.
+        self.stream.synchronize()?;
+        let bytes = self.len * std::mem::size_of::<T>();
+        unsafe {
+            check(
+                "cuMemcpyHtoD_v2",
+                (self.stream.drv.cuMemcpyHtoD_v2)(self.ptr, src.as_ptr() as *const c_void, bytes),
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Host→device copy for a caller that is about to block anyway.
+    ///
+    /// Picks whichever path is actually faster at this size — the blocking
+    /// driver copy below the staging threshold, the pipelined staged path above
+    /// it — and leaves the stream idle either way. This keeps the choice, and
+    /// the threshold, out of callers.
+    pub fn copy_from_host_sync(&mut self, src: &[T]) -> Result<()> {
+        if src.len() != self.len {
+            return Err(Error::Precondition {
+                op: "DeviceBuf::copy_from_host_sync",
+                msg: format!("length mismatch: dst={} src={}", self.len, src.len()),
+            });
+        }
+        let bytes = self.len * std::mem::size_of::<T>();
+        if bytes >= STAGE_THRESHOLD {
+            self.copy_from_host(src)?;
+            self.stream.synchronize()
+        } else {
+            self.copy_from_host_blocking(src)
+        }
     }
 
     /// Blocking device→host copy: returns only once `dst` is populated.

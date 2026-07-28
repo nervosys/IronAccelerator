@@ -278,8 +278,11 @@ impl CudaStreamExt for Arc<CudaStream> {
 
     #[inline]
     fn htod_sync_copy<T: DeviceRepr>(&self, src: &[T]) -> DriverResult<CudaSlice<T>> {
-        let buf = CudaSlice::from_host(self.clone(), src)?;
-        self.synchronize()?;
+        // `copy_from_host_sync` selects the blocking driver copy or the staged
+        // pipeline by size and leaves the stream idle, so there is no separate
+        // `synchronize` to pay for here.
+        let mut buf = CudaSlice::alloc(self.clone(), src.len())?;
+        buf.copy_from_host_sync(src)?;
         Ok(buf)
     }
 

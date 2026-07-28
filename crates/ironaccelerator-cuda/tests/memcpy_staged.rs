@@ -1,24 +1,26 @@
 //! Correctness of the pinned staging path for host→device copies.
 //!
-//! `DeviceBuf::copy_from_host` routes anything at or above 256 KiB through a
-//! chunked pinned ring. These sizes deliberately straddle the threshold and the
-//! 4 MiB chunk boundary, including sizes that are not a multiple of it, because
-//! an off-by-one in the chunk loop would corrupt only the tail.
+//! `DeviceBuf::copy_from_host` routes multi-chunk transfers through a pinned
+//! ring of 4 × 2 MiB chunks.
 
 use ironaccelerator_cuda::drv::{Device, DeviceBuf, Stream};
 
+/// Staging engages at two chunks. These sizes straddle the threshold and the
+/// chunk boundary, including sizes that are not a multiple of it, because an
+/// off-by-one in the chunk loop would corrupt only the tail.
+const CHUNK: usize = 2 << 20;
+const THRESHOLD: usize = 2 * CHUNK;
+
 fn sizes() -> Vec<usize> {
-    let chunk = 4 << 20;
     vec![
-        255 << 10, // just below the staging threshold
-        256 << 10, // exactly at it
-        (256 << 10) + 1,
-        chunk - 1,         // one short of a chunk
-        chunk,             // exactly one chunk
-        chunk + 1,         // spills into a second
-        chunk * 2,         // exactly fills the ring once
-        chunk * 2 + 12345, // wraps the ring with a ragged tail
-        chunk * 5 + 7,     // several wraps
+        1,                 // degenerate
+        CHUNK,             // one chunk: below the threshold, direct path
+        THRESHOLD - 1,     // one byte short of staging
+        THRESHOLD,         // exactly at it
+        THRESHOLD + 1,     // ragged third chunk
+        CHUNK * 4,         // exactly fills the ring
+        CHUNK * 4 + 12345, // wraps the ring with a ragged tail
+        CHUNK * 9 + 7,     // several wraps
     ]
 }
 
@@ -50,6 +52,37 @@ fn staged_copies_round_trip_exactly() {
                 .position(|(a, b)| a != b)
                 .expect("vectors differ but no differing index");
             panic!("size {n}: first mismatch at byte {first}");
+        }
+    }
+}
+
+/// `copy_from_host_sync` dispatches between the blocking copy and the staged
+/// pipeline by size; both branches must produce identical bytes and leave the
+/// stream idle without the caller synchronising.
+#[test]
+fn sync_copy_selects_a_correct_path_at_every_size() {
+    let Ok(dev) = Device::open(0) else {
+        eprintln!("skipped: no CUDA device");
+        return;
+    };
+    dev.bind().expect("bind");
+    let stream = Stream::new(dev).expect("stream");
+
+    for n in sizes() {
+        let src: Vec<u8> = (0..n).map(|i| (i % 241) as u8).collect();
+        let mut buf: DeviceBuf<u8> = DeviceBuf::alloc(stream.clone(), n).expect("alloc");
+        buf.copy_from_host_sync(&src).expect("copy_from_host_sync");
+
+        // Deliberately no synchronize: the blocking readback must be enough.
+        let mut out = vec![0u8; n];
+        buf.copy_to_host_blocking(&mut out).expect("blocking read");
+        if out != src {
+            let first = out
+                .iter()
+                .zip(src.iter())
+                .position(|(a, b)| a != b)
+                .expect("vectors differ but no differing index");
+            panic!("size {n} (threshold {THRESHOLD}): first mismatch at byte {first}");
         }
     }
 }
