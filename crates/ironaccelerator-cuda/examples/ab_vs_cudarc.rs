@@ -242,6 +242,27 @@ fn main() {
             },
         );
         all_definitive &= report("d2h", label, ia, cu, &mut r);
+
+        // Read into a caller-owned buffer. This is what a serving loop actually
+        // does — output buffers are reused, not allocated per token — so the
+        // per-call `Vec` allocation stops being a constant shared by both sides.
+        let mut ia_dst = vec![0u8; n];
+        let mut cu_dst = vec![0u8; n];
+        let (ia, cu, mut r) = compare(
+            pairs,
+            inner,
+            || {
+                iron_stream
+                    .dtoh_sync_copy_into(&ia_dev, &mut ia_dst)
+                    .unwrap();
+                std::hint::black_box(ia_dst[0]);
+            },
+            || {
+                cudarc_stream.memcpy_dtoh(&cu_dev, &mut cu_dst).unwrap();
+                std::hint::black_box(cu_dst[0]);
+            },
+        );
+        all_definitive &= report("d2h→buf", label, ia, cu, &mut r);
     }
 
     println!(
