@@ -131,3 +131,30 @@ fn blocking_readback_matches_staged_write() {
     buf.copy_to_host_blocking(&mut out).expect("blocking read");
     assert!(out == src, "blocking readback did not observe staged write");
 }
+
+/// `Stream::new_legacy_ordered` gives cudarc-identical stream semantics: the
+/// stream is sequenced against the legacy stream, so the synchronous copy paths
+/// skip their drain. Correctness must be identical to the non-blocking default.
+///
+/// Kept as an opt-in rather than the default because measurement showed no
+/// throughput benefit, and blocking streams do not overlap with each other.
+#[test]
+fn legacy_ordered_stream_round_trips_identically() {
+    let Ok(dev) = Device::open(0) else {
+        eprintln!("skipped: no CUDA device");
+        return;
+    };
+    dev.bind().expect("bind");
+    let stream = Stream::new_legacy_ordered(dev.clone()).expect("legacy-ordered stream");
+    assert!(stream.is_legacy_ordered());
+    assert!(!Stream::new(dev).expect("stream").is_legacy_ordered());
+
+    for n in sizes() {
+        let src: Vec<u8> = (0..n).map(|i| (i % 233) as u8).collect();
+        let mut buf: DeviceBuf<u8> = DeviceBuf::alloc(stream.clone(), n).expect("alloc");
+        buf.copy_from_host_sync(&src).expect("sync write");
+        let mut out = vec![0u8; n];
+        buf.copy_to_host_sync(&mut out).expect("sync read");
+        assert!(out == src, "size {n} corrupted on a legacy-ordered stream");
+    }
+}

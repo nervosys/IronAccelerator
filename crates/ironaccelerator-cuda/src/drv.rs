@@ -615,6 +615,9 @@ pub struct Stream {
     drv: &'static sys::DriverFns,
     /// Created on the first staged copy, so streams that never move large
     /// pageable buffers pay nothing for it.
+    /// Created without `CU_STREAM_NON_BLOCKING`, so the legacy stream — and
+    /// with it the synchronous `cuMemcpy*_v2` calls — orders against it.
+    legacy_ordered: bool,
     stage: once_cell::sync::OnceCell<parking_lot::Mutex<StageRing>>,
 }
 
@@ -623,7 +626,31 @@ impl Stream {
         Self::with_priority(device, Priority::Default)
     }
 
+    /// Create a stream that implicitly synchronises with the legacy default
+    /// stream, rather than the non-blocking stream [`Stream::new`] gives you.
+    ///
+    /// The difference matters for the synchronous copy entry points. A blocking
+    /// stream is ordered against `cuMemcpyHtoD_v2` / `cuMemcpyDtoH_v2`, which
+    /// run in the legacy stream, so those copies need no separate drain — one
+    /// fewer driver round-trip per synchronous copy. A non-blocking stream is
+    /// not, and must be drained first.
+    ///
+    /// This is what `cudarc` gets for free: its `default_stream` *is* the
+    /// legacy stream. [`crate::cudarc_compat::CudaDevice`] uses this so the
+    /// compatibility surface matches both cudarc's semantics and its cost.
+    ///
+    /// Prefer [`Stream::new`] for streams you intend to overlap: non-blocking
+    /// streams do not serialise against the legacy stream or against each
+    /// other.
+    pub fn new_legacy_ordered(device: Arc<Device>) -> Result<Arc<Self>> {
+        Self::build(device, Priority::Default, sys::CU_STREAM_DEFAULT)
+    }
+
     pub fn with_priority(device: Arc<Device>, pri: Priority) -> Result<Arc<Self>> {
+        Self::build(device, pri, sys::CU_STREAM_NON_BLOCKING)
+    }
+
+    fn build(device: Arc<Device>, pri: Priority, flags: u32) -> Result<Arc<Self>> {
         device.bind()?;
         let d = device.drv;
         // Cached on `Device`: the priority range is a device-static property,
@@ -651,7 +678,7 @@ impl Stream {
         unsafe {
             check(
                 "cuStreamCreateWithPriority",
-                (d.cuStreamCreateWithPriority)(&mut handle, sys::CU_STREAM_NON_BLOCKING, priority),
+                (d.cuStreamCreateWithPriority)(&mut handle, flags, priority),
             )?;
         }
         Ok(Arc::new(Self {
@@ -659,8 +686,16 @@ impl Stream {
             handle,
             priority,
             drv: d,
+            legacy_ordered: flags == sys::CU_STREAM_DEFAULT,
             stage: once_cell::sync::OnceCell::new(),
         }))
+    }
+
+    /// Whether this stream is implicitly ordered against the legacy stream, and
+    /// therefore against the synchronous `cuMemcpy*_v2` entry points.
+    #[inline]
+    pub fn is_legacy_ordered(&self) -> bool {
+        self.legacy_ordered
     }
 
     /// The staging ring, created on first use.
@@ -1120,7 +1155,11 @@ impl<T: Repr> DeviceBuf<T> {
         // itself was handed out by the stream-ordered allocator, so the stream
         // has to be drained before the copy may touch it. This is a
         // correctness requirement, not a precaution.
-        self.stream.drain()?;
+        // A legacy-ordered stream is already sequenced against the blocking
+        // copy below, so the drain would be a redundant round-trip.
+        if !self.stream.is_legacy_ordered() {
+            self.stream.drain()?;
+        }
         let bytes = self.len * std::mem::size_of::<T>();
         unsafe {
             check(
@@ -1171,7 +1210,11 @@ impl<T: Repr> DeviceBuf<T> {
         if self.len == 0 {
             return Ok(());
         }
-        self.stream.drain()?;
+        // A legacy-ordered stream is already sequenced against the blocking
+        // copy below, so the drain would be a redundant round-trip.
+        if !self.stream.is_legacy_ordered() {
+            self.stream.drain()?;
+        }
         let bytes = self.len * std::mem::size_of::<T>();
         unsafe {
             // Every byte of `dst` is about to be overwritten, so faulting the
