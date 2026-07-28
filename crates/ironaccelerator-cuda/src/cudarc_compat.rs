@@ -310,28 +310,11 @@ impl CudaStreamExt for Arc<CudaStream> {
         // host-registration cache would point at stale memory on the next
         // call that happens to reuse the same address. Page-locking is
         // only applied to caller-owned source buffers in `htod_sync_copy`.
-        // Fast path: synchronous `cuMemcpyDtoH_v2`. Skips per-call
-        // stream-state machinery vs `cuMemcpyDtoHAsync_v2 + cuStreamSynchronize`.
-        // We synchronise the stream first so any pending writes that produced
-        // `src` are visible. ~15-20 % faster on ≥1 MB transfers (matches
-        // cudarc's `clone_dtoh` semantics).
-        self.synchronize()?;
+        // `copy_to_host_sync` picks the blocking driver copy or the pipelined
+        // staged path by size and drains the stream itself, so pending writes
+        // that produced `src` are visible either way.
         if len > 0 {
-            let bytes = len * std::mem::size_of::<T>();
-            let fns = self.device().drv();
-            unsafe {
-                let r = (fns.cuMemcpyDtoH_v2)(
-                    dst.as_mut_ptr() as *mut std::ffi::c_void,
-                    src.device_ptr(),
-                    bytes,
-                );
-                if r != iron_cuda_sys::driver::CUresult::Success {
-                    return Err(crate::drv::Error::Driver {
-                        op: "cuMemcpyDtoH_v2",
-                        code: r,
-                    });
-                }
-            }
+            src.copy_to_host_sync(dst)?;
         }
         let mut out = std::mem::ManuallyDrop::new(out);
         let (ptr, len, cap) = (out.as_mut_ptr() as *mut T, out.len(), out.capacity());

@@ -147,6 +147,33 @@ fn bench(c: &mut Criterion) {
             },
         );
 
+        // Page-lock the caller's buffer for the duration of the copy and DMA
+        // straight out of it, skipping the staging memcpy entirely. Sound
+        // because nothing is cached across calls; the question is only whether
+        // registration costs less than the memcpy it replaces.
+        g.bench_with_input(
+            BenchmarkId::new("ia_register_in_place", label),
+            &n,
+            |b, _| {
+                b.iter(|| unsafe {
+                    let p = host.as_ptr() as *mut c_void;
+                    assert_eq!(
+                        (ctx.fns.cuMemHostRegister_v2)(p, n, 0),
+                        sys::CUresult::Success
+                    );
+                    let r = (ctx.fns.cuMemcpyHtoDAsync_v2)(
+                        ia_dst.device_ptr(),
+                        p,
+                        n,
+                        ctx.lo_stream.raw(),
+                    );
+                    assert_eq!(r, sys::CUresult::Success);
+                    ctx.lo_stream.synchronize().unwrap();
+                    assert_eq!((ctx.fns.cuMemHostUnregister)(p), sys::CUresult::Success);
+                });
+            },
+        );
+
         // Allocation alone, to separate it from the copy.
         g.bench_with_input(BenchmarkId::new("ia_alloc_only", label), &n, |b, _| {
             b.iter(|| {

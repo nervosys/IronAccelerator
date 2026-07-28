@@ -1,42 +1,78 @@
-//! Interleaved A/B comparison against cudarc.
+//! Paired A/B comparison against cudarc, robust to a contended machine.
 //!
 //! Criterion measures each implementation in its own contiguous block, so any
-//! drift in machine state during a run — a background workload starting, the
-//! GPU changing power state, the PCIe link retraining — lands entirely on one
-//! side and shows up as a difference that is not in the code. On a shared
-//! desktop that effect is larger than the difference being measured.
+//! drift in machine state during a run lands entirely on one side and shows up
+//! as a difference that is not in the code. On a shared desktop that effect is
+//! larger than the difference being measured — it previously produced a
+//! reported 1.98× at 16 MiB where the truth was ~1.0×.
 //!
-//! This alternates the two implementations round by round and reports the
-//! median of each, so drift affects both equally and cancels in the ratio.
+//! The fix is pairing. Each sample measures IronAccelerator and cudarc
+//! back-to-back, microseconds apart, and the statistic is the *per-pair ratio*.
+//! Contention that spans a pair scales both sides and cancels in their ratio,
+//! so the median ratio stays meaningful even while absolute timings swing by an
+//! order of magnitude. Pair order alternates so that being measured first is
+//! not systematically an advantage.
+//!
+//! A verdict is only issued when the bootstrap 95% confidence interval of the
+//! median ratio excludes 1.0 — that is what makes a claim defensible rather
+//! than an artefact of whatever else the machine was doing.
 //!
 //! ```text
 //! cargo run --release -p ironaccelerator-cuda --example ab_vs_cudarc
+//! CUDA_VISIBLE_DEVICES=1 cargo run --release -p ironaccelerator-cuda --example ab_vs_cudarc
 //! ```
 
 use ironaccelerator_cuda::cudarc_compat as iron;
 use ironaccelerator_cuda::cudarc_compat::CudaStreamExt;
 use std::time::{Duration, Instant};
 
-const ROUNDS: usize = 15;
+const BOOTSTRAP: usize = 4000;
 
-/// Relative spread above which a row's ratio is not worth believing.
-const UNSTABLE_SPREAD: f64 = 0.25;
+/// Deterministic xorshift — the bootstrap must be reproducible run to run.
+struct Rng(u64);
+impl Rng {
+    fn next(&mut self) -> u64 {
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        self.0
+    }
+    fn below(&mut self, n: usize) -> usize {
+        (self.next() % n as u64) as usize
+    }
+}
 
-fn median(mut v: Vec<Duration>) -> Duration {
-    v.sort_unstable();
+fn median_of(v: &mut [f64]) -> f64 {
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
     v[v.len() / 2]
 }
 
-/// (max - min) / median, as a unitless measure of how much the machine moved
-/// underneath the measurement.
-fn spread(v: &[Duration]) -> f64 {
-    let mut s = v.to_vec();
-    s.sort_unstable();
-    let (lo, hi, mid) = (s[0], s[s.len() - 1], s[s.len() / 2]);
-    (hi.as_secs_f64() - lo.as_secs_f64()) / mid.as_secs_f64().max(f64::MIN_POSITIVE)
+/// Percentile bootstrap CI for the median of `xs`.
+fn median_ci(xs: &[f64]) -> (f64, f64) {
+    let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
+    let mut meds = Vec::with_capacity(BOOTSTRAP);
+    let mut buf = vec![0.0; xs.len()];
+    for _ in 0..BOOTSTRAP {
+        for slot in buf.iter_mut() {
+            *slot = xs[rng.below(xs.len())];
+        }
+        meds.push(median_of(&mut buf));
+    }
+    meds.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    (
+        meds[(BOOTSTRAP as f64 * 0.025) as usize],
+        meds[(BOOTSTRAP as f64 * 0.975) as usize],
+    )
 }
 
-/// Physical index of the CUDA device this process will use.
+fn timed(inner: usize, mut f: impl FnMut()) -> Duration {
+    let t = Instant::now();
+    for _ in 0..inner {
+        f();
+    }
+    t.elapsed() / inner as u32
+}
+
 fn physical_index() -> String {
     std::env::var("CUDA_VISIBLE_DEVICES")
         .ok()
@@ -44,72 +80,98 @@ fn physical_index() -> String {
         .unwrap_or_else(|| "0".into())
 }
 
-/// Report anything about the device that would make timings meaningless.
-///
-/// A benchmark that cannot tell you when to distrust it is worse than none:
-/// on a shared desktop, contention and power state move results by more than
-/// the difference being measured.
-fn preflight(idx: &str) -> Vec<String> {
+/// Device conditions worth knowing about. These no longer invalidate the
+/// result — pairing handles contention — but they explain the absolute numbers.
+fn conditions(idx: &str) -> String {
     let out = std::process::Command::new("nvidia-smi")
         .args([
             "-i",
             idx,
             "--query-gpu=utilization.gpu,pstate,clocks.sm,clocks.max.sm,\
-             pcie.link.gen.current,pcie.link.gen.max,pcie.link.width.current,\
-             pcie.link.width.max,memory.used",
+             pcie.link.gen.current,pcie.link.width.current,memory.used",
             "--format=csv,noheader,nounits",
         ])
         .output();
     let Ok(out) = out else {
-        return vec!["nvidia-smi unavailable; cannot validate device state".into()];
+        return "unknown (nvidia-smi unavailable)".into();
     };
     let line = String::from_utf8_lossy(&out.stdout);
-    let f: Vec<String> = line
-        .trim()
-        .split(',')
-        .map(|s| s.trim().to_owned())
-        .collect();
-    if f.len() < 9 {
-        return vec!["could not parse nvidia-smi output".into()];
+    let f: Vec<&str> = line.trim().split(',').map(str::trim).collect();
+    if f.len() < 7 {
+        return "unknown".into();
     }
-    let num = |s: &str| s.parse::<f64>().unwrap_or(0.0);
-    let mut warnings = Vec::new();
-
-    if num(&f[0]) > 10.0 {
-        warnings.push(format!(
-            "device is {}% busy with other work — timings will be contended",
-            f[0]
-        ));
-    }
-    if num(&f[2]) < 0.75 * num(&f[3]) {
-        warnings.push(format!(
-            "clocks throttled to {} MHz of {} MHz ({})",
-            f[2], f[3], f[1]
-        ));
-    }
-    if num(&f[4]) < num(&f[5]) || num(&f[6]) < num(&f[7]) {
-        warnings.push(format!(
-            "PCIe link downtrained to gen{} x{} of gen{} x{} — memcpy numbers \
-             will not reflect the hardware",
-            f[4], f[6], f[5], f[7]
-        ));
-    }
-    if num(&f[8]) > 1024.0 {
-        warnings.push(format!(
-            "{} MiB already resident from other processes",
-            f[8]
-        ));
-    }
-    warnings
+    format!(
+        "{}% busy, {}, {} of {} MHz, PCIe gen{} x{}, {} MiB resident",
+        f[0], f[1], f[2], f[3], f[4], f[5], f[6]
+    )
 }
 
-/// Time `f` over `inner` repetitions, returning per-repetition duration.
-fn timed(inner: usize, mut f: impl FnMut()) -> Duration {
-    let t = Instant::now();
-    for _ in 0..inner {
-        f();
+/// One measured comparison: `pairs` back-to-back (IA, cudarc) samples.
+fn compare(
+    pairs: usize,
+    inner: usize,
+    mut ia_op: impl FnMut(),
+    mut cu_op: impl FnMut(),
+) -> (Duration, Duration, Vec<f64>) {
+    // Warm both sides so first-touch costs land outside the samples.
+    for _ in 0..3 {
+        ia_op();
+        cu_op();
     }
-    t.elapsed() / inner as u32
+    let mut ia_s = Vec::with_capacity(pairs);
+    let mut cu_s = Vec::with_capacity(pairs);
+    let mut ratios = Vec::with_capacity(pairs);
+    for k in 0..pairs {
+        // Alternate which side goes first: whichever runs second can inherit
+        // cache or power state from the first, and that bias must not land on
+        // one implementation.
+        let (a, b) = if k % 2 == 0 {
+            let a = timed(inner, &mut ia_op);
+            let b = timed(inner, &mut cu_op);
+            (a, b)
+        } else {
+            let b = timed(inner, &mut cu_op);
+            let a = timed(inner, &mut ia_op);
+            (a, b)
+        };
+        ia_s.push(a);
+        cu_s.push(b);
+        ratios.push(b.as_secs_f64() / a.as_secs_f64().max(f64::MIN_POSITIVE));
+    }
+    let mut ia_f: Vec<f64> = ia_s.iter().map(|d| d.as_secs_f64()).collect();
+    let mut cu_f: Vec<f64> = cu_s.iter().map(|d| d.as_secs_f64()).collect();
+    (
+        Duration::from_secs_f64(median_of(&mut ia_f)),
+        Duration::from_secs_f64(median_of(&mut cu_f)),
+        ratios,
+    )
+}
+
+fn report(op: &str, size: &str, ia: Duration, cu: Duration, ratios: &mut [f64]) -> bool {
+    let wins = ratios.iter().filter(|r| **r > 1.0).count();
+    let (lo, hi) = median_ci(ratios);
+    let med = median_of(&mut ratios.to_vec());
+    // Definitive only when the whole interval sits on one side of parity.
+    let verdict = if lo > 1.0 {
+        "IA faster"
+    } else if hi < 1.0 {
+        "IA SLOWER"
+    } else {
+        "inconclusive"
+    };
+    println!(
+        "{:<5} {:>6} {:>11?} {:>11?} {:>7.2}x  [{:>5.2},{:>5.2}] {:>5.0}%  {}",
+        op,
+        size,
+        ia,
+        cu,
+        med,
+        lo,
+        hi,
+        100.0 * wins as f64 / ratios.len() as f64,
+        verdict
+    );
+    lo > 1.0
 }
 
 fn main() {
@@ -126,103 +188,68 @@ fn main() {
 
     let idx = physical_index();
     println!(
-        "device: {} (physical index {idx})\nrounds: {ROUNDS} (interleaved, median reported)",
-        iron_dev.name().unwrap_or_else(|_| "?".into())
+        "device : {} (physical {idx})\nstate  : {}\nmethod : paired back-to-back samples, \
+         median per-pair ratio, bootstrap 95% CI\n",
+        iron_dev.name().unwrap_or_else(|_| "?".into()),
+        conditions(&idx)
     );
-
-    let warnings = preflight(&idx);
-    if warnings.is_empty() {
-        println!("preflight: device looks quiet\n");
-    } else {
-        println!("\n!! PREFLIGHT WARNINGS — results below are NOT trustworthy:");
-        for w in &warnings {
-            println!("   - {w}");
-        }
-        println!("   Free the device (or pick another with CUDA_VISIBLE_DEVICES)\n   and lock clocks with `nvidia-smi -i {idx} -lgc <mhz>` before believing a ratio.\n");
-    }
-
     println!(
-        "{:<10} {:>8} {:>13} {:>13} {:>8} {:>8}  verdict",
-        "op", "size", "ironaccel", "cudarc", "ratio", "spread"
+        "{:<5} {:>6} {:>11} {:>11} {:>8}  {:>13} {:>5}  verdict",
+        "op", "size", "ironaccel", "cudarc", "ratio", "95% CI", "win"
     );
-    println!("{}", "-".repeat(80));
+    println!("{}", "-".repeat(84));
 
-    let sizes: &[(usize, &str, usize)] = &[
-        (1 << 10, "1KB", 200),
-        (64 << 10, "64KB", 100),
-        (1 << 20, "1MB", 30),
-        (16 << 20, "16MB", 5),
+    // (bytes, label, inner reps per sample, pairs)
+    let sizes: &[(usize, &str, usize, usize)] = &[
+        (1 << 10, "1KB", 100, 151),
+        (64 << 10, "64KB", 50, 151),
+        (1 << 20, "1MB", 10, 151),
+        (16 << 20, "16MB", 2, 101),
     ];
 
-    for &(n, label, inner) in sizes {
+    let mut all_definitive = true;
+    for &(n, label, inner, pairs) in sizes {
         let host = vec![0u8; n];
 
-        // ── H2D ──
-        let mut ia = Vec::new();
-        let mut cu = Vec::new();
-        for _ in 0..ROUNDS {
-            ia.push(timed(inner, || {
+        let (ia, cu, mut r) = compare(
+            pairs,
+            inner,
+            || {
                 let b = iron_stream.htod_sync_copy(&host).unwrap();
                 std::hint::black_box(&b);
-            }));
-            cu.push(timed(inner, || {
+            },
+            || {
                 let b = cudarc_stream.clone_htod(&host).unwrap();
                 cudarc_stream.synchronize().unwrap();
                 std::hint::black_box(&b);
-            }));
-        }
-        report("h2d", label, &ia, &cu);
+            },
+        );
+        all_definitive &= report("h2d", label, ia, cu, &mut r);
 
-        // ── D2H ──
         let ia_dev = iron_stream.htod_sync_copy(&host).unwrap();
         let cu_dev = cudarc_stream.clone_htod(&host).unwrap();
         cudarc_stream.synchronize().unwrap();
-        let mut ia = Vec::new();
-        let mut cu = Vec::new();
-        for _ in 0..ROUNDS {
-            ia.push(timed(inner, || {
+        let (ia, cu, mut r) = compare(
+            pairs,
+            inner,
+            || {
                 let v: Vec<u8> = iron_stream.dtoh_sync_copy(&ia_dev).unwrap();
                 std::hint::black_box(v);
-            }));
-            cu.push(timed(inner, || {
+            },
+            || {
                 let v = cudarc_stream.clone_dtoh(&cu_dev).unwrap();
                 std::hint::black_box(v);
-            }));
-        }
-        report("d2h", label, &ia, &cu);
-    }
-
-    if !warnings.is_empty() {
-        println!(
-            "\nReminder: the preflight warnings above apply to every row. Do not \
-             quote these numbers."
+            },
         );
+        all_definitive &= report("d2h", label, ia, cu, &mut r);
     }
-}
 
-fn report(op: &str, size: &str, ia: &[Duration], cu: &[Duration]) {
-    let (m_ia, m_cu) = (median(ia.to_vec()), median(cu.to_vec()));
-    let ratio = m_cu.as_secs_f64() / m_ia.as_secs_f64();
-    let sp = spread(ia).max(spread(cu));
-    // A ratio is only meaningful if it is larger than the noise that produced
-    // it, so an unstable row reports no verdict rather than a wrong one.
-    let verdict = if sp > UNSTABLE_SPREAD {
-        "UNSTABLE — no verdict"
-    } else if ratio >= 1.05 {
-        "IA faster"
-    } else if ratio <= 0.95 {
-        "IA SLOWER"
-    } else {
-        "parity"
-    };
     println!(
-        "{:<10} {:>8} {:>13?} {:>13?} {:>7.2}x {:>7.0}%  {}",
-        op,
-        size,
-        m_ia,
-        m_cu,
-        ratio,
-        sp * 100.0,
-        verdict
+        "\n{}",
+        if all_definitive {
+            "RESULT: IronAccelerator is faster on every row, CI-confirmed."
+        } else {
+            "RESULT: not yet faster on every row — see rows above."
+        }
     );
 }
