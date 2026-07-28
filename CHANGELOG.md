@@ -18,6 +18,14 @@ All notable changes to **IronAccelerator** are documented here. Format follows
 
 ### Docs
 
+- Refreshed and widened the cudarc benchmark tables in the README with fresh
+  measurements on the idle GPU. The paired transfer sweep in
+  `examples/ab_vs_cudarc.rs` now spans 256 B → 64 MiB (was four points); the
+  README table reports all three transfer shapes across eight sizes. Host→device
+  is CI-confirmed faster at every size (1.08×–1.34×, dipping in the PCIe-bound
+  256 KiB–1 MiB band); device→host is parity across the whole sweep. Control-plane
+  table re-measured (MemPool ~75–115×, async alloc/free 1.7–3.0×, sync ~1.7×,
+  launch ~1.45×).
 - Rewrote the README performance section into a single coherent cudarc
   comparison. The stale 1.2.0 criterion transfer table — which pre-dated the
   2.0.0 pinned-staging work and showed host→device as a cudarc win on some

@@ -35,7 +35,7 @@ Full coverage map and migration notes live in the module docs at
 cargo run --release -p ironaccelerator-cuda --example saxpy_cudarc_style
 ```
 
-**Why switch:** on the host-side hot path we're **faster than cudarc 0.19** across alloc, sync, and host→device transfer — CI-confirmed at every transfer size, up to **1.31×**, with the opt-in `MemPool` at ~90× on alloc/free ([numbers below](#performance-posture)). Device→host is at parity; both libraries are at the driver's floor there, and we say so rather than rounding it up. cudarc rebinds the thread-context on every driver call; we cache it once. cudarc tracks per-buffer event fences on `Drop`; we just call `cuMemFreeAsync`. The wins compound at high-frequency dispatch loops.
+**Why switch:** on the host-side hot path we're **faster than cudarc 0.19** across alloc, sync, and host→device transfer — CI-confirmed at every transfer size from 256 B to 64 MiB, up to **1.34×**, with the opt-in `MemPool` at ~90× on alloc/free ([numbers below](#performance-posture)). Device→host is at parity; both libraries are at the driver's floor there, and we say so rather than rounding it up. cudarc rebinds the thread-context on every driver call; we cache it once. cudarc tracks per-buffer event fences on `Drop`; we just call `cuMemFreeAsync`. The wins compound at high-frequency dispatch loops.
 
 **Production user:** [IronWorks](https://github.com/nervosys/ironworks) (a Rust LLM inference engine) completed a full cudarc → IronAccelerator migration on 2026-05-15, dropping cudarc from `Cargo.lock` entirely. ~300 call sites migrated; zero kernel regressions; tg128 on Llama-3.2-1B Q4_K_M unchanged at ~522 tok/s (within ±1.3% of the cudarc baseline — iwx is kernel-bound, so the wrapper-level wins amortise to noise). The migration validated that every iwx CUDA-driver call site has a native IA equivalent.
 
@@ -171,49 +171,66 @@ instead samples the two libraries **back-to-back** and reports the median
 **per-pair ratio** with a bootstrap 95% confidence interval, so shared drift
 cancels. A win is only claimed when the whole interval sits above 1.0.
 
-Ratios are cudarc ÷ IronAccelerator — **above 1.0 means IronAccelerator is faster.**
+Ratios are cudarc ÷ IronAccelerator — **above 1.0 means IronAccelerator is
+faster.** The table sweeps 256 B → 64 MiB, three transfer shapes per size, and
+every figure below reproduced across independent runs on the idle GPU (the
+`h2d` verdicts were CI-confirmed in every run):
 
-| operation   | 1 KiB    | 64 KiB   | 1 MiB    | 16 MiB   |
-| ----------- | -------: | -------: | -------: | -------: |
-| host→device | **1.31×** | **1.26×** | **1.08×** | **1.30×** |
-| device→host | 1.00×    | 1.00×    | 1.00×    | 1.02×    |
+| operation                | 256 B | 1 KiB | 64 KiB | 256 KiB | 1 MiB | 4 MiB | 16 MiB | 64 MiB |
+| ------------------------ | ----: | ----: | -----: | ------: | ----: | ----: | -----: | -----: |
+| **host→device**          | **1.27×** | **1.26×** | **1.25×** | **1.08×** | **1.08×** | **1.22×** | **1.22×** | **1.34×** |
+| device→host (alloc)      | 0.99× | 0.98× | 0.99×  | 1.00×   | 1.00× | 1.00× | 0.98×  | 0.98×  |
+| device→host (into buf)   | 0.98× | 0.97× | 1.00×  | 1.00×   | 0.99× | 1.00× | 1.00×  | 1.00×  |
 
-**Host→device wins at every size, CI-confirmed.** The large-transfer win comes
-from staging pageable copies through a pinned ring: the driver cannot DMA out
-of pageable memory on a non-null stream, so it stages internally, and its
-internal path is ~10× slower than doing it ourselves. `copy_from_host` routes
-multi-chunk transfers through four pinned 2 MiB chunks, overlaps each chunk's
-host copy with the previous chunk's DMA, and spreads the host copy across a
-small worker pool. 16 MiB H→D dropped from ~36 ms to ~1.4 ms.
+**Host→device wins at every size, CI-confirmed.** Two mechanisms drive the
+curve. At the small end (≤64 KiB, ~1.25×) the win is pure per-call overhead:
+one cached-pointer copy call versus cudarc's clone-then-synchronize path. The
+curve dips to ~1.08× in the 256 KiB–1 MiB PCIe-bound band, where the transfer
+itself dominates and there is little wrapper left to shave. From 4 MiB up
+(~1.22–1.34×) the pinned-staging path takes over: the driver cannot DMA out of
+pageable memory on a non-null stream, so it stages internally, and its internal
+path is ~10× slower than doing it ourselves. `copy_from_host` routes multi-chunk
+transfers through four pinned 2 MiB chunks, overlaps each chunk's host copy with
+the previous chunk's DMA, and spreads the host copy across a small worker pool.
+16 MiB H→D dropped from ~36 ms to ~1.4 ms on a quiet device.
 
-**Device→host is at parity, and we say so rather than round it up.** Both
-libraries issue one ordering check and one blocking `cuMemcpyDtoH_v2` against a
-single async copy engine (`ASYNC_ENGINE_COUNT = 1` on this part), so there is no
-wrapper work left to remove and no second engine to parallelise over. Seven
-approaches — pinned staging, host-side registration, a legacy-ordered stream,
-the buffer-reusing API — were implemented and measured before concluding this;
-each is documented at its call site so it is not re-attempted.
+**Device→host is at parity across the whole sweep, and we say so rather than
+round it up.** Both the allocating (`dtoh_sync_copy`) and buffer-reusing
+(`dtoh_sync_copy_into`) paths land in a 0.97–1.02× band — measurement noise
+around the driver floor, not a code difference. Both libraries issue one
+ordering check and one blocking `cuMemcpyDtoH_v2` against a single async copy
+engine (`ASYNC_ENGINE_COUNT = 1` on this part), so there is no wrapper work left
+to remove and no second engine to parallelise over. Seven approaches — pinned
+staging, host-side registration, a legacy-ordered stream, the buffer-reusing
+API — were implemented and measured before concluding this; each is documented
+at its call site so it is not re-attempted. (A single contended run once showed
+a spurious 1.27× at 16 MiB; the paired method flags such rows, and it did not
+reproduce on the idle device.)
 
-Reproduce (prints device state and flags any row whose CI is too wide to trust):
+Reproduce (prints device state and flags any row whose CI is too wide to trust;
+pin to the idle GPU to keep drift out of the absolute timings):
 
 ```bash
-cargo run --release -p ironaccelerator-cuda --example ab_vs_cudarc
+CUDA_VISIBLE_DEVICES=1 cargo run --release -p ironaccelerator-cuda --example ab_vs_cudarc
 ```
 
 ### Control plane — where the wrapper *is* the cost
 
 Alloc/free, sync, and stream/event lifecycle are where a thin wrapper wins or
 loses, because the driver call underneath is cheap and the overhead is the
-wrapper. Criterion, quiet machine, cudarc 0.19.6:
+wrapper. Criterion medians, idle GPU, cudarc 0.19.6 (these are unpaired, so
+treat them as indicative rather than to two significant figures):
 
 | Path                                      | IronAccelerator | cudarc 0.19 | Speedup       |
 | ----------------------------------------- | --------------: | ----------: | ------------- |
-| **`MemPool` alloc+free (warm, any size)** |      **~10 ns** |       ~1 µs | **~90×**      |
-| Async alloc + free (1 KB)                 |      **461 ns** |     1.05 µs | **2.3×**      |
-| Async alloc + free (16 MB)                |      **470 ns** |     1.04 µs | **2.2×**      |
-| Stream synchronize (empty)                |       **84 ns** |      124 ns | **1.5×**      |
-| Stream create + destroy                   |      **902 ns** |     1.03 µs | **1.1×**      |
-| Kernel launch (noop, 1024 thr)            |     **5.78 µs** |     6.15 µs | **1.06×**     |
+| **`MemPool` alloc+free (warm)**           |    **~10–14 ns** |  ~1.2 µs   | **~75–115×**  |
+| Async alloc + free (1 KB)                 |      **458 ns** |      764 ns | **1.7×**      |
+| Async alloc + free (1 MB)                 |      **332 ns** |      990 ns | **3.0×**      |
+| Async alloc + free (16 MB)                |      **340 ns** |      904 ns | **2.7×**      |
+| Stream synchronize (empty)                |       **58 ns** |       99 ns | **1.7×**      |
+| Event create+record+sync+destroy         |      **432 ns** |      503 ns | **1.2×**      |
+| Kernel launch (noop, 1024 thr)            |     **6.5 µs**  |      9.4 µs | **1.45×**     |
+| Stream create + destroy                   |      **689 ns** |      765 ns | **1.1×**      |
 
 The headline is the optional [`MemPool`](crates/ironaccelerator-cuda/src/pool.rs):
 a per-stream freelist recycling `DeviceBuf` allocations into power-of-two

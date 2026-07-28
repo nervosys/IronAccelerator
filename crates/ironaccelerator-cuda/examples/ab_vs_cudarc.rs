@@ -199,12 +199,19 @@ fn main() {
     );
     println!("{}", "-".repeat(84));
 
-    // (bytes, label, inner reps per sample, pairs)
+    // (bytes, label, inner reps per sample, pairs). Swept from 256 B to 64 MiB
+    // so the table shows the whole transfer curve — the tiny end where
+    // per-call wrapper overhead dominates, the mid-range PCIe-bound regime, and
+    // the large end where the pinned-staging path pulls ahead.
     let sizes: &[(usize, &str, usize, usize)] = &[
+        (256, "256B", 200, 151),
         (1 << 10, "1KB", 100, 151),
         (64 << 10, "64KB", 50, 151),
+        (256 << 10, "256KB", 30, 151),
         (1 << 20, "1MB", 10, 151),
+        (4 << 20, "4MB", 5, 121),
         (16 << 20, "16MB", 2, 101),
+        (64 << 20, "64MB", 1, 61),
     ];
 
     let mut all_definitive = true;
