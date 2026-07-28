@@ -29,8 +29,18 @@ ironaccelerator-neuron    = { workspace = true, optional = true }
 parking_lot = { workspace = true }
 once_cell   = { workspace = true }
 
+# Telemetry export stack. Optional and, per the OTLP builder, all endpoint /
+# header / protocol configuration is read from the environment at runtime — no
+# destination or credential is compiled in.
+opentelemetry      = { workspace = true, optional = true }
+opentelemetry_sdk  = { workspace = true, optional = true }
+opentelemetry-otlp = { workspace = true, optional = true }
+
 [features]
-default   = ["cuda", "rocm", "metal", "qnn"]
+default   = ["cuda", "rocm", "metal", "qnn", "telemetry"]
+# Opt-out OTLP export. On by default; `default-features = false` removes it and
+# the whole OpenTelemetry dependency tree with it.
+telemetry = ["dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp"]
 cuda      = ["dep:ironaccelerator-cuda"]
 rocm      = ["dep:ironaccelerator-rocm"]
 metal     = ["dep:ironaccelerator-metal"]

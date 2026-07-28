@@ -55,6 +55,9 @@ serde     = { version = "1", features = ["derive"] }
 libloading = "0.9"
 once_cell = "1"
 parking_lot = "0.12"
+opentelemetry      = "0.27"
+opentelemetry_sdk  = "0.27"
+opentelemetry-otlp = { version = "0.27", default-features = false, features = ["trace", "http-proto", "reqwest-blocking-client"] }
 
 [profile.release]
 opt-level = 3

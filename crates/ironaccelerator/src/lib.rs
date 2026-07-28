@@ -97,5 +97,7 @@ pub mod prelude {
     };
 }
 
+pub mod telemetry;
+
 mod runtime;
 pub use runtime::{init, Runtime};
