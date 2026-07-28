@@ -6,7 +6,7 @@ All notable changes to **IronAccelerator** are documented here. Format follows
 
 ## [Unreleased]
 
-## [2.0.0] - 2026-07-27
+## [2.0.0] - 2026-07-28
 
 ### Removed (breaking)
 
@@ -99,6 +99,55 @@ implies `ontology`.
   `wasm32`, runnable in a headless browser via `wasm-bindgen-test`.
 - `ironaccelerator` gains a `survey` example, replacing the `agent_plan`
   example that the planner removal deleted.
+
+### Performance
+
+Measured with paired back-to-back samples against cudarc 0.19 and a bootstrap
+95% CI on the median per-pair ratio (`examples/ab_vs_cudarc.rs`). Ratios are
+cudarc ÷ IronAccelerator, so above 1.0 is faster.
+
+| operation | 1 KiB | 64 KiB | 1 MiB | 16 MiB |
+|-----------|------:|-------:|------:|-------:|
+| host→device | **1.31×** | **1.26×** | **1.08×** | **1.30×** |
+| device→host | 0.99× | 1.00× | 1.00× | 1.02× |
+
+- **Large host→device copies stage through pinned memory.** The driver cannot
+  DMA out of pageable memory on a non-null stream, so it stages the transfer
+  internally, and on large transfers that path is roughly an order of magnitude
+  slower than doing it ourselves. cudarc never hit this because its
+  `default_stream` is the legacy NULL stream, which takes the driver's
+  optimised blocking path — so the earlier comparison was measuring stream
+  semantics, not wrapper overhead. `DeviceBuf::copy_from_host` now routes
+  multi-chunk transfers through a per-stream ring of four pinned 2 MiB chunks,
+  with each chunk's host copy overlapping the previous chunk's DMA. 16 MiB went
+  from ~36 ms to ~1.4 ms.
+- **The staging `memcpy` is spread across a small worker pool.** Once the
+  pipeline is deep enough, that copy — not the DMA — bounds the transfer: one
+  core moves ~6 GB/s against a link that takes over 11 GiB/s. At most three
+  extra threads, created lazily, page-aligned so no two touch the same page.
+  This took 16 MiB H2D from parity to a confirmed win.
+- **Synchronous copies pick their path by size.** Below two chunks there is no
+  second chunk for a DMA to overlap, so staging's `memcpy` is pure cost;
+  `copy_from_host_sync` uses the blocking driver copy there instead
+  (211 µs vs 300 µs staged vs 477 µs pageable-async, at 1 MiB).
+- **`Stream::drain` polls with `cuStreamQuery`** and only falls through to
+  `cuStreamSynchronize` when the driver reports outstanding work. Sound where a
+  "dirty" flag would not be: work enqueued on our stream by a vendor library
+  holding our raw handle is invisible to us but visible to the driver.
+- **Large device→host destinations are prefaulted in parallel.** A `Vec` handed
+  back by `dtoh_sync_copy` is freshly mapped, so the copy otherwise takes
+  thousands of page faults serialised against the transfer.
+
+Device→host is at parity, and that appears to be structural rather than
+unfinished. Both libraries issue one ordering check and one blocking
+`cuMemcpyDtoH_v2` against a single async copy engine
+(`CU_DEVICE_ATTRIBUTE_ASYNC_ENGINE_COUNT` is 1 on the test part), so there is
+no wrapper work left to remove and no parallelism the hardware offers. Seven
+approaches were implemented and measured before concluding this: cached and
+uncached `cuMemHostRegister`, chunked D2H staging with serial and with parallel
+host legs, a legacy-ordered default stream, a contiguous pinned scratch buffer,
+and the buffer-reusing `dtoh_sync_copy_into` path. The reasoning for each is
+recorded at its call site so it is not re-attempted.
 
 ### Removed (housekeeping)
 

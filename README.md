@@ -35,7 +35,7 @@ Full coverage map and migration notes live in the module docs at
 cargo run --release -p ironaccelerator-cuda --example saxpy_cudarc_style
 ```
 
-**Why switch:** on the host-side hot path we're **decisively faster than cudarc 0.19** across alloc, sync, events, launch, and small/mid memcpy — IA wins **16–19 of 20** workloads in the head-to-head bench ([numbers below](#vs-cudarc-drop-in-replacement)). cudarc rebinds the thread-context on every driver call; we cache it once. cudarc tracks per-buffer event fences on `Drop`; we just call `cuMemFreeAsync`. The wins compound at high-frequency dispatch loops.
+**Why switch:** on the host-side hot path we're **faster than cudarc 0.19** across alloc, sync, and host→device transfer — CI-confirmed at every transfer size, up to **1.31×**, with the opt-in `MemPool` at ~90× on alloc/free ([numbers below](#vs-cudarc-drop-in-replacement)). Device→host is at parity; both libraries are at the driver's floor there, and we say so rather than rounding it up. cudarc rebinds the thread-context on every driver call; we cache it once. cudarc tracks per-buffer event fences on `Drop`; we just call `cuMemFreeAsync`. The wins compound at high-frequency dispatch loops.
 
 **Production user:** [IronWorks](https://github.com/nervosys/ironworks) (a Rust LLM inference engine) completed a full cudarc → IronAccelerator migration on 2026-05-15, dropping cudarc from `Cargo.lock` entirely. ~300 call sites migrated; zero kernel regressions; tg128 on Llama-3.2-1B Q4_K_M unchanged at ~522 tok/s (within ±1.3% of the cudarc baseline — iwx is kernel-bound, so the wrapper-level wins amortise to noise). The migration validated that every iwx CUDA-driver call site has a native IA equivalent.
 
@@ -180,7 +180,30 @@ IronAccelerator's `cudarc_compat` module re-exports cudarc-shaped types and meth
 | D→H round-trip (1 MB)                 | **335.7 µs**    | 358.5 µs     | Iron **1.07× faster** |
 | D→H round-trip (16 MB)                | 4.46 ms         | 4.33 ms      | cudarc 1.03× (noise)  |
 
-**16 of 20 IA wins this run.** The 4 cudarc-leaning rows are all bandwidth-bound transfers where the wrapper layer is sub-dominant; ratios fluctuate ±15 % run-to-run due to Windows GPU clock float (1740–2100 MHz, no NVAPI lock). cudarc 0.19 source ([`core.rs:1550`](https://github.com/coreylowman/cudarc/blob/main/src/driver/safe/core.rs)) issues identical `cuMemAllocAsync` + `cuMemcpy*Async_v2` + `cuStreamSynchronize` calls on these paths — both libraries are at the same hardware ceiling.
+### 2.0.0 re-measurement (paired method)
+
+The table above is a criterion run, which measures each library in its own
+contiguous block — so machine drift lands on one side and shows up as a
+difference that is not in the code. On a shared desktop that effect exceeded the
+differences being measured. 2.0.0 adds
+[`examples/ab_vs_cudarc.rs`](crates/ironaccelerator-cuda/examples/ab_vs_cudarc.rs),
+which samples the two libraries **back-to-back** and reports the median
+per-pair ratio with a bootstrap 95% CI, so shared contention cancels. Verdicts
+are only issued when the interval excludes 1.0.
+
+| operation | 1 KiB | 64 KiB | 1 MiB | 16 MiB |
+|-----------|------:|-------:|------:|-------:|
+| host→device | **1.31×** | **1.26×** | **1.08×** | **1.30×** |
+| device→host | 0.99× | 1.00× | 1.00× | 1.02× |
+
+H2D improved across the board in 2.0.0 because large pageable copies now stage
+through pinned memory — see the CHANGELOG's *Performance* section. **Device→host
+is at parity, not a win**, and that looks structural: both libraries issue one
+ordering check and one blocking `cuMemcpyDtoH_v2` against a single async copy
+engine, so there is no wrapper work left to remove. Seven approaches were
+implemented and measured before concluding that.
+
+**16 of 20 IA wins in the 1.2.0 criterion run above.** The 4 cudarc-leaning rows are all bandwidth-bound transfers where the wrapper layer is sub-dominant; ratios fluctuate ±15 % run-to-run due to Windows GPU clock float (1740–2100 MHz, no NVAPI lock). cudarc 0.19 source ([`core.rs:1550`](https://github.com/coreylowman/cudarc/blob/main/src/driver/safe/core.rs)) issues identical `cuMemAllocAsync` + `cuMemcpy*Async_v2` + `cuStreamSynchronize` calls on these paths — both libraries are at the same hardware ceiling.
 
 ¹ Event lifecycle was 1.14× cudarc before 2026-05-15. Removed a redundant `device.bind()` (`cuCtxSetCurrent`) in `Event::new_impl` since IA's invariant guarantees binding persists from `Device::open`. Cut from 36 µs → 18 µs and now beats cudarc.
 
