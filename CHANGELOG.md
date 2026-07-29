@@ -6,6 +6,17 @@ All notable changes to **IronAccelerator** are documented here. Format follows
 
 ## [Unreleased]
 
+### Docs
+
+- Re-ran the full cudarc benchmark comparison on a genuinely idle GPU and
+  corrected README figures that the prior refresh had inflated under
+  contention: kernel launch 1.45× → **1.07×** (cudarc launch is 6.2 µs idle,
+  not 9.4 µs), `MemPool` ~75–115× → **~70×** (idle cudarc alloc is ~0.7 µs, not
+  1.2 µs), async alloc/free up to 3.0× → **~2.0×**, and host→device 4–16 MiB
+  1.22× → **1.12×**. Device→host parity and the h2d small-end (~1.29×) / 64 MiB
+  (~1.28×) wins reproduced cleanly. All ~90× MemPool references reconciled to
+  ~70×.
+
 ## [2.1.0] - 2026-07-28
 
 ### Security
