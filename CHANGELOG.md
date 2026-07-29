@@ -15,7 +15,9 @@ All notable changes to **IronAccelerator** are documented here. Format follows
   1.2 µs), async alloc/free up to 3.0× → **~2.0×**, and host→device 4–16 MiB
   1.22× → **1.12×**. Device→host parity and the h2d small-end (~1.29×) / 64 MiB
   (~1.28×) wins reproduced cleanly. All ~90× MemPool references reconciled to
-  ~70×.
+  ~70×. A second idle rerun confirmed every figure except kernel launch, which
+  swings 4.5–6.2 µs run-to-run with the two libraries tracking each other —
+  corrected 1.07× → **~1.0× (parity)**.
 
 ## [2.1.0] - 2026-07-28
 

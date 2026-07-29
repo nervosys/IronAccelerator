@@ -232,7 +232,7 @@ treat them as indicative rather than to two significant figures):
 | Async alloc + free (16 MB)                |      **358 ns** |      724 ns | **2.0×**      |
 | Stream synchronize (empty)                |       **58 ns** |       86 ns | **1.5×**      |
 | Event create+record+sync+destroy         |      **215 ns** |      326 ns | **1.5×**      |
-| Kernel launch (noop, 1024 thr)            |     **5.77 µs** |     6.18 µs | **1.07×**     |
+| Kernel launch (noop, 1024 thr)            |      ~4.7 µs    |    ~4.6 µs  | ~1.0× (parity) |
 | Stream create + destroy                   |      **699 ns** |      754 ns | **1.08×**     |
 
 The headline is the optional [`MemPool`](crates/ironaccelerator-cuda/src/pool.rs):
