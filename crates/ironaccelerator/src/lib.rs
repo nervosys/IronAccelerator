@@ -18,9 +18,10 @@
 //! | `ironaccelerator-rocm`      | safe ROCm/HIP driver wrappers (same fast-path pattern)     |
 //! | `ironaccelerator-metal`     | Apple Metal / MPS scaffold                                 |
 //! | `ironaccelerator-qnn`       | Qualcomm Hexagon NPU scaffold                              |
-//! | `ironaccelerator-dx12`      | Direct3D 12 adapter enumeration + capability probing        |
+//! | `ironaccelerator-vulkan`    | Vulkan compute: enumerate, buffers, SPIR-V pipeline, dispatch |
+//! | `ironaccelerator-dx12`      | Direct3D 12 compute: enumerate, buffers, DXIL pipeline, dispatch |
+//! | `ironaccelerator-opengl`    | OpenGL 4.3+ compute-shader fallback (host-bound GL context) |
 //! | `ironaccelerator-webgpu`    | browser/WASM compute path, host-bound                      |
-//! | `ironaccelerator-vulkan` …  | cross-vendor + niche backends                              |
 //!
 //! ## Native vs browser
 //!

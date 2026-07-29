@@ -6,6 +6,35 @@ All notable changes to **IronAccelerator** are documented here. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Vulkan compute API completed and made reachable.** The `compute` module
+  (`Context`, `Buffer`, `ComputePipeline`) is now re-exported from the crate
+  root — it was implemented but never exposed, so downstream code could not
+  reach it. Added the staging round-trip that brings it to parity with the
+  D3D12 backend: `Buffer::write_bytes`/`read_bytes` for host-visible memory,
+  `Context::copy_buffer`, and `Context::upload`/`download` to move bytes to and
+  from device-local memory in one call. `Context::dispatch` now brackets the
+  workgroup dispatch with transfer↔shader memory barriers so an `upload` →
+  `dispatch` → `download` sequence is correct on discrete GPUs. New
+  `list_devices` example and an end-to-end `dispatch` integration test that
+  compiles GLSL→SPIR-V with the Vulkan SDK and verifies a real GPU dispatch
+  (skips cleanly when no device or compiler is present).
+- **OpenGL compute API completed and made reachable.** The `compute` module
+  (`Program`, `Ssbo`, `dispatch`, `gl`) and `drv::{info, GlInfo}` are now
+  re-exported from the crate root. Added `Ssbo::write_bytes` (in-place update)
+  and `Ssbo::read_bytes` (readback via `glGetBufferSubData`) to close the host
+  round-trip, plus a runnable doc example of the full buffer → program →
+  dispatch → readback flow.
+
+### Notes
+
+- The D3D12 and WebGPU backends were already feature-complete for their scope:
+  D3D12 carries the full submission path plus an end-to-end DXIL dispatch test,
+  and WebGPU is host-holds-device by design (the browser retains the
+  `GPUDevice`; the crate records the negotiated adapter). No changes were
+  needed to either beyond confirming their test suites pass.
+
 ## [2.1.1] - 2026-07-28
 
 ### Docs

@@ -21,6 +21,10 @@ pub mod compute;
 pub mod drv;
 
 pub use backend::{VulkanBackend, VULKAN_BACKEND};
+#[cfg(not(target_arch = "wasm32"))]
+pub use compute::{Buffer, ComputePipeline, Context};
+#[cfg(not(target_arch = "wasm32"))]
+pub use drv::{enumerate, PhysicalDevice};
 
 /// Register the Vulkan backend into the given registry. Idempotent.
 pub fn register(reg: &mut ironaccelerator_core::BackendRegistry) {

@@ -7,7 +7,8 @@
 //!    creates an `ash::Device` + compute queue, and wires up a
 //!    command-pool.
 //! 2. [`Buffer::device_local`] / [`Buffer::host_visible`] allocate and
-//!    bind storage buffers.
+//!    bind storage buffers; [`Context::upload`] / [`Context::download`]
+//!    stage host bytes to and from device-local memory in one call.
 //! 3. [`ComputePipeline::new`] takes SPIR-V + entry-point name + storage
 //!    buffer count, builds a descriptor-set layout, pipeline layout,
 //!    and `vkPipeline`.
@@ -15,9 +16,9 @@
 //!    that binds the pipeline + descriptor set and dispatches a
 //!    workgroup grid, then waits.
 //!
-//! This is deliberately scaffolding: no descriptor-pool reuse, no
-//! pipeline cache, no push constants. Higher layers (a `GemmPlan`-style
-//! object) will cache everything once real kernels land.
+//! This is deliberately minimal: no descriptor-pool reuse, no pipeline
+//! cache, no push constants. Higher layers cache those once they have a
+//! reason to; the driver line only needs the one-shot path to be correct.
 
 use core::ffi::c_void;
 
@@ -93,11 +94,13 @@ impl Context {
         None
     }
 
-    /// Record + submit a one-shot compute command buffer and wait.
-    pub fn dispatch(
+    /// Allocate a one-shot primary command buffer, let `record` fill it, then
+    /// submit and block on `vkQueueWaitIdle`. The single choke-point every
+    /// submitting method here goes through, so barrier and lifetime rules live
+    /// in one place.
+    fn run_commands(
         &self,
-        pipeline: &ComputePipeline,
-        group_count: [u32; 3],
+        record: impl FnOnce(&Device, vk::CommandBuffer),
     ) -> Result<(), vk::Result> {
         unsafe {
             let alloc_info = vk::CommandBufferAllocateInfo::default()
@@ -109,18 +112,7 @@ impl Context {
             let begin = vk::CommandBufferBeginInfo::default()
                 .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
             self.device.begin_command_buffer(cb, &begin)?;
-            self.device
-                .cmd_bind_pipeline(cb, vk::PipelineBindPoint::COMPUTE, pipeline.pipeline);
-            self.device.cmd_bind_descriptor_sets(
-                cb,
-                vk::PipelineBindPoint::COMPUTE,
-                pipeline.layout,
-                0,
-                &[pipeline.descriptor_set],
-                &[],
-            );
-            self.device
-                .cmd_dispatch(cb, group_count[0], group_count[1], group_count[2]);
+            record(&self.device, cb);
             self.device.end_command_buffer(cb)?;
 
             let submit = vk::SubmitInfo::default().command_buffers(&cbs);
@@ -130,6 +122,85 @@ impl Context {
             self.device.free_command_buffers(self.command_pool, &cbs);
         }
         Ok(())
+    }
+
+    /// Copy `bytes` from `src` to `dst` on the device and wait. Both buffers
+    /// must be at least `bytes` long.
+    pub fn copy_buffer(&self, src: &Buffer, dst: &Buffer, bytes: u64) -> Result<(), vk::Result> {
+        self.run_commands(|device, cb| unsafe {
+            let region = vk::BufferCopy::default().size(bytes);
+            device.cmd_copy_buffer(cb, src.buffer, dst.buffer, &[region]);
+        })
+    }
+
+    /// Stage `data` through a host-visible buffer into a fresh device-local
+    /// buffer and wait for the copy. The mirror of [`Self::download`], and the
+    /// device-side analogue of cudarc's `htod_sync_copy`.
+    pub fn upload(&self, data: &[u8]) -> Result<Buffer, vk::Result> {
+        let staging = Buffer::host_visible(self, data.len() as u64)?;
+        staging.write_bytes(data)?;
+        let dst = Buffer::device_local(self, data.len() as u64)?;
+        self.copy_buffer(&staging, &dst, data.len() as u64)?;
+        Ok(dst)
+    }
+
+    /// Read a device-local buffer back to host memory through a host-visible
+    /// staging buffer. Copies `min(out.len(), src.size)` bytes.
+    pub fn download(&self, src: &Buffer, out: &mut [u8]) -> Result<(), vk::Result> {
+        let n = (out.len() as u64).min(src.size);
+        let staging = Buffer::host_visible(self, n)?;
+        self.copy_buffer(src, &staging, n)?;
+        staging.read_bytes(out)
+    }
+
+    /// Record + submit a one-shot compute command buffer and wait.
+    ///
+    /// A buffer memory barrier up front makes any prior transfer or host writes
+    /// visible to the shader — [`Self::upload`] followed by `dispatch` is the
+    /// common path, and without the barrier the shader may read stale memory on
+    /// a discrete GPU even though the copy's `vkQueueWaitIdle` has returned.
+    pub fn dispatch(
+        &self,
+        pipeline: &ComputePipeline,
+        group_count: [u32; 3],
+    ) -> Result<(), vk::Result> {
+        self.run_commands(|device, cb| unsafe {
+            let pre = vk::MemoryBarrier::default()
+                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE | vk::AccessFlags::HOST_WRITE)
+                .dst_access_mask(vk::AccessFlags::SHADER_READ | vk::AccessFlags::SHADER_WRITE);
+            device.cmd_pipeline_barrier(
+                cb,
+                vk::PipelineStageFlags::TRANSFER | vk::PipelineStageFlags::HOST,
+                vk::PipelineStageFlags::COMPUTE_SHADER,
+                vk::DependencyFlags::empty(),
+                &[pre],
+                &[],
+                &[],
+            );
+            device.cmd_bind_pipeline(cb, vk::PipelineBindPoint::COMPUTE, pipeline.pipeline);
+            device.cmd_bind_descriptor_sets(
+                cb,
+                vk::PipelineBindPoint::COMPUTE,
+                pipeline.layout,
+                0,
+                &[pipeline.descriptor_set],
+                &[],
+            );
+            device.cmd_dispatch(cb, group_count[0], group_count[1], group_count[2]);
+            // Make shader writes available to the transfer that reads them back.
+            let post = vk::MemoryBarrier::default()
+                .src_access_mask(vk::AccessFlags::SHADER_WRITE)
+                .dst_access_mask(vk::AccessFlags::TRANSFER_READ | vk::AccessFlags::HOST_READ);
+            device.cmd_pipeline_barrier(
+                cb,
+                vk::PipelineStageFlags::COMPUTE_SHADER,
+                vk::PipelineStageFlags::TRANSFER | vk::PipelineStageFlags::HOST,
+                vk::DependencyFlags::empty(),
+                &[post],
+                &[],
+                &[],
+            );
+        })
     }
 
     pub fn instance(&self) -> &Instance {
@@ -152,6 +223,7 @@ pub struct Buffer {
     pub buffer: vk::Buffer,
     pub memory: vk::DeviceMemory,
     pub size: u64,
+    host_visible: bool,
     device: Device,
 }
 
@@ -176,6 +248,12 @@ impl Buffer {
                 | vk::BufferUsageFlags::TRANSFER_DST,
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
         )
+    }
+
+    /// `true` when this buffer's memory is CPU-mappable — the precondition for
+    /// [`Self::write_bytes`], [`Self::read_bytes`], and [`Self::map`].
+    pub fn is_host_visible(&self) -> bool {
+        self.host_visible
     }
 
     fn alloc(
@@ -203,6 +281,7 @@ impl Buffer {
                 buffer,
                 memory,
                 size,
+                host_visible: props.contains(vk::MemoryPropertyFlags::HOST_VISIBLE),
                 device: ctx.device.clone(),
             })
         }
@@ -220,6 +299,39 @@ impl Buffer {
 
     pub unsafe fn unmap(&self) {
         self.device.unmap_memory(self.memory);
+    }
+
+    /// Copy `data` into a host-visible buffer. Bytes past `self.size` are
+    /// dropped — the buffer is never grown. Errors if the buffer is
+    /// `DEVICE_LOCAL`; use [`Context::upload`] to stage into device memory.
+    ///
+    /// Allocated with `HOST_COHERENT`, so no explicit flush is needed.
+    pub fn write_bytes(&self, data: &[u8]) -> Result<(), vk::Result> {
+        if !self.host_visible {
+            return Err(vk::Result::ERROR_MEMORY_MAP_FAILED);
+        }
+        let n = data.len().min(self.size as usize);
+        unsafe {
+            let p = self.map()?;
+            core::ptr::copy_nonoverlapping(data.as_ptr(), p as *mut u8, n);
+            self.unmap();
+        }
+        Ok(())
+    }
+
+    /// Copy out of a host-visible buffer into `out`. Reads
+    /// `min(out.len(), self.size)` bytes.
+    pub fn read_bytes(&self, out: &mut [u8]) -> Result<(), vk::Result> {
+        if !self.host_visible {
+            return Err(vk::Result::ERROR_MEMORY_MAP_FAILED);
+        }
+        let n = out.len().min(self.size as usize);
+        unsafe {
+            let p = self.map()?;
+            core::ptr::copy_nonoverlapping(p as *const u8, out.as_mut_ptr(), n);
+            self.unmap();
+        }
+        Ok(())
     }
 }
 
@@ -343,5 +455,65 @@ impl Drop for ComputePipeline {
             self.device.destroy_descriptor_set_layout(self.dsl, None);
             self.device.destroy_shader_module(self.module, None);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A context on device 0, or `None` when the host has no Vulkan device —
+    /// which is every CI runner without a GPU or an ICD. Tests then no-op
+    /// rather than fail.
+    fn ctx() -> Option<Context> {
+        if crate::drv::enumerate().is_empty() {
+            return None;
+        }
+        Context::new(0)
+    }
+
+    #[test]
+    fn context_builds_on_every_enumerated_device() {
+        for pd in crate::drv::enumerate() {
+            // Not every physical device exposes a compute queue (some display
+            // adapters do not); skip those rather than assert.
+            if pd.compute_queue_family.is_none() {
+                continue;
+            }
+            let c = Context::new(pd.ordinal).expect("compute queue but context failed");
+            assert_ne!(c.queue, vk::Queue::null());
+        }
+    }
+
+    #[test]
+    fn host_visible_buffer_round_trips_bytes() {
+        let Some(c) = ctx() else { return };
+        let src: Vec<u8> = (0..4096u32).map(|i| (i % 251) as u8).collect();
+        let buf = Buffer::host_visible(&c, src.len() as u64).expect("host-visible alloc");
+        assert!(buf.is_host_visible());
+        buf.write_bytes(&src).expect("write");
+        let mut out = vec![0u8; src.len()];
+        buf.read_bytes(&mut out).expect("read");
+        assert_eq!(out, src, "host-visible round-trip corrupted data");
+    }
+
+    #[test]
+    fn device_local_round_trips_via_staging() {
+        let Some(c) = ctx() else { return };
+        let src: Vec<u8> = (0..8192u32).map(|i| (i * 7 % 253) as u8).collect();
+        let dev = c.upload(&src).expect("upload");
+        assert_eq!(dev.size, src.len() as u64);
+        assert!(!dev.is_host_visible(), "upload must return device-local memory");
+        let mut out = vec![0u8; src.len()];
+        c.download(&dev, &mut out).expect("download");
+        assert_eq!(out, src, "device round-trip corrupted data");
+    }
+
+    #[test]
+    fn device_local_rejects_direct_host_access() {
+        let Some(c) = ctx() else { return };
+        let dev = Buffer::device_local(&c, 64).expect("device-local alloc");
+        assert!(dev.write_bytes(&[0u8; 64]).is_err());
+        assert!(dev.read_bytes(&mut [0u8; 64]).is_err());
     }
 }

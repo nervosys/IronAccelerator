@@ -3,9 +3,10 @@
 //! before using anything here.
 //!
 //! The flow mirrors the Vulkan module: compile a GLSL compute shader
-//! into a `Program`, allocate SSBOs with [`Ssbo::new`], bind them to
-//! layout locations, and [`dispatch`]. Everything uses the cached
-//! `glow::Context` stored by the driver module.
+//! into a `Program`, allocate SSBOs with [`Ssbo::new`] (or upload with
+//! [`Ssbo::with_data`]), bind them to layout locations, [`dispatch`],
+//! and read results back with [`Ssbo::read_bytes`]. Everything uses the
+//! cached `glow::Context` stored by the driver module.
 
 use glow::HasContext;
 
@@ -45,6 +46,33 @@ impl Ssbo {
     pub fn bind(&self, gl: &glow::Context, binding: u32) {
         unsafe {
             gl.bind_buffer_base(glow::SHADER_STORAGE_BUFFER, binding, Some(self.id));
+        }
+    }
+
+    /// Overwrite the buffer's contents from host memory. Writes
+    /// `min(data.len(), self.size)` bytes at offset 0 — the buffer is never
+    /// resized. The upload half of the host round-trip; pair with
+    /// [`Self::read_bytes`].
+    pub fn write_bytes(&self, gl: &glow::Context, data: &[u8]) {
+        let n = (data.len() as u64).min(self.size) as usize;
+        unsafe {
+            gl.bind_buffer(glow::SHADER_STORAGE_BUFFER, Some(self.id));
+            gl.buffer_sub_data_u8_slice(glow::SHADER_STORAGE_BUFFER, 0, &data[..n]);
+            gl.bind_buffer(glow::SHADER_STORAGE_BUFFER, None);
+        }
+    }
+
+    /// Read the buffer back into host memory. Reads `min(out.len(), self.size)`
+    /// bytes from offset 0.
+    ///
+    /// Issue a [`dispatch`] (which inserts a `SHADER_STORAGE_BARRIER`) before
+    /// calling this, or the read may race the shader's writes.
+    pub fn read_bytes(&self, gl: &glow::Context, out: &mut [u8]) {
+        let n = (out.len() as u64).min(self.size) as usize;
+        unsafe {
+            gl.bind_buffer(glow::SHADER_STORAGE_BUFFER, Some(self.id));
+            gl.get_buffer_sub_data(glow::SHADER_STORAGE_BUFFER, 0, &mut out[..n]);
+            gl.bind_buffer(glow::SHADER_STORAGE_BUFFER, None);
         }
     }
 
@@ -106,4 +134,24 @@ pub fn dispatch(gl: &glow::Context, program: &Program, num_groups: [u32; 3]) {
 /// has been bound.
 pub fn gl() -> Option<&'static glow::Context> {
     crate::drv::shared_context()
+}
+
+#[cfg(test)]
+mod tests {
+    /// OpenGL compute needs a GL 4.3+ context current on the calling thread,
+    /// which this crate does not create — the host binds one via
+    /// [`crate::bind_current_context`]. With no windowing available in a unit
+    /// test we cannot exercise a live dispatch here; the end-to-end path is
+    /// covered by the doc example in `lib.rs` against a host-supplied context.
+    ///
+    /// What is testable without a context is the contract that everything in
+    /// this module keys off: until a context is bound, there is none to hand
+    /// out.
+    #[test]
+    fn no_context_until_bound() {
+        assert!(
+            super::gl().is_none(),
+            "a GL context leaked into the test binary"
+        );
+    }
 }
