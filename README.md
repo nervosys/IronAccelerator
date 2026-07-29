@@ -1,4 +1,6 @@
-# IronAccelerator
+<p align="center">
+  <img src="media/banner.png" alt="IronAccelerator" width="100%">
+</p>
 
 A high-performance, **low-level hardware-agnostic** Rust interface over NVIDIA, AMD, Apple, Qualcomm, Intel, Google, and AWS accelerators plus the platform and cross-vendor APIs (Vulkan / Direct3D 12 / OpenGL / WebGPU). **Agent-first**: predictable shapes, terse APIs that an LLM can reason about without docs, errors that name the operation that failed.
 
