@@ -40,8 +40,8 @@
 //! | Vulkan  | SPIR-V (a little-endian `u32` word stream as bytes; length a multiple of 4) | `main` |
 //! | D3D12   | a signed DXIL container (`dxc -T cs_6_0 …`) | shader's own |
 //! | OpenGL  | GLSL compute-shader source, UTF-8 (`#version 430`+) | `main` |
-//! | Metal   | a compiled `.metallib` (`xcrun metal … && xcrun metallib …`) | `main` |
-//! | Level Zero | SPIR-V (Intel GPU/NPU via oneAPI) | `main` |
+//! | Metal   | a compiled `.metallib` (`xcrun metal … && xcrun metallib …`) | first kernel (MSL reserves `main`) |
+//! | Level Zero | OpenCL/SYCL-flavored SPIR-V — `Kernel` model, pointer args (not Vulkan's `GLCompute` SPIR-V) | `main` |
 //!
 //! The `bindings` count is how many storage buffers the shader declares at
 //! slots `0..bindings` (`binding = N` in SPIR-V/GLSL, `register(uN)` in HLSL,

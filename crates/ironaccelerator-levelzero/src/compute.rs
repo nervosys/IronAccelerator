@@ -352,9 +352,14 @@ pub struct Pipeline {
     _module: Module,
 }
 
-/// Unified cross-backend compute surface. `code` is a SPIR-V binary; the kernel
-/// entry point is assumed to be `main`. Buffers are shared USM, so
-/// `upload`/`download` are a `memcpy` through the pointer with no staging.
+/// Unified cross-backend compute surface. `code` is **OpenCL/SYCL-flavored**
+/// SPIR-V — the `Kernel` execution model, where the entry point takes its
+/// buffers as `__global` pointer arguments. This is *not* the descriptor-bound
+/// `GLCompute` SPIR-V that Vulkan's GLSL produces: `dispatch` binds each buffer
+/// as a pointer argument (`zeKernelSetArgumentValue`), matching how oneAPI,
+/// `ocloc`, and `clang -target spir64` emit compute kernels. The entry point is
+/// assumed to be `main`. Buffers are shared USM, so `upload`/`download` are a
+/// `memcpy` through the pointer with no staging.
 ///
 /// Like Metal, Level Zero sets the group size at dispatch rather than in the
 /// shader, so [`dispatch`](ironaccelerator_core::ComputeDevice::dispatch)

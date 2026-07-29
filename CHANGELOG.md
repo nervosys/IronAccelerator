@@ -71,6 +71,14 @@ All notable changes to **IronAccelerator** are documented here. Format follows
 
 ### Fixed
 
+- **Metal pipeline no longer assumes a `main` entry point.** MSL reserves
+  `main`, so `ComputeDevice::pipeline` now takes the metallib's first kernel
+  (`pipeline_first`); `pipeline_named` remains for explicit selection. Level
+  Zero's docs now spell out that it consumes OpenCL/SYCL `Kernel`-model SPIR-V
+  (pointer args), not Vulkan's descriptor-bound `GLCompute` SPIR-V. Added
+  skip-clean `dispatch` tests for both so all five trait backends have one
+  (Level Zero runs natively and skips without an Intel device; Metal is
+  macOS-gated and cross-checked).
 - **`ironaccelerator-metal` now compiles for Apple.** It never did: `blas.rs`
   was compiled unconditionally on Apple but referenced `metal`'s MPS types
   without enabling the `mps` feature, and targeted an `mps::Matrix*` API that

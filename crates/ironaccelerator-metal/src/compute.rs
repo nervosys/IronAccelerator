@@ -73,6 +73,22 @@ impl Context {
             .new_compute_pipeline_state_with_function(&func)
     }
 
+    /// Build a pipeline from the first kernel in a `.metallib`. MSL reserves
+    /// `main`, so a bring-your-own-metallib API cannot assume a fixed entry
+    /// name; this takes the library's first (typically only) function.
+    pub fn pipeline_first(&self, metallib: &[u8]) -> Result<ComputePipelineState, String> {
+        let lib = self.device.raw().new_library_with_data(metallib)?;
+        let name = lib
+            .function_names()
+            .into_iter()
+            .next()
+            .ok_or_else(|| "metallib contains no functions".to_string())?;
+        let func = lib.get_function(&name, None)?;
+        self.device
+            .raw()
+            .new_compute_pipeline_state_with_function(&func)
+    }
+
     /// Encode and dispatch `groups` threadgroups of `threads` each, then block
     /// until the GPU finishes. Buffers bind to indices `0..buffers.len()`.
     pub fn dispatch_sized(
@@ -105,9 +121,10 @@ impl Context {
     }
 }
 
-/// Unified cross-backend compute surface. `code` is a compiled `.metallib`;
-/// the kernel entry point is assumed to be `main`. See the module docs for the
-/// threadgroup-size convention.
+/// Unified cross-backend compute surface. `code` is a compiled `.metallib`; its
+/// first kernel is used (MSL reserves `main`, so no fixed entry name is
+/// assumed — use `pipeline_named` to pick one explicitly). See the module docs
+/// for the threadgroup-size convention.
 impl ComputeDevice for Context {
     type Buffer = Arc<Buffer>;
     type Pipeline = ComputePipelineState;
@@ -140,7 +157,7 @@ impl ComputeDevice for Context {
     }
 
     fn pipeline(&self, code: &[u8], _bindings: u32) -> Result<ComputePipelineState, String> {
-        self.pipeline_named(code, "main")
+        self.pipeline_first(code)
     }
 
     fn dispatch(
