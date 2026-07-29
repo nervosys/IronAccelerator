@@ -6,18 +6,21 @@ All notable changes to **IronAccelerator** are documented here. Format follows
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-07-28
+
 ### Docs
 
-- Re-ran the full cudarc benchmark comparison on a genuinely idle GPU and
-  corrected README figures that the prior refresh had inflated under
-  contention: kernel launch 1.45× → **1.07×** (cudarc launch is 6.2 µs idle,
-  not 9.4 µs), `MemPool` ~75–115× → **~70×** (idle cudarc alloc is ~0.7 µs, not
-  1.2 µs), async alloc/free up to 3.0× → **~2.0×**, and host→device 4–16 MiB
-  1.22× → **1.12×**. Device→host parity and the h2d small-end (~1.29×) / 64 MiB
-  (~1.28×) wins reproduced cleanly. All ~90× MemPool references reconciled to
-  ~70×. A second idle rerun confirmed every figure except kernel launch, which
-  swings 4.5–6.2 µs run-to-run with the two libraries tracking each other —
-  corrected 1.07× → **~1.0× (parity)**.
+- Re-ran the full cudarc benchmark comparison across several passes on a
+  genuinely idle GPU and corrected README figures that the 2.1.0 refresh had
+  inflated under contention. Final, multi-run-reproduced numbers: `MemPool`
+  alloc/free **~70×** (was ~75–115×; idle cudarc alloc is ~0.7 µs, not 1.2 µs),
+  async alloc/free **~2.0×** (was up to 3.0×), host→device **1.08×–1.29×**
+  across 256 B–64 MiB with the 4–16 MiB band at **~1.12×** (was 1.22×), stream
+  sync **1.5×**, event lifecycle **~1.5×**. Kernel launch is at **parity**
+  (~1.0×) — absolute launch time swings 4.5–6.2 µs run-to-run with both
+  libraries tracking each other, so the earlier 1.07×/1.45× claims did not
+  hold. Device→host remains at parity across the whole sweep. All ~90× MemPool
+  references reconciled to ~70×. No code changes — documentation only.
 
 ## [2.1.0] - 2026-07-28
 
