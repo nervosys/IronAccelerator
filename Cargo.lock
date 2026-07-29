@@ -334,7 +334,7 @@ checksum = "fc0fef456e4baa96da950455cd02c081ca953b141298e41db3fc7e36b1da849c"
 
 [[package]]
 name = "ironaccelerator"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "ironaccelerator-core",
  "ironaccelerator-cuda",
@@ -354,7 +354,7 @@ dependencies = [
 
 [[package]]
 name = "ironaccelerator-core"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "bitflags",
  "serde",
@@ -362,7 +362,7 @@ dependencies = [
 
 [[package]]
 name = "ironaccelerator-cuda"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "criterion",
  "cudarc",
@@ -376,7 +376,7 @@ dependencies = [
 
 [[package]]
 name = "ironaccelerator-cuda-sys"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "libloading 0.9.0",
  "parking_lot",
@@ -384,7 +384,7 @@ dependencies = [
 
 [[package]]
 name = "ironaccelerator-dx12"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "ironaccelerator-core",
  "libloading 0.9.0",
@@ -393,7 +393,7 @@ dependencies = [
 
 [[package]]
 name = "ironaccelerator-levelzero"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "ironaccelerator-core",
  "libloading 0.9.0",
@@ -402,7 +402,7 @@ dependencies = [
 
 [[package]]
 name = "ironaccelerator-metal"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "block2",
  "ironaccelerator-core",
@@ -414,7 +414,7 @@ dependencies = [
 
 [[package]]
 name = "ironaccelerator-neuron"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "ironaccelerator-core",
  "libloading 0.9.0",
@@ -423,7 +423,7 @@ dependencies = [
 
 [[package]]
 name = "ironaccelerator-opengl"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "glow",
  "ironaccelerator-core",
@@ -433,7 +433,7 @@ dependencies = [
 
 [[package]]
 name = "ironaccelerator-qnn"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "ironaccelerator-core",
  "ironaccelerator-qnn-sys",
@@ -444,14 +444,14 @@ dependencies = [
 
 [[package]]
 name = "ironaccelerator-qnn-sys"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "libloading 0.9.0",
 ]
 
 [[package]]
 name = "ironaccelerator-rocm"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "ironaccelerator-core",
  "ironaccelerator-rocm-sys",
@@ -462,7 +462,7 @@ dependencies = [
 
 [[package]]
 name = "ironaccelerator-rocm-sys"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "libloading 0.9.0",
  "parking_lot",
@@ -470,7 +470,7 @@ dependencies = [
 
 [[package]]
 name = "ironaccelerator-tpu"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "ironaccelerator-core",
  "libloading 0.9.0",
@@ -479,7 +479,7 @@ dependencies = [
 
 [[package]]
 name = "ironaccelerator-vulkan"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "ash",
  "ironaccelerator-core",
@@ -488,7 +488,7 @@ dependencies = [
 
 [[package]]
 name = "ironaccelerator-webgpu"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "ironaccelerator-core",
  "wasm-bindgen-test",

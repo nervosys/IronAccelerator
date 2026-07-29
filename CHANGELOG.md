@@ -6,6 +6,8 @@ All notable changes to **IronAccelerator** are documented here. Format follows
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-07-29
+
 ### Added
 
 - **Level Zero joins the unified compute trait.** The Intel oneAPI backend's
