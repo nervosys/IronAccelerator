@@ -8,6 +8,15 @@ All notable changes to **IronAccelerator** are documented here. Format follows
 
 ### Added
 
+- **Metal joins the unified compute trait.** New `ironaccelerator-metal`
+  `Context` (compute pipeline from a compiled `.metallib`, shared-storage
+  buffers, dispatch) implements `ComputeDevice`, making it the fourth backend
+  on the shared surface. Uses Apple unified memory, so `upload`/`download` are a
+  `memcpy` with no staging. Verified by cross-checking to
+  `aarch64-apple-darwin` (default and `mps` features) — not run, as this
+  workspace has no macOS host. Metal sets threadgroup size at dispatch, so the
+  trait path assumes a 1-D group of 64; `Context::dispatch_sized` takes an
+  explicit size.
 - **Unified cross-backend compute trait.** New `ComputeDevice` trait in
   `ironaccelerator-core` gives one submission surface — `device_buffer`,
   `upload`, `download`, `pipeline`, `dispatch`, `buffer_len` — implemented by
@@ -51,6 +60,15 @@ All notable changes to **IronAccelerator** are documented here. Format follows
   exercised on live hardware across all three device-owning backends (Vulkan,
   D3D12, OpenGL). Added a README "Cross-vendor compute" section and made the
   core trait's doc example a compiling `no_run` doctest.
+
+### Fixed
+
+- **`ironaccelerator-metal` now compiles for Apple.** It never did: `blas.rs`
+  was compiled unconditionally on Apple but referenced `metal`'s MPS types
+  without enabling the `mps` feature, and targeted an `mps::Matrix*` API that
+  no longer exists in metal 0.32. `blas.rs` (an MPS-backed GEMM) is also a
+  workload-level kernel, which the crate's low-level-only scope excludes, so it
+  was removed rather than repaired; GEMM belongs above the driver line.
 
 ### Notes
 

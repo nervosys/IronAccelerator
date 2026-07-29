@@ -24,7 +24,10 @@ block2           = "0.6"
 
 [features]
 default = []
-mps     = []
+# Placeholders for higher-level acceleration paths, not yet wired. MPS/MPSGraph
+# GEMM and kernels are workload-level and belong above the driver line, not in
+# this crate.
+mps     = ["metal/mps"]
 mpsgraph = []
 mlx     = []
 coreml  = []

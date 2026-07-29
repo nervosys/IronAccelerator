@@ -1,8 +1,6 @@
 //! Safe Metal driver layer. Apple-only — the module is empty on other hosts
 //! so the non-Apple scaffold keeps building.
 
-#![cfg(target_vendor = "apple")]
-
 use ironaccelerator_core::{Error, Result};
 use metal::{Buffer as MtlBuffer, CommandQueue, Device as MtlDevice, MTLResourceOptions};
 use std::sync::Arc;
@@ -62,7 +60,7 @@ impl Device {
     }
     #[inline]
     pub fn max_buffer_length(&self) -> u64 {
-        self.inner.max_buffer_length() as u64
+        self.inner.max_buffer_length()
     }
     #[inline]
     pub fn recommended_max_working_set_size(&self) -> u64 {

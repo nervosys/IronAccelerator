@@ -49,7 +49,7 @@ Honest current state. **CUDA is the only backend that's production-ready today.*
 | ---------- | ---------------------------------- | --------------- | ---------------------- | -------------------- | -------------------- | -------------- | ------------------------------- |
 | **CUDA**   | NVIDIA                             | ✅ full          | ✅ NVRTC + disk cache  | ✅ `cudarc_compat`   | ✅ `MemPool` (~70× cudarc) | ✅ 45 tests | CUDA 12.5+ driver (13.x tested) |
 | ROCm       | AMD                                | ✅ HIP full      | ⏳ HIPRTC pending      | ❌                   | ❌                   | ❌ no AMD GPU on CI host | ROCm 6.2+                |
-| Metal      | Apple                              | ⚠️ scaffold      | n/a (MSL is offline)   | ❌                   | ❌                   | ❌ needs macOS | macOS 14+ / iOS 17+              |
+| Metal      | Apple                              | ✅ enumerate + compute | ❌ bring your own metallib | ❌            | ❌                   | ⏳ cross-checks; needs macOS to run | macOS 14+ / iOS 17+ |
 | Vulkan     | cross-vendor GPU compute           | ✅ enumerate + compute | ❌ bring your own SPIR-V | ❌              | ❌                   | ✅ dispatch on 3 devices | Vulkan 1.3 ICD          |
 | QNN        | Qualcomm Hexagon NPU               | ⚠️ scaffold      | n/a (QNN is AOT)       | ❌                   | ❌                   | ❌ needs SDK + device | QNN SDK 2.22+              |
 | OpenGL     | legacy / embedded GPU fallback     | ✅ enumerate + compute | ⏳              | ❌                   | ❌                   | ✅ dispatch (WGL 4.3) | GL 4.3+ compute            |
@@ -72,13 +72,14 @@ If you're shopping for "drop-in cudarc replacement", use the CUDA backend; that'
 
 Per-backend build prerequisites and runtime environment variables live in [`docs/backends/`](docs/backends/).
 
-## Cross-vendor compute — one trait, three drivers
+## Cross-vendor compute — one trait, four drivers
 
-Beyond enumeration, the Vulkan, D3D12, and OpenGL backends share a single
+Beyond enumeration, the Vulkan, D3D12, OpenGL, and Metal backends share a single
 compute-submission surface: the `ComputeDevice` trait in
 `ironaccelerator-core`. Write the submission logic once and it runs on any of
-them — only the shader bytecode differs (SPIR-V, DXIL, or GLSL, whichever the
-driver consumes; there is no translation layer, matching the driver-line scope).
+them — only the shader bytecode differs (SPIR-V, DXIL, GLSL, or a `.metallib`,
+whichever the driver consumes; there is no translation layer, matching the
+driver-line scope).
 
 ```rust
 use ironaccelerator::prelude::*;
@@ -97,11 +98,17 @@ fn double_in_place<C: ComputeDevice>(dev: &C, code: &[u8]) -> Result<Vec<f32>, C
 
 The trait uses associated `Buffer` / `Pipeline` / `Error` types, so it stays
 zero-cost — no boxing, no vtable — and `no_std`-clean. A single generic routine
-is verified doubling a buffer on real hardware across all three backends
+is verified doubling a buffer on real hardware across Vulkan, D3D12, and OpenGL
 (`unified_compute` over Vulkan + D3D12 on 2× RTX 3090 Ti + AMD iGPU + D3D12
-WARP; `live_compute` on an OpenGL 4.3 context). WebGPU intentionally sits this
-out: its `GPUDevice` is owned by the host page and driven asynchronously from
-JS, so there is no device handle to implement the trait against.
+WARP; `live_compute` on an OpenGL 4.3 context). The Metal impl compiles for
+`aarch64-apple-darwin` (verified by cross-check) but is not run here — this
+workspace has no macOS host. WebGPU intentionally sits the trait out: its
+`GPUDevice` is owned by the host page and driven asynchronously from JS, so
+there is no device handle to implement it against.
+
+Metal note: threadgroup size is a dispatch parameter in Metal, not declared in
+the shader, so the trait's `dispatch` assumes a 1-D group of 64 threads;
+`metal::Context::dispatch_sized` takes an explicit size for other geometries.
 
 ## Why
 
