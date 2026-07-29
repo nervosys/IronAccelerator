@@ -50,9 +50,9 @@ Honest current state. **CUDA is the only backend that's production-ready today.*
 | **CUDA**   | NVIDIA                             | ✅ full          | ✅ NVRTC + disk cache  | ✅ `cudarc_compat`   | ✅ `MemPool` (~70× cudarc) | ✅ 45 tests | CUDA 12.5+ driver (13.x tested) |
 | ROCm       | AMD                                | ✅ HIP full      | ⏳ HIPRTC pending      | ❌                   | ❌                   | ❌ no AMD GPU on CI host | ROCm 6.2+                |
 | Metal      | Apple                              | ⚠️ scaffold      | n/a (MSL is offline)   | ❌                   | ❌                   | ❌ needs macOS | macOS 14+ / iOS 17+              |
-| Vulkan     | cross-vendor GPU compute           | ✅ enumerate + compute | ❌ bring your own SPIR-V | ❌              | ❌                   | ⏳ device probe only | Vulkan 1.3 ICD             |
+| Vulkan     | cross-vendor GPU compute           | ✅ enumerate + compute | ❌ bring your own SPIR-V | ❌              | ❌                   | ✅ dispatch on 3 devices | Vulkan 1.3 ICD          |
 | QNN        | Qualcomm Hexagon NPU               | ⚠️ scaffold      | n/a (QNN is AOT)       | ❌                   | ❌                   | ❌ needs SDK + device | QNN SDK 2.22+              |
-| OpenGL     | legacy / embedded GPU fallback     | ✅ enumerate     | ⏳                     | ❌                   | ❌                   | ⏳ context probe only | GL 4.3+ compute            |
+| OpenGL     | legacy / embedded GPU fallback     | ✅ enumerate + compute | ⏳              | ❌                   | ❌                   | ✅ dispatch (WGL 4.3) | GL 4.3+ compute            |
 | **D3D12**  | Windows, all vendors               | ✅ enumerate + compute | ❌ bring your own DXIL | ❌              | ❌                   | ✅ dispatch on 3 adapters | Windows 10 1507+ |
 | WebGPU     | browser / WASM only                | ✅ host-bound adapter   | n/a (host owns device) | ❌              | ❌                   | ⏳ needs browser harness | Chrome 113+ / Safari 17.4+ |
 | TPU (PJRT) | Google TPU v4 / v5 / v6e           | ⚠️ env probe     | n/a (PJRT plugin AOT)  | ❌                   | ❌                   | ❌ needs TPU VM | PJRT plugin (`libtpu.so`)      |
@@ -71,6 +71,37 @@ Every backend is loaded via `libloading` at first use — the workspace builds o
 If you're shopping for "drop-in cudarc replacement", use the CUDA backend; that's the whole point of the project today. If you need ROCm/Metal/Vulkan/QNN parity with the CUDA backend's posture, [`STATUS.md`](docs/backends/STATUS.md) lists what remains per backend — none of the non-CUDA backends are at production-ready quality yet, and most need their target hardware in CI to validate further work.
 
 Per-backend build prerequisites and runtime environment variables live in [`docs/backends/`](docs/backends/).
+
+## Cross-vendor compute — one trait, three drivers
+
+Beyond enumeration, the Vulkan, D3D12, and OpenGL backends share a single
+compute-submission surface: the `ComputeDevice` trait in
+`ironaccelerator-core`. Write the submission logic once and it runs on any of
+them — only the shader bytecode differs (SPIR-V, DXIL, or GLSL, whichever the
+driver consumes; there is no translation layer, matching the driver-line scope).
+
+```rust
+use ironaccelerator::prelude::*;
+
+// Backend-agnostic: identical body for Vulkan, D3D12, or OpenGL.
+fn double_in_place<C: ComputeDevice>(dev: &C, code: &[u8]) -> Result<Vec<f32>, C::Error> {
+    let input: Vec<u8> = (0..256u32).flat_map(|i| (i as f32).to_le_bytes()).collect();
+    let buf = dev.upload(&input)?;                     // host → device-local
+    let pipe = dev.pipeline(code, 1)?;                 // one storage buffer at slot 0
+    dev.dispatch(&pipe, &[&buf], [256 / 64, 1, 1])?;   // run + wait
+    let mut out = vec![0u8; input.len()];
+    dev.download(&buf, &mut out)?;                     // device → host
+    Ok(out.chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect())
+}
+```
+
+The trait uses associated `Buffer` / `Pipeline` / `Error` types, so it stays
+zero-cost — no boxing, no vtable — and `no_std`-clean. A single generic routine
+is verified doubling a buffer on real hardware across all three backends
+(`unified_compute` over Vulkan + D3D12 on 2× RTX 3090 Ti + AMD iGPU + D3D12
+WARP; `live_compute` on an OpenGL 4.3 context). WebGPU intentionally sits this
+out: its `GPUDevice` is owned by the host page and driven asynchronously from
+JS, so there is no device handle to implement the trait against.
 
 ## Why
 

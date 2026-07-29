@@ -43,6 +43,14 @@ All notable changes to **IronAccelerator** are documented here. Format follows
   and `Ssbo::read_bytes` (readback via `glGetBufferSubData`) to close the host
   round-trip, plus a runnable doc example of the full buffer → program →
   dispatch → readback flow.
+- **OpenGL compute now verified on live hardware.** New `live_compute` test
+  stands up a throwaway hidden-window WGL 4.3-core context (via a Windows-only
+  `windows-sys` dev-dependency — never a runtime dep) and runs a real dispatch
+  through the unified `ComputeDevice` trait, doubling a buffer on the GPU.
+  Skips cleanly off Windows or without a 4.3 driver. The unified trait is now
+  exercised on live hardware across all three device-owning backends (Vulkan,
+  D3D12, OpenGL). Added a README "Cross-vendor compute" section and made the
+  core trait's doc example a compiling `no_run` doctest.
 
 ### Notes
 

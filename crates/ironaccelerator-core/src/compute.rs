@@ -7,7 +7,9 @@
 //! and OpenGL backends all implement. Code written against `C: ComputeDevice`
 //! runs unchanged on any of them:
 //!
-//! ```ignore
+//! ```no_run
+//! use ironaccelerator_core::ComputeDevice;
+//!
 //! fn double_in_place<C: ComputeDevice>(dev: &C, code: &[u8]) -> Result<Vec<f32>, C::Error> {
 //!     let input: Vec<u8> = (0..256u32).flat_map(|i| (i as f32).to_le_bytes()).collect();
 //!     let buf = dev.upload(&input)?;

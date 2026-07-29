@@ -17,5 +17,17 @@ ironaccelerator-core = { workspace = true }
 once_cell = { workspace = true }
 glow = "0.14"
 
+# Windows-only, tests only: create a real GL 4.3 context (hidden-window WGL) so
+# the compute path can be exercised on live hardware. Never a runtime dep — the
+# backend expects the host to supply a context via `bind_current_context`.
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Graphics_OpenGL",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
 [features]
 default = []
