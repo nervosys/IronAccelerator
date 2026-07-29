@@ -18,6 +18,7 @@ pub mod compute;
 pub mod drv;
 
 pub use backend::{LevelZeroBackend, LEVELZERO_BACKEND};
+pub use compute::{Context, DeviceBuffer, Kernel, Module, Pipeline};
 
 pub fn register(reg: &mut ironaccelerator_core::BackendRegistry) {
     reg.register(&LEVELZERO_BACKEND);

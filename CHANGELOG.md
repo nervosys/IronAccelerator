@@ -8,6 +8,14 @@ All notable changes to **IronAccelerator** are documented here. Format follows
 
 ### Added
 
+- **Level Zero joins the unified compute trait.** The Intel oneAPI backend's
+  `Context` (SPIR-V module → kernel, shared-USM buffers, launch) now implements
+  `ComputeDevice`, the fifth backend on the shared surface. A new `Pipeline`
+  bundles the module with its kernel so the module outlives it. Shared USM makes
+  `upload`/`download` a `memcpy`. Compiles natively; not run here (no Intel GPU).
+  Like Metal, it sets group size at dispatch, so the trait path assumes a 1-D
+  group of 64; `Kernel::set_group_size` + `Context::launch` take an explicit
+  size.
 - **Metal joins the unified compute trait.** New `ironaccelerator-metal`
   `Context` (compute pipeline from a compiled `.metallib`, shared-storage
   buffers, dispatch) implements `ComputeDevice`, making it the fourth backend

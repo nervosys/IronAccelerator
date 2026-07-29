@@ -56,7 +56,7 @@ Honest current state. **CUDA is the only backend that's production-ready today.*
 | **D3D12**  | Windows, all vendors               | ✅ enumerate + compute | ❌ bring your own DXIL | ❌              | ❌                   | ✅ dispatch on 3 adapters | Windows 10 1507+ |
 | WebGPU     | browser / WASM only                | ✅ host-bound adapter   | n/a (host owns device) | ❌              | ❌                   | ⏳ needs browser harness | Chrome 113+ / Safari 17.4+ |
 | TPU (PJRT) | Google TPU v4 / v5 / v6e           | ⚠️ env probe     | n/a (PJRT plugin AOT)  | ❌                   | ❌                   | ❌ needs TPU VM | PJRT plugin (`libtpu.so`)      |
-| Level Zero | Intel GPU (Arc / Flex / PVC) + NPU | ✅ enumerate + compute | ⏳ SPIR-V        | ❌                   | ❌                   | ⏳ device probe only | `ze_loader` from Intel compute |
+| Level Zero | Intel GPU (Arc / Flex / PVC) + NPU | ✅ enumerate + compute | ❌ bring your own SPIR-V | ❌          | ❌                   | ⏳ builds; needs Intel GPU to run | `ze_loader` from Intel compute |
 | AWS Neuron | Trainium / Inferentia              | ⚠️ cores probe   | n/a (NEFF AOT)         | ❌                   | ❌                   | ❌ needs trn/inf instance | `libnrt` (Neuron SDK 2.x)  |
 
 Legend:
@@ -72,10 +72,10 @@ If you're shopping for "drop-in cudarc replacement", use the CUDA backend; that'
 
 Per-backend build prerequisites and runtime environment variables live in [`docs/backends/`](docs/backends/).
 
-## Cross-vendor compute — one trait, four drivers
+## Cross-vendor compute — one trait, five drivers
 
-Beyond enumeration, the Vulkan, D3D12, OpenGL, and Metal backends share a single
-compute-submission surface: the `ComputeDevice` trait in
+Beyond enumeration, the Vulkan, D3D12, OpenGL, Metal, and Level Zero backends
+share a single compute-submission surface: the `ComputeDevice` trait in
 `ironaccelerator-core`. Write the submission logic once and it runs on any of
 them — only the shader bytecode differs (SPIR-V, DXIL, GLSL, or a `.metallib`,
 whichever the driver consumes; there is no translation layer, matching the
@@ -100,15 +100,17 @@ The trait uses associated `Buffer` / `Pipeline` / `Error` types, so it stays
 zero-cost — no boxing, no vtable — and `no_std`-clean. A single generic routine
 is verified doubling a buffer on real hardware across Vulkan, D3D12, and OpenGL
 (`unified_compute` over Vulkan + D3D12 on 2× RTX 3090 Ti + AMD iGPU + D3D12
-WARP; `live_compute` on an OpenGL 4.3 context). The Metal impl compiles for
-`aarch64-apple-darwin` (verified by cross-check) but is not run here — this
-workspace has no macOS host. WebGPU intentionally sits the trait out: its
-`GPUDevice` is owned by the host page and driven asynchronously from JS, so
-there is no device handle to implement it against.
+WARP; `live_compute` on an OpenGL 4.3 context). The Metal and Level Zero impls
+compile-check (Metal cross-checked for `aarch64-apple-darwin`, Level Zero built
+natively) but are not run here — this workspace has no Apple or Intel-GPU host.
+WebGPU intentionally sits the trait out: its `GPUDevice` is owned by the host
+page and driven asynchronously from JS (buffer readback is `mapAsync` → a
+Promise), so it cannot satisfy the synchronous trait without an async variant.
 
-Metal note: threadgroup size is a dispatch parameter in Metal, not declared in
-the shader, so the trait's `dispatch` assumes a 1-D group of 64 threads;
-`metal::Context::dispatch_sized` takes an explicit size for other geometries.
+Metal and Level Zero note: both set threadgroup size at dispatch, not in the
+shader, so the trait's `dispatch` assumes a 1-D group of 64 threads;
+`metal::Context::dispatch_sized` / `levelzero::Kernel::set_group_size` +
+`Context::launch` take an explicit size for other geometries.
 
 ## Why
 

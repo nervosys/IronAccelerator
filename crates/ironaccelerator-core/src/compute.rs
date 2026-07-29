@@ -4,7 +4,7 @@
 //! [`Backend`](crate::Backend) answers *what hardware is here and what can it
 //! do*. `ComputeDevice` answers the next question — *get bytes onto it, run a
 //! shader I compiled, get bytes back* — with a single trait the Vulkan, D3D12,
-//! OpenGL, and Metal backends all implement. Code written against
+//! OpenGL, Metal, and Level Zero backends all implement. Code written against
 //! `C: ComputeDevice` runs unchanged on any of them:
 //!
 //! ```no_run
@@ -41,16 +41,17 @@
 //! | D3D12   | a signed DXIL container (`dxc -T cs_6_0 …`) | shader's own |
 //! | OpenGL  | GLSL compute-shader source, UTF-8 (`#version 430`+) | `main` |
 //! | Metal   | a compiled `.metallib` (`xcrun metal … && xcrun metallib …`) | `main` |
+//! | Level Zero | SPIR-V (Intel GPU/NPU via oneAPI) | `main` |
 //!
 //! The `bindings` count is how many storage buffers the shader declares at
 //! slots `0..bindings` (`binding = N` in SPIR-V/GLSL, `register(uN)` in HLSL,
 //! `[[buffer(N)]]` in Metal); [`dispatch`](ComputeDevice::dispatch) binds
 //! exactly that many in order.
 //!
-//! One wrinkle: Metal sets the threadgroup size at dispatch, where the other
-//! three declare it in the shader (`local_size` / `numthreads`). The trait
-//! carries only threadgroup counts, so the Metal impl assumes a 1-D group of
-//! 64; its `Context::dispatch_sized` takes an explicit size for other cases.
+//! One wrinkle: Metal and Level Zero set the group size at dispatch, where the
+//! others declare it in the shader (`local_size` / `numthreads`). The trait
+//! carries only threadgroup counts, so those two impls assume a 1-D group of
+//! 64; each exposes a native call taking an explicit size for other cases.
 //!
 //! # Why WebGPU is not here
 //!
@@ -65,10 +66,10 @@
 /// from — one uniform surface over Vulkan, D3D12, and OpenGL.
 ///
 /// Implemented on the backend's owned device/context type (Vulkan `Context`,
-/// D3D12 `Context`, OpenGL `GlDevice`, Metal `Context`). Every method blocks
-/// until the GPU has finished the operation, matching the one-shot submission
-/// model the backends already use; batching and async are concrete-type
-/// concerns layered on top.
+/// D3D12 `Context`, OpenGL `GlDevice`, Metal `Context`, Level Zero `Context`).
+/// Every method blocks until the GPU has finished the operation, matching the
+/// one-shot submission model the backends already use; batching and async are
+/// concrete-type concerns layered on top.
 ///
 /// The associated types keep this zero-cost — there is no boxing and no
 /// vtable. The trait is therefore not `dyn`-safe by design; use it as a generic

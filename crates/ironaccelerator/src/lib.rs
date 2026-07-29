@@ -33,7 +33,7 @@
 //!
 //! ## One compute surface across backends
 //!
-//! The Vulkan, D3D12, OpenGL, and Metal backends implement
+//! The Vulkan, D3D12, OpenGL, Metal, and Level Zero backends implement
 //! [`ComputeDevice`](ironaccelerator_core::ComputeDevice), so a generic routine
 //! — upload → build a pipeline from backend-native bytecode → dispatch →
 //! download — runs unchanged on any of them. See the `unified_compute` test for

@@ -343,6 +343,90 @@ impl Drop for Kernel {
     }
 }
 
+/// A SPIR-V module and one kernel from it, kept together — Level Zero destroys
+/// the kernel before the module, and the unified
+/// [`ComputeDevice`](ironaccelerator_core::ComputeDevice) trait hands back a
+/// single pipeline object. `kernel` is declared first so it drops first.
+pub struct Pipeline {
+    kernel: Kernel,
+    _module: Module,
+}
+
+/// Unified cross-backend compute surface. `code` is a SPIR-V binary; the kernel
+/// entry point is assumed to be `main`. Buffers are shared USM, so
+/// `upload`/`download` are a `memcpy` through the pointer with no staging.
+///
+/// Like Metal, Level Zero sets the group size at dispatch rather than in the
+/// shader, so [`dispatch`](ironaccelerator_core::ComputeDevice::dispatch)
+/// assumes a 1-D group of 64. Use [`Kernel::set_group_size`] +
+/// [`Context::launch`] directly for other geometries.
+impl ironaccelerator_core::ComputeDevice for Context {
+    type Buffer = DeviceBuffer;
+    type Pipeline = Pipeline;
+    type Error = String;
+
+    fn device_buffer(&self, bytes: u64) -> Result<DeviceBuffer, String> {
+        self.alloc_shared(bytes as usize, 64)
+            .ok_or_else(|| "level-zero: shared USM allocation failed".to_string())
+    }
+
+    fn upload(&self, data: &[u8]) -> Result<DeviceBuffer, String> {
+        let buf = self.device_buffer(data.len() as u64)?;
+        // SAFETY: shared USM is host-accessible; `buf.ptr` is valid for
+        // `data.len()` bytes (the buffer was sized to it).
+        unsafe {
+            core::ptr::copy_nonoverlapping(data.as_ptr(), buf.ptr as *mut u8, data.len());
+        }
+        Ok(buf)
+    }
+
+    fn download(&self, buffer: &DeviceBuffer, out: &mut [u8]) -> Result<(), String> {
+        let n = out.len().min(buffer.size);
+        // SAFETY: shared USM is host-accessible; reading `n` bytes stays within
+        // the buffer's length.
+        unsafe {
+            core::ptr::copy_nonoverlapping(buffer.ptr as *const u8, out.as_mut_ptr(), n);
+        }
+        Ok(())
+    }
+
+    fn pipeline(&self, code: &[u8], _bindings: u32) -> Result<Pipeline, String> {
+        let module = self
+            .load_spirv(code)
+            .ok_or_else(|| "level-zero: SPIR-V module build failed".to_string())?;
+        let kernel = module
+            .kernel("main")
+            .ok_or_else(|| "level-zero: kernel `main` not found in module".to_string())?;
+        Ok(Pipeline {
+            kernel,
+            _module: module,
+        })
+    }
+
+    fn dispatch(
+        &self,
+        pipeline: &Pipeline,
+        buffers: &[&DeviceBuffer],
+        groups: [u32; 3],
+    ) -> Result<(), String> {
+        let fmt = |e: u32| format!("level-zero error {e:#010x}");
+        pipeline.kernel.set_group_size(64, 1, 1).map_err(fmt)?;
+        for (i, b) in buffers.iter().enumerate() {
+            // Pointer kernel argument: pass the USM address by value.
+            // SAFETY: `b.ptr` outlives the launch; the kernel's arg `i` is a
+            // pointer, matching `size_of::<*mut c_void>()`.
+            unsafe {
+                pipeline.kernel.set_arg(i as u32, &b.ptr).map_err(fmt)?;
+            }
+        }
+        self.launch(&pipeline.kernel, groups).map_err(fmt)
+    }
+
+    fn buffer_len(&self, buffer: &DeviceBuffer) -> u64 {
+        buffer.size as u64
+    }
+}
+
 unsafe fn locate_device(l: &Loaded, target: u32) -> Option<(ZeDriverHandle, ZeDeviceHandle)> {
     let mut driver_count: u32 = 0;
     if (l.ze_driver_get)(&mut driver_count, core::ptr::null_mut()) != ZE_RESULT_SUCCESS
