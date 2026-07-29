@@ -8,6 +8,23 @@ All notable changes to **IronAccelerator** are documented here. Format follows
 
 ### Added
 
+- **Unified cross-backend compute trait.** New `ComputeDevice` trait in
+  `ironaccelerator-core` gives one submission surface — `device_buffer`,
+  `upload`, `download`, `pipeline`, `dispatch`, `buffer_len` — implemented by
+  the Vulkan `Context`, D3D12 `Context`, and a new OpenGL `GlDevice`. Code
+  written against `C: ComputeDevice` runs unchanged on any of them; a single
+  generic routine is verified doubling a buffer on both Vulkan and D3D12 across
+  every real adapter (2× RTX 3090 Ti + AMD iGPU, plus D3D12 WARP) in the new
+  `unified_compute` integration test. The trait uses associated `Buffer` /
+  `Pipeline` / `Error` types, so it stays zero-cost (no boxing, no vtable) and
+  `no_std`-clean. Bytecode is backend-native — SPIR-V for Vulkan, DXIL for
+  D3D12, GLSL source for OpenGL — with no translation layer, matching the
+  driver-line scope. WebGPU intentionally does not implement it: its `GPUDevice`
+  is host-owned and its submission API is async/JS-side, so there is no device
+  handle to hang an impl on. Vulkan's `ComputePipeline` gained
+  `with_bindings` + `bind_buffers` to defer buffer binding to dispatch time,
+  which the trait needs; the existing `ComputePipeline::new` is now a
+  convenience wrapper over them.
 - **Vulkan compute API completed and made reachable.** The `compute` module
   (`Context`, `Buffer`, `ComputePipeline`) is now re-exported from the crate
   root — it was implemented but never exposed, so downstream code could not

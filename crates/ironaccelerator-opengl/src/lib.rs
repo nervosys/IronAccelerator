@@ -41,7 +41,7 @@ pub mod compute;
 pub mod drv;
 
 pub use backend::{OpenGlBackend, OPENGL_BACKEND};
-pub use compute::{dispatch, gl, Program, Ssbo};
+pub use compute::{dispatch, gl, GlDevice, Program, Ssbo};
 pub use drv::{bind_current_context, info, GlInfo};
 
 /// Register the OpenGL backend. Call [`bind_current_context`] first if you

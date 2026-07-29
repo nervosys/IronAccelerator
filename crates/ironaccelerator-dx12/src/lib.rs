@@ -37,7 +37,7 @@ pub mod compute;
 pub mod drv;
 
 pub use backend::{Dx12Backend, DX12_BACKEND};
-pub use compute::{Buffer, CommandQueue, Context, PipelineState, RootSignature};
+pub use compute::{BoundPipeline, Buffer, CommandQueue, Context, PipelineState, RootSignature};
 pub use drv::{Device, EnumeratedAdapter};
 
 /// Register the D3D12 backend into the given registry. Idempotent.

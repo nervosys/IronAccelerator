@@ -136,6 +136,74 @@ pub fn gl() -> Option<&'static glow::Context> {
     crate::drv::shared_context()
 }
 
+/// A zero-sized device token for the unified
+/// [`ComputeDevice`](ironaccelerator_core::ComputeDevice) API.
+///
+/// OpenGL has no device object — a context is current on the calling thread or
+/// it is not — so this routes every call through the `glow::Context` cached by
+/// [`crate::bind_current_context`]. Construct it after binding a context;
+/// every method errors while none is bound. Because the caller owns the current
+/// context and its lifetime, a `GlDevice` must only be used on the thread that
+/// context is current on.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct GlDevice;
+
+impl GlDevice {
+    pub fn new() -> Self {
+        GlDevice
+    }
+
+    fn ctx(&self) -> Result<&'static glow::Context, String> {
+        crate::drv::shared_context().ok_or_else(|| "no GL context bound".to_string())
+    }
+}
+
+/// Unified cross-backend compute surface. `code` is GLSL compute-shader source
+/// (UTF-8); `bindings` is ignored because a GLSL shader declares its own
+/// `layout(binding = N)` slots, which [`dispatch`] honours by binding the
+/// supplied buffers to indices `0..n` in order.
+impl ironaccelerator_core::ComputeDevice for GlDevice {
+    type Buffer = Ssbo;
+    type Pipeline = Program;
+    type Error = String;
+
+    fn device_buffer(&self, bytes: u64) -> Result<Ssbo, String> {
+        Ssbo::new(self.ctx()?, bytes)
+    }
+
+    fn upload(&self, data: &[u8]) -> Result<Ssbo, String> {
+        Ssbo::with_data(self.ctx()?, data)
+    }
+
+    fn download(&self, buffer: &Ssbo, out: &mut [u8]) -> Result<(), String> {
+        buffer.read_bytes(self.ctx()?, out);
+        Ok(())
+    }
+
+    fn pipeline(&self, code: &[u8], _bindings: u32) -> Result<Program, String> {
+        let src = core::str::from_utf8(code).map_err(|e| format!("GLSL not UTF-8: {e}"))?;
+        Program::from_glsl(self.ctx()?, src)
+    }
+
+    fn dispatch(
+        &self,
+        pipeline: &Program,
+        buffers: &[&Ssbo],
+        groups: [u32; 3],
+    ) -> Result<(), String> {
+        let gl = self.ctx()?;
+        for (i, b) in buffers.iter().enumerate() {
+            b.bind(gl, i as u32);
+        }
+        dispatch(gl, pipeline, groups);
+        Ok(())
+    }
+
+    fn buffer_len(&self, buffer: &Ssbo) -> u64 {
+        buffer.size
+    }
+}
+
 #[cfg(test)]
 mod tests {
     /// OpenGL compute needs a GL 4.3+ context current on the calling thread,

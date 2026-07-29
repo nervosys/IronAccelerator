@@ -865,6 +865,53 @@ impl Context {
     }
 }
 
+/// A compute pipeline paired with the root signature it was built against —
+/// D3D12 needs both at dispatch, so the unified
+/// [`ComputeDevice`](ironaccelerator_core::ComputeDevice) trait bundles them.
+pub struct BoundPipeline {
+    root: RootSignature,
+    pso: PipelineState,
+}
+
+/// Unified cross-backend compute surface. `code` is a signed DXIL container;
+/// the root signature is generated with `bindings` root UAVs at `u0..un`.
+impl ironaccelerator_core::ComputeDevice for Context {
+    type Buffer = Buffer;
+    type Pipeline = BoundPipeline;
+    type Error = Error;
+
+    fn device_buffer(&self, bytes: u64) -> Result<Buffer> {
+        Context::device_buffer(self, bytes)
+    }
+
+    fn upload(&self, data: &[u8]) -> Result<Buffer> {
+        Context::upload(self, data)
+    }
+
+    fn download(&self, buffer: &Buffer, out: &mut [u8]) -> Result<()> {
+        Context::download(self, buffer, out)
+    }
+
+    fn pipeline(&self, code: &[u8], bindings: u32) -> Result<BoundPipeline> {
+        let root = self.root_signature_with_uavs(bindings)?;
+        let pso = self.compute_pipeline(Some(&root), code)?;
+        Ok(BoundPipeline { root, pso })
+    }
+
+    fn dispatch(
+        &self,
+        pipeline: &BoundPipeline,
+        buffers: &[&Buffer],
+        groups: [u32; 3],
+    ) -> Result<()> {
+        Context::dispatch(self, &pipeline.root, &pipeline.pso, buffers, groups)
+    }
+
+    fn buffer_len(&self, buffer: &Buffer) -> u64 {
+        buffer.len_bytes()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

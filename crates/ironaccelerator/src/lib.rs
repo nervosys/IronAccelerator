@@ -31,6 +31,14 @@
 //! `ironaccelerator-webgpu` is the browser path only — on native it reaches
 //! nothing the others do not, so it does not try.
 //!
+//! ## One compute surface across backends
+//!
+//! The Vulkan, D3D12, and OpenGL backends implement
+//! [`ComputeDevice`](ironaccelerator_core::ComputeDevice), so a generic routine
+//! — upload → build a pipeline from backend-native bytecode → dispatch →
+//! download — runs unchanged on any of them. See the `unified_compute` test for
+//! a single function driven across Vulkan and D3D12.
+//!
 //! ## Scope
 //!
 //! IronAccelerator stops at the driver. Workload descriptors, execution-strategy
@@ -93,8 +101,8 @@ pub use ironaccelerator_webgpu as webgpu;
 
 pub mod prelude {
     pub use ironaccelerator_core::{
-        Backend, BackendKind, Capability, CapabilityFlags, ComputeTier, DType, Device,
-        DeviceDescriptor, DeviceId, Error, LaunchDims, MemoryKind, Result, Vendor,
+        Backend, BackendKind, Capability, CapabilityFlags, ComputeDevice, ComputeTier, DType,
+        Device, DeviceDescriptor, DeviceId, Error, LaunchDims, MemoryKind, Result, Vendor,
     };
 }
 

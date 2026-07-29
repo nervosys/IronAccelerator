@@ -26,6 +26,7 @@ extern crate alloc;
 
 pub mod backend;
 pub mod capability;
+pub mod compute;
 pub mod device;
 pub mod dtype;
 pub mod error;
@@ -36,6 +37,7 @@ pub mod stream;
 
 pub use backend::{Backend, BackendKind, BackendRegistry};
 pub use capability::{Capability, CapabilityFlags, ComputeTier};
+pub use compute::ComputeDevice;
 pub use device::{Device, DeviceDescriptor, DeviceId, Vendor};
 pub use dtype::{DType, NumericClass};
 pub use error::{Error, Result};

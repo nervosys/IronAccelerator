@@ -360,17 +360,37 @@ impl ComputePipeline {
     /// `spirv` is the raw SPIR-V binary (little-endian u32 stream cast to
     /// bytes is fine). `entry` is the shader entry point. `buffers` are
     /// the storage buffers bound at slots `0..buffers.len()`.
+    ///
+    /// A convenience over [`Self::with_bindings`] + [`Self::bind_buffers`] for
+    /// the case where the buffers are known up front and never rebound.
     pub fn new(
         ctx: &Context,
         spirv: &[u32],
         entry: &std::ffi::CStr,
         buffers: &[&Buffer],
     ) -> Result<Self, vk::Result> {
+        let pipeline = Self::with_bindings(ctx, spirv, entry, buffers.len() as u32)?;
+        pipeline.bind_buffers(buffers);
+        Ok(pipeline)
+    }
+
+    /// Build a pipeline whose descriptor set has `bindings` storage-buffer
+    /// slots but no buffers written yet. Bind them later with
+    /// [`Self::bind_buffers`] — this is the path the unified
+    /// [`ComputeDevice`](ironaccelerator_core::ComputeDevice) trait takes, where
+    /// the concrete buffers arrive at dispatch time rather than pipeline
+    /// creation.
+    pub fn with_bindings(
+        ctx: &Context,
+        spirv: &[u32],
+        entry: &std::ffi::CStr,
+        bindings: u32,
+    ) -> Result<Self, vk::Result> {
         unsafe {
             let module_ci = vk::ShaderModuleCreateInfo::default().code(spirv);
             let module = ctx.device.create_shader_module(&module_ci, None)?;
 
-            let bindings: Vec<vk::DescriptorSetLayoutBinding> = (0..buffers.len() as u32)
+            let layout_bindings: Vec<vk::DescriptorSetLayoutBinding> = (0..bindings)
                 .map(|i| {
                     vk::DescriptorSetLayoutBinding::default()
                         .binding(i)
@@ -379,12 +399,12 @@ impl ComputePipeline {
                         .stage_flags(vk::ShaderStageFlags::COMPUTE)
                 })
                 .collect();
-            let dsl_ci = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
+            let dsl_ci = vk::DescriptorSetLayoutCreateInfo::default().bindings(&layout_bindings);
             let dsl = ctx.device.create_descriptor_set_layout(&dsl_ci, None)?;
 
             let pool_sizes = [vk::DescriptorPoolSize::default()
                 .ty(vk::DescriptorType::STORAGE_BUFFER)
-                .descriptor_count(buffers.len() as u32)];
+                .descriptor_count(bindings.max(1))];
             let pool_ci = vk::DescriptorPoolCreateInfo::default()
                 .max_sets(1)
                 .pool_sizes(&pool_sizes);
@@ -395,28 +415,6 @@ impl ComputePipeline {
                 .descriptor_pool(pool)
                 .set_layouts(&dsls);
             let descriptor_set = ctx.device.allocate_descriptor_sets(&ds_alloc)?[0];
-
-            let buffer_infos: Vec<vk::DescriptorBufferInfo> = buffers
-                .iter()
-                .map(|b| {
-                    vk::DescriptorBufferInfo::default()
-                        .buffer(b.buffer)
-                        .offset(0)
-                        .range(b.size)
-                })
-                .collect();
-            let writes: Vec<vk::WriteDescriptorSet> = buffer_infos
-                .iter()
-                .enumerate()
-                .map(|(i, info)| {
-                    vk::WriteDescriptorSet::default()
-                        .dst_set(descriptor_set)
-                        .dst_binding(i as u32)
-                        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                        .buffer_info(std::slice::from_ref(info))
-                })
-                .collect();
-            ctx.device.update_descriptor_sets(&writes, &[]);
 
             let pl_ci = vk::PipelineLayoutCreateInfo::default().set_layouts(&dsls);
             let layout = ctx.device.create_pipeline_layout(&pl_ci, None)?;
@@ -444,6 +442,34 @@ impl ComputePipeline {
             })
         }
     }
+
+    /// Point the descriptor set at `buffers`, bound to slots
+    /// `0..buffers.len()`. Overwrites any previous binding. Safe to call
+    /// between dispatches provided the previous dispatch has completed — the
+    /// one-shot submission path here always waits, so that holds.
+    pub fn bind_buffers(&self, buffers: &[&Buffer]) {
+        let buffer_infos: Vec<vk::DescriptorBufferInfo> = buffers
+            .iter()
+            .map(|b| {
+                vk::DescriptorBufferInfo::default()
+                    .buffer(b.buffer)
+                    .offset(0)
+                    .range(b.size)
+            })
+            .collect();
+        let writes: Vec<vk::WriteDescriptorSet> = buffer_infos
+            .iter()
+            .enumerate()
+            .map(|(i, info)| {
+                vk::WriteDescriptorSet::default()
+                    .dst_set(self.descriptor_set)
+                    .dst_binding(i as u32)
+                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                    .buffer_info(std::slice::from_ref(info))
+            })
+            .collect();
+        unsafe { self.device.update_descriptor_sets(&writes, &[]) };
+    }
 }
 
 impl Drop for ComputePipeline {
@@ -455,6 +481,52 @@ impl Drop for ComputePipeline {
             self.device.destroy_descriptor_set_layout(self.dsl, None);
             self.device.destroy_shader_module(self.module, None);
         }
+    }
+}
+
+/// Unified cross-backend compute surface. SPIR-V arrives as bytes (a `u32`
+/// word stream); the entry point is assumed to be `main`.
+impl ironaccelerator_core::ComputeDevice for Context {
+    type Buffer = Buffer;
+    type Pipeline = ComputePipeline;
+    type Error = vk::Result;
+
+    fn device_buffer(&self, bytes: u64) -> Result<Buffer, vk::Result> {
+        Buffer::device_local(self, bytes)
+    }
+
+    fn upload(&self, data: &[u8]) -> Result<Buffer, vk::Result> {
+        Context::upload(self, data)
+    }
+
+    fn download(&self, buffer: &Buffer, out: &mut [u8]) -> Result<(), vk::Result> {
+        Context::download(self, buffer, out)
+    }
+
+    fn pipeline(&self, code: &[u8], bindings: u32) -> Result<ComputePipeline, vk::Result> {
+        if code.len() % 4 != 0 {
+            // Not a whole SPIR-V word stream.
+            return Err(vk::Result::ERROR_INITIALIZATION_FAILED);
+        }
+        let words: Vec<u32> = code
+            .chunks_exact(4)
+            .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .collect();
+        ComputePipeline::with_bindings(self, &words, c"main", bindings)
+    }
+
+    fn dispatch(
+        &self,
+        pipeline: &ComputePipeline,
+        buffers: &[&Buffer],
+        groups: [u32; 3],
+    ) -> Result<(), vk::Result> {
+        pipeline.bind_buffers(buffers);
+        Context::dispatch(self, pipeline, groups)
+    }
+
+    fn buffer_len(&self, buffer: &Buffer) -> u64 {
+        buffer.size
     }
 }
 
