@@ -43,7 +43,7 @@ cargo run --release -p ironaccelerator-cuda --example saxpy_cudarc_style
 
 ## Backend support matrix
 
-Honest current state. **CUDA is the only backend that's production-ready today.** Everything else compiles, registers, and enumerates devices where the SDK is present — but the per-backend hot path has not yet had the same optimization sprint that pushed the CUDA `MemPool` to ~70× faster than cudarc on alloc/free. Detailed gap analysis per backend lives in [`docs/backends/STATUS.md`](docs/backends/STATUS.md).
+Honest current state. **CUDA is the only backend that's production-ready today.** Everything else compiles, registers, and enumerates devices where the SDK is present — and five of them (Vulkan, D3D12, OpenGL, Metal, Level Zero) also run compute through the unified [`ComputeDevice` trait](#cross-vendor-compute--one-trait-five-drivers) — but the per-backend hot path has not yet had the same optimization sprint that pushed the CUDA `MemPool` to ~70× faster than cudarc on alloc/free. Detailed gap analysis per backend lives in [`docs/backends/STATUS.md`](docs/backends/STATUS.md).
 
 | Backend    | Vendor / API                       | Driver wrappers | Runtime kernel compile | cudarc-shaped compat | `MemPool` equivalent | Live-GPU tests | Min SDK / runtime               |
 | ---------- | ---------------------------------- | --------------- | ---------------------- | -------------------- | -------------------- | -------------- | ------------------------------- |
@@ -84,7 +84,7 @@ driver-line scope).
 ```rust
 use ironaccelerator::prelude::*;
 
-// Backend-agnostic: identical body for Vulkan, D3D12, or OpenGL.
+// Backend-agnostic: identical body for Vulkan, D3D12, OpenGL, Metal, or Level Zero.
 fn double_in_place<C: ComputeDevice>(dev: &C, code: &[u8]) -> Result<Vec<f32>, C::Error> {
     let input: Vec<u8> = (0..256u32).flat_map(|i| (i as f32).to_le_bytes()).collect();
     let buf = dev.upload(&input)?;                     // host → device-local
@@ -152,7 +152,7 @@ crates/
   ironaccelerator-cuda/       # safe CUDA wrappers + cudarc_compat drop-in surface
   ironaccelerator-rocm-sys/   # ROCm/HIP FFI scaffold
   ironaccelerator-rocm/       # ROCm safe wrappers
-  ironaccelerator-metal/      # Apple Metal/MPS scaffold
+  ironaccelerator-metal/      # Apple Metal compute (ComputeDevice)
   ironaccelerator-qnn-sys/    # Qualcomm Hexagon NPU FFI scaffold
   ironaccelerator-qnn/        # Qualcomm Hexagon NPU wrappers
   ironaccelerator-vulkan/     # cross-vendor Vulkan compute
@@ -362,10 +362,14 @@ Driver-substrate work only — kernels, planners, and workload abstractions belo
       discovery-only trait and the facade `Runtime` is a device survey.
 - [x] `cuMemPool` direct wrappers + default-pool retention (`Device::open` sets `ReleaseThreshold = u64::MAX` on the default pool — retains memory across free/alloc, matching PyTorch/cudarc behaviour). Per-stream custom pools still TODO.
 - [ ] Optional Rust-side small-buffer free list to skip `cuMemFreeAsync` round-trips at very high alloc churn.
+- [x] Unified `ComputeDevice` trait (`ironaccelerator-core`) implemented across
+      Vulkan, D3D12, OpenGL, Metal, and Level Zero — one submission surface,
+      backend-native bytecode, no translation layer.
+- [x] Metal compute bindings via the `metal` crate (`objc2`). The MPS-backed
+      GEMM was removed as workload-level — that belongs above the driver line.
 - [ ] HIP FFI + safe wrapper for `ironaccelerator-rocm` matching the CUDA shape.
-- [ ] Metal/MPS bindings via `objc2`.
 - [ ] QNN SDK FFI + safe wrappers.
-- [ ] Level Zero / oneAPI tighter capability probe.
+- [ ] Level Zero / oneAPI tighter capability probe (COMPUTE queue-group query).
 
 ## License
 
