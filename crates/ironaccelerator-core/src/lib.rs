@@ -33,6 +33,7 @@ pub mod error;
 pub mod handle;
 pub mod kernel;
 pub mod memory;
+pub mod ontology;
 pub mod stream;
 
 pub use backend::{Backend, BackendKind, BackendRegistry};

@@ -5,14 +5,14 @@
   "layer": "substrate",
   "role": "Low-level, hardware-agnostic Rust interface over NVIDIA, AMD, Apple, Qualcomm, Intel, Google, and AWS accelerators plus Vulkan/D3D12/OpenGL/WebGPU. Agent-first: predictable shapes, terse APIs, errors that name the failing operation. Includes a faster drop-in replacement for cudarc.",
   "ontology": {
-    "api": "Backend trait discovery surface: kind, is_available, enumerate, capabilities; plus Runtime::available_backends, capabilities(backend, device), devices_with(CapabilityFlags)",
-    "document": "crates/ironaccelerator-core/src/backend.rs",
+    "api": "ironaccelerator_core::ontology::operations() -- every trait-surface operation with its effects: allocates, executes, compiles, transfers, blocks, unchecked",
+    "document": "crates/ironaccelerator-core/src/ontology.rs",
     "schema": 1
   },
   "capabilities": [
     {
       "name": "backend.kind",
-      "description": "Static identity of a compiled-in backend.",
+      "description": "Static identity of a compiled-in backend. Declares: no effects.",
       "requires_grant": false,
       "budgeted": false,
       "surfaces": [
@@ -21,7 +21,7 @@
     },
     {
       "name": "backend.is_available",
-      "description": "Whether the backend's runtime libraries were found on this host. The honest answer to `can I use CUDA here`.",
+      "description": "Whether the backend's runtime libraries were found on this host. Declares: no effects.",
       "requires_grant": false,
       "budgeted": false,
       "surfaces": [
@@ -30,7 +30,7 @@
     },
     {
       "name": "backend.enumerate",
-      "description": "Enumerate every visible device on a backend.",
+      "description": "Enumerate every visible device. Declares: no effects.",
       "requires_grant": false,
       "budgeted": false,
       "surfaces": [
@@ -39,7 +39,7 @@
     },
     {
       "name": "backend.capabilities",
-      "description": "Coarse capability flags for one device, translated from the vendor table into the common space.",
+      "description": "Coarse capability flags for one device, in the common space. Declares: no effects.",
       "requires_grant": false,
       "budgeted": false,
       "surfaces": [
@@ -48,7 +48,7 @@
     },
     {
       "name": "device.descriptor",
-      "description": "Static description of a device.",
+      "description": "Static description of a device. Declares: no effects.",
       "requires_grant": false,
       "budgeted": false,
       "surfaces": [
@@ -56,17 +56,8 @@
       ]
     },
     {
-      "name": "memory.alloc",
-      "description": "Allocate a device buffer. Draws on finite device memory that no other caller can then use.",
-      "requires_grant": true,
-      "budgeted": true,
-      "surfaces": [
-        "library"
-      ]
-    },
-    {
-      "name": "memory.trim",
-      "description": "Return unused pooled memory.",
+      "name": "device.id",
+      "description": "The device's identifier. Declares: no effects.",
       "requires_grant": false,
       "budgeted": false,
       "surfaces": [
@@ -74,53 +65,62 @@
       ]
     },
     {
-      "name": "compute.upload",
-      "description": "Copy host data to a device buffer. Cost scales with the data.",
-      "requires_grant": true,
-      "budgeted": true,
+      "name": "kernel.name",
+      "description": "The kernel's name. Declares: no effects.",
+      "requires_grant": false,
+      "budgeted": false,
       "surfaces": [
         "library"
       ]
     },
     {
-      "name": "compute.download",
-      "description": "Copy device data back to the host. Cost scales with the data.",
-      "requires_grant": true,
-      "budgeted": true,
+      "name": "kernel.occupancy_hint",
+      "description": "Suggested occupancy for launch geometry. Declares: no effects.",
+      "requires_grant": false,
+      "budgeted": false,
       "surfaces": [
         "library"
       ]
     },
     {
-      "name": "compute.pipeline",
-      "description": "Build a compute pipeline from supplied code -- caller-supplied program text compiled for the device.",
-      "requires_grant": true,
-      "budgeted": true,
+      "name": "allocation.kind",
+      "description": "Which memory space an allocation lives in. Declares: no effects.",
+      "requires_grant": false,
+      "budgeted": false,
       "surfaces": [
         "library"
       ]
     },
     {
-      "name": "compute.dispatch",
-      "description": "Dispatch a compute pipeline. Occupies the device for as long as the work takes.",
-      "requires_grant": true,
-      "budgeted": true,
+      "name": "allocation.len_bytes",
+      "description": "Size of an allocation. Declares: no effects.",
+      "requires_grant": false,
+      "budgeted": false,
       "surfaces": [
         "library"
       ]
     },
     {
-      "name": "kernel.launch",
-      "description": "Launch a kernel on a stream.",
-      "requires_grant": true,
-      "budgeted": true,
+      "name": "memory.kind",
+      "description": "Which memory space a pool serves. Declares: no effects.",
+      "requires_grant": false,
+      "budgeted": false,
       "surfaces": [
         "library"
       ]
     },
     {
-      "name": "stream.synchronize",
-      "description": "Block until a stream's queued work completes.",
+      "name": "compute.buffer_len",
+      "description": "Size of a device buffer. Declares: no effects.",
+      "requires_grant": false,
+      "budgeted": false,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "stream.is_idle",
+      "description": "Whether a stream has outstanding work. Declares: no effects.",
       "requires_grant": false,
       "budgeted": false,
       "surfaces": [
@@ -129,7 +129,7 @@
     },
     {
       "name": "stream.record",
-      "description": "Record an event on a stream.",
+      "description": "Record an event on a stream. Declares: no effects.",
       "requires_grant": false,
       "budgeted": false,
       "surfaces": [
@@ -137,8 +137,8 @@
       ]
     },
     {
-      "name": "event.wait",
-      "description": "Block until an event completes.",
+      "name": "event.is_complete",
+      "description": "Whether a recorded event has fired. Declares: no effects.",
       "requires_grant": false,
       "budgeted": false,
       "surfaces": [
@@ -147,13 +147,112 @@
     },
     {
       "name": "event.elapsed_ms",
-      "description": "Time between two recorded events.",
+      "description": "Time between two recorded events. Declares: no effects.",
       "requires_grant": false,
+      "budgeted": false,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "memory.alloc",
+      "description": "Allocate a device buffer. Declares: allocates.",
+      "requires_grant": true,
+      "budgeted": true,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "compute.device_buffer",
+      "description": "Allocate a device buffer through the compute surface. Declares: allocates.",
+      "requires_grant": true,
+      "budgeted": true,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "compute.upload",
+      "description": "Copy host data into a device buffer. Declares: allocates, transfers.",
+      "requires_grant": true,
+      "budgeted": true,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "compute.download",
+      "description": "Copy device data back to the host. Declares: transfers, blocks.",
+      "requires_grant": true,
+      "budgeted": true,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "compute.pipeline",
+      "description": "Build a compute pipeline from caller-supplied code. Declares: compiles.",
+      "requires_grant": true,
+      "budgeted": true,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "compute.dispatch",
+      "description": "Dispatch a compute pipeline. Declares: executes.",
+      "requires_grant": true,
+      "budgeted": true,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "kernel.launch",
+      "description": "Launch a kernel on a stream. Declares: executes.",
+      "requires_grant": true,
+      "budgeted": true,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "memory.trim",
+      "description": "Return unused pooled memory to the driver. Declares: blocks.",
+      "requires_grant": false,
+      "budgeted": false,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "stream.synchronize",
+      "description": "Block until a stream's queued work completes. Declares: blocks.",
+      "requires_grant": false,
+      "budgeted": false,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "event.wait",
+      "description": "Block until an event completes. Declares: blocks.",
+      "requires_grant": false,
+      "budgeted": false,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "allocation.as_ptr",
+      "description": "Raw device pointer. Backends that virtualise pointers return a \\\n handle cast to a raw pointer, so it is not always dereferenceable \\\n on the host. Declares: unchecked.",
+      "requires_grant": true,
       "budgeted": false,
       "surfaces": [
         "library"
       ]
     }
   ],
-  "note": "A library, not a service: these are trait methods a linking caller invokes in its own process, so `requires_grant` means the caller should gate them, not that IronAccelerator refuses them. Nothing here is enforced by this crate and the manifest does not claim otherwise. Neither field is derived -- the traits declare no effect data -- so both are judgements from the API semantics. The line drawn: discovery is free, and consumption is not. Backend and device enumeration, capability flags, stream synchronisation and event timing all read state that already exists. Allocation, transfer, pipeline construction and dispatch each take a share of a device that no other caller can then use, which is why every one of them is both granted and budgeted -- an unusual alignment in this stack, and the correct one here, because on a GPU the authority to use it and the cost of using it are the same resource. compute.pipeline is granted for a second reason: it compiles caller-supplied code for the device. That is closer to plugin loading than to memory allocation, and a caller gating only dispatch would have missed it."
+  "note": "requires_grant and budgeted are now DERIVED from the effects the crate declares per operation. An earlier version of this file said both were judgement, which was true before the ontology module existed. The effect set is deliberately not a read_only boolean. On a device the authority to use it and the cost of using it are the same resource, so the operations that allocate, execute, compile or transfer are both granted and budgeted together -- an alignment that would look like a mistake elsewhere in this stack and is correct here. compute.pipeline is granted for a distinct reason and declares `compiles` rather than `executes`: it turns caller-supplied bytes into device instructions without running them. A caller gating only on execution would let arbitrary program text reach the device unexamined, and a test pins the two apart. allocation.as_ptr is the one operation granted without consuming anything. It hands out a raw pointer -- which backends that virtualise pointers return as a handle, not a dereferenceable host address -- and it is the only member of the `unchecked` set. A test asserts that set stays exactly one entry, because this crate trades guard-rails for throughput by design and each further trade should be reviewed as one. Unlike the CLI tools in this stack, this ontology is hand-maintained: Rust offers no reflection over trait methods, so no drift test can walk the real surface the way clap allows. Adding a trait method without declaring it here will not fail a build. The module says so in its own preamble rather than implying a guarantee it cannot make."
 }
