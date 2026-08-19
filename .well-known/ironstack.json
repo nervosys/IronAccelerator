@@ -1,0 +1,159 @@
+{
+  "ironstack": "1",
+  "id": "ironaccelerator",
+  "product": "IronAccelerator",
+  "layer": "substrate",
+  "role": "Low-level, hardware-agnostic Rust interface over NVIDIA, AMD, Apple, Qualcomm, Intel, Google, and AWS accelerators plus Vulkan/D3D12/OpenGL/WebGPU. Agent-first: predictable shapes, terse APIs, errors that name the failing operation. Includes a faster drop-in replacement for cudarc.",
+  "ontology": {
+    "api": "Backend trait discovery surface: kind, is_available, enumerate, capabilities; plus Runtime::available_backends, capabilities(backend, device), devices_with(CapabilityFlags)",
+    "document": "crates/ironaccelerator-core/src/backend.rs",
+    "schema": 1
+  },
+  "capabilities": [
+    {
+      "name": "backend.kind",
+      "description": "Static identity of a compiled-in backend.",
+      "requires_grant": false,
+      "budgeted": false,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "backend.is_available",
+      "description": "Whether the backend's runtime libraries were found on this host. The honest answer to `can I use CUDA here`.",
+      "requires_grant": false,
+      "budgeted": false,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "backend.enumerate",
+      "description": "Enumerate every visible device on a backend.",
+      "requires_grant": false,
+      "budgeted": false,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "backend.capabilities",
+      "description": "Coarse capability flags for one device, translated from the vendor table into the common space.",
+      "requires_grant": false,
+      "budgeted": false,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "device.descriptor",
+      "description": "Static description of a device.",
+      "requires_grant": false,
+      "budgeted": false,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "memory.alloc",
+      "description": "Allocate a device buffer. Draws on finite device memory that no other caller can then use.",
+      "requires_grant": true,
+      "budgeted": true,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "memory.trim",
+      "description": "Return unused pooled memory.",
+      "requires_grant": false,
+      "budgeted": false,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "compute.upload",
+      "description": "Copy host data to a device buffer. Cost scales with the data.",
+      "requires_grant": true,
+      "budgeted": true,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "compute.download",
+      "description": "Copy device data back to the host. Cost scales with the data.",
+      "requires_grant": true,
+      "budgeted": true,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "compute.pipeline",
+      "description": "Build a compute pipeline from supplied code -- caller-supplied program text compiled for the device.",
+      "requires_grant": true,
+      "budgeted": true,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "compute.dispatch",
+      "description": "Dispatch a compute pipeline. Occupies the device for as long as the work takes.",
+      "requires_grant": true,
+      "budgeted": true,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "kernel.launch",
+      "description": "Launch a kernel on a stream.",
+      "requires_grant": true,
+      "budgeted": true,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "stream.synchronize",
+      "description": "Block until a stream's queued work completes.",
+      "requires_grant": false,
+      "budgeted": false,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "stream.record",
+      "description": "Record an event on a stream.",
+      "requires_grant": false,
+      "budgeted": false,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "event.wait",
+      "description": "Block until an event completes.",
+      "requires_grant": false,
+      "budgeted": false,
+      "surfaces": [
+        "library"
+      ]
+    },
+    {
+      "name": "event.elapsed_ms",
+      "description": "Time between two recorded events.",
+      "requires_grant": false,
+      "budgeted": false,
+      "surfaces": [
+        "library"
+      ]
+    }
+  ],
+  "note": "A library, not a service: these are trait methods a linking caller invokes in its own process, so `requires_grant` means the caller should gate them, not that IronAccelerator refuses them. Nothing here is enforced by this crate and the manifest does not claim otherwise. Neither field is derived -- the traits declare no effect data -- so both are judgements from the API semantics. The line drawn: discovery is free, and consumption is not. Backend and device enumeration, capability flags, stream synchronisation and event timing all read state that already exists. Allocation, transfer, pipeline construction and dispatch each take a share of a device that no other caller can then use, which is why every one of them is both granted and budgeted -- an unusual alignment in this stack, and the correct one here, because on a GPU the authority to use it and the cost of using it are the same resource. compute.pipeline is granted for a second reason: it compiles caller-supplied code for the device. That is closer to plugin loading than to memory allocation, and a caller gating only dispatch would have missed it."
+}
