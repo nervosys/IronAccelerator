@@ -36,7 +36,9 @@ fn dispatch_doubles_a_buffer() {
     let code = std::fs::read(&path).expect("IA_LEVELZERO_SHADER unreadable");
 
     const N: usize = 1024;
-    let input: Vec<u8> = (0..N as u32).flat_map(|i| (i as f32 * 0.5).to_le_bytes()).collect();
+    let input: Vec<u8> = (0..N as u32)
+        .flat_map(|i| (i as f32 * 0.5).to_le_bytes())
+        .collect();
 
     let buf = ctx.upload(&input).expect("upload");
     assert_eq!(ctx.buffer_len(&buf), input.len() as u64);

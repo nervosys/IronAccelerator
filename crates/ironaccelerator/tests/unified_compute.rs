@@ -27,7 +27,9 @@ const N: usize = 1024;
 /// `N` floats, runs a shader that doubles each, reads them back. Returns the
 /// downloaded values so the caller can check them.
 fn double_roundtrip<C: ComputeDevice>(dev: &C, code: &[u8]) -> Result<Vec<f32>, C::Error> {
-    let input: Vec<u8> = (0..N as u32).flat_map(|i| (i as f32 * 0.5).to_le_bytes()).collect();
+    let input: Vec<u8> = (0..N as u32)
+        .flat_map(|i| (i as f32 * 0.5).to_le_bytes())
+        .collect();
     let buf = dev.upload(&input)?;
     let pipe = dev.pipeline(code, 1)?;
     dev.dispatch(&pipe, &[&buf], [(N / 64) as u32, 1, 1])?;
@@ -56,11 +58,10 @@ void main() { data[gl_GlobalInvocationID.x] *= 2.0; }
 
 fn spirv() -> Option<Vec<u8>> {
     let sdk = std::env::var("VULKAN_SDK").ok()?;
-    let glslc = PathBuf::from(sdk).join("Bin").join(if cfg!(windows) {
-        "glslc.exe"
-    } else {
-        "glslc"
-    });
+    let glslc =
+        PathBuf::from(sdk)
+            .join("Bin")
+            .join(if cfg!(windows) { "glslc.exe" } else { "glslc" });
     let glslc = if glslc.is_file() {
         glslc
     } else {

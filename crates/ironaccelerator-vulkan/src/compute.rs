@@ -575,7 +575,10 @@ mod tests {
         let src: Vec<u8> = (0..8192u32).map(|i| (i * 7 % 253) as u8).collect();
         let dev = c.upload(&src).expect("upload");
         assert_eq!(dev.size, src.len() as u64);
-        assert!(!dev.is_host_visible(), "upload must return device-local memory");
+        assert!(
+            !dev.is_host_visible(),
+            "upload must return device-local memory"
+        );
         let mut out = vec![0u8; src.len()];
         c.download(&dev, &mut out).expect("download");
         assert_eq!(out, src, "device round-trip corrupted data");

@@ -66,20 +66,26 @@ impl Backend for MetalBackend {
     }
 
     fn capabilities(&self, device: u32) -> Result<CapabilityFlags> {
-        // Every Metal device on a host shares a capability set; the lookup is
-        // here so an ordinal that does not exist is an error rather than a
-        // plausible-looking answer.
-        if !self.enumerate()?.iter().any(|d| d.id.ordinal == device) {
-            return Err(ironaccelerator_core::Error::InvalidArgument(
-                "metal device ordinal out of range",
-            ));
+        // Capabilities are per-family (BF16/INT8/INT4 vary), so this must derive
+        // from the same `capability_for` path `enumerate()` uses for this exact
+        // ordinal — a hardcoded set would disagree with the descriptor on any
+        // device whose family differs from the constant. An out-of-range ordinal
+        // is a typed error rather than a plausible-looking answer.
+        #[cfg(target_vendor = "apple")]
+        {
+            let devices = crate::drv::Device::all();
+            let d = devices.get(device as usize).ok_or(
+                ironaccelerator_core::Error::InvalidArgument("metal device ordinal out of range"),
+            )?;
+            Ok(capability_for(d.apple_family()).0)
         }
-        Ok(CapabilityFlags::FP32
-            | CapabilityFlags::FP16
-            | CapabilityFlags::BF16
-            | CapabilityFlags::UNIFIED_MEMORY
-            | CapabilityFlags::ANE
-            | CapabilityFlags::MULTI_STREAM)
+        #[cfg(not(target_vendor = "apple"))]
+        {
+            let _ = device;
+            Err(ironaccelerator_core::Error::InvalidArgument(
+                "metal device ordinal out of range",
+            ))
+        }
     }
 }
 

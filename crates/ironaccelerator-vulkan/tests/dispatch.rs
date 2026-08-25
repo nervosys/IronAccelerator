@@ -160,7 +160,10 @@ fn dispatch_doubles_a_buffer_on_every_device() {
                 pd.name
             );
         }
-        eprintln!("[{}] {} — dispatch verified over {N} floats", pd.ordinal, pd.name);
+        eprintln!(
+            "[{}] {} — dispatch verified over {N} floats",
+            pd.ordinal, pd.name
+        );
         ran += 1;
     }
     if ran == 0 {
