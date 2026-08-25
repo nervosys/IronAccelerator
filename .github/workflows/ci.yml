@@ -83,6 +83,11 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+      # Belt-and-suspenders: the toolchain action's `targets:` input has been
+      # seen to leave the target's `rust-std` absent on cached runners, which
+      # surfaces as `E0463: can't find crate for std`. Adding it explicitly is
+      # idempotent and guarantees the sysroot is present.
+      - run: rustup target add wasm32-unknown-unknown
       - run: cargo build -p ironaccelerator-webgpu --target wasm32-unknown-unknown
       - run: cargo build -p ironaccelerator-core --target wasm32-unknown-unknown
       - run: cargo build -p ironaccelerator-core --target wasm32-unknown-unknown --no-default-features
@@ -114,6 +119,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: rustsec/audit-check@v2.0.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: Swatinem/rust-cache@v2
+      # Install cargo-audit from its own pinned lockfile. Building it unlocked
+      # (as rustsec/audit-check@v2 does internally) lets a transitive dep resolve
+      # to a version whose MSRV outruns the runner's toolchain — `kstring 2.0.4`
+      # wanted rustc 1.96 on a 1.89 runner. `--locked` uses the versions
+      # cargo-audit tested against, which build on stable.
+      - run: cargo install --locked cargo-audit
+      # Plain `cargo audit` fails on vulnerability advisories but treats
+      # informational `unmaintained` / `yanked` findings as warnings (exit 0),
+      # which is the posture this job has always had.
+      - run: cargo audit
