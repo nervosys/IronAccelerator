@@ -489,9 +489,13 @@ pub fn handle_for(stream: &Arc<Stream>) -> Result<Arc<CusolverDnHandle>> {
             return Ok(h.clone());
         }
     }
-    let h = CusolverDnHandle::new(device.clone())?;
+    // Double-checked insert: adopt whichever handle a parallel caller cached
+    // first for this ordinal (dropping our redundant one), then bind the caller's
+    // stream to it — matching the rebind-on-each-borrow contract the hit path
+    // above also honours.
+    let created = CusolverDnHandle::new(device.clone())?;
+    let h = HANDLES.lock().entry(ord).or_insert(created).clone();
     h.set_stream(stream)?;
-    HANDLES.lock().insert(ord, h.clone());
     Ok(h)
 }
 
