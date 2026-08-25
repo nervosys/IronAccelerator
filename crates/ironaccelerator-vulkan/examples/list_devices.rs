@@ -17,7 +17,10 @@ fn main() {
     for pd in drv::enumerate() {
         println!("[{}] {}", pd.ordinal, pd.name);
         // Decode `VK_MAKE_API_VERSION`: major in bits 22..29, minor in 12..21.
-        let (major, minor) = ((pd.api_version >> 22) & 0x7f, (pd.api_version >> 12) & 0x3ff);
+        let (major, minor) = (
+            (pd.api_version >> 22) & 0x7f,
+            (pd.api_version >> 12) & 0x3ff,
+        );
         println!(
             "     vendor={:04x} type={:?} api=vk{major}.{minor}",
             pd.vendor_id, pd.device_type,

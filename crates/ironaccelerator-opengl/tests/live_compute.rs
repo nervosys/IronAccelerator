@@ -25,12 +25,10 @@ use windows_sys::Win32::Foundation::{HMODULE, HWND};
 use windows_sys::Win32::Graphics::Gdi::{GetDC, ReleaseDC, HDC};
 use windows_sys::Win32::Graphics::OpenGL::{
     wglCreateContext, wglDeleteContext, wglGetProcAddress, wglMakeCurrent, ChoosePixelFormat,
-    SetPixelFormat, HGLRC, PFD_DOUBLEBUFFER, PFD_DRAW_TO_WINDOW, PFD_MAIN_PLANE, PFD_SUPPORT_OPENGL,
-    PFD_TYPE_RGBA, PIXELFORMATDESCRIPTOR,
+    SetPixelFormat, HGLRC, PFD_DOUBLEBUFFER, PFD_DRAW_TO_WINDOW, PFD_MAIN_PLANE,
+    PFD_SUPPORT_OPENGL, PFD_TYPE_RGBA, PIXELFORMATDESCRIPTOR,
 };
-use windows_sys::Win32::System::LibraryLoader::{
-    GetModuleHandleW, GetProcAddress, LoadLibraryA,
-};
+use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress, LoadLibraryA};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, RegisterClassW, CS_OWNDC, CW_USEDEFAULT,
     WNDCLASSW, WS_OVERLAPPEDWINDOW,
@@ -42,8 +40,7 @@ const WGL_CONTEXT_MAJOR_VERSION_ARB: i32 = 0x2091;
 const WGL_CONTEXT_MINOR_VERSION_ARB: i32 = 0x2092;
 const WGL_CONTEXT_PROFILE_MASK_ARB: i32 = 0x9126;
 const WGL_CONTEXT_CORE_PROFILE_BIT_ARB: i32 = 0x0000_0001;
-type WglCreateContextAttribsArb =
-    unsafe extern "system" fn(HDC, HGLRC, *const i32) -> HGLRC;
+type WglCreateContextAttribsArb = unsafe extern "system" fn(HDC, HGLRC, *const i32) -> HGLRC;
 
 const GLSL: &str = r#"#version 430
 layout(local_size_x = 64) in;
@@ -245,7 +242,9 @@ fn compute_doubles_a_buffer_on_a_real_gl_context() {
     // Drive the compute path through the unified trait — same code the Vulkan
     // and D3D12 backends run.
     const N: usize = 256;
-    let input: Vec<u8> = (0..N as u32).flat_map(|i| (i as f32).to_le_bytes()).collect();
+    let input: Vec<u8> = (0..N as u32)
+        .flat_map(|i| (i as f32).to_le_bytes())
+        .collect();
 
     let dev = GlDevice::new();
     let buf = dev.upload(&input).expect("upload");
