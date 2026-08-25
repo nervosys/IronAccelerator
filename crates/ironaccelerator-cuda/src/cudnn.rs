@@ -99,9 +99,14 @@ pub fn handle_for(stream: &Arc<Stream>) -> Result<Arc<CudnnHandle>> {
             return Ok(h.clone());
         }
     }
-    let h = CudnnHandle::new(device.clone())?;
+    // Double-checked insert: a parallel caller may have cached a handle for this
+    // ordinal while we were creating ours. Adopt whichever landed first (dropping
+    // our redundant one) so callers share a single handle, then bind the caller's
+    // stream to it — matching the rebind-on-each-borrow contract the hit path
+    // above also honours.
+    let created = CudnnHandle::new(device.clone())?;
+    let h = HANDLES.lock().entry(ord).or_insert(created).clone();
     h.set_stream(stream)?;
-    HANDLES.lock().insert(ord, h.clone());
     Ok(h)
 }
 

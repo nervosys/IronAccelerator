@@ -83,9 +83,10 @@ pub fn handle_for(device: Arc<drv::Device>) -> Result<Arc<CutensorHandle>> {
             return Ok(h.clone());
         }
     }
+    // Double-checked insert: keep whichever handle a parallel caller cached
+    // first for this ordinal, rather than unconditionally replacing it.
     let h = CutensorHandle::new(device)?;
-    HANDLES.lock().insert(ord, h.clone());
-    Ok(h)
+    Ok(HANDLES.lock().entry(ord).or_insert(h).clone())
 }
 
 pub fn is_available() -> bool {

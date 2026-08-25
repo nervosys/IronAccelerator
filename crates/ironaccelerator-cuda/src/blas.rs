@@ -94,9 +94,12 @@ pub fn handle_for(stream: &Arc<Stream>) -> Result<Arc<BlasLt>> {
             return Ok(h.clone());
         }
     }
+    // Create outside the lock (FFI), then double-check on insert: a parallel
+    // caller may have cached a handle for this ordinal meanwhile. Keep whichever
+    // landed first so every caller shares one handle instead of an unconditional
+    // insert silently replacing (and orphaning) it.
     let h = BlasLt::new(device.clone())?;
-    HANDLES.lock().insert(ord, h.clone());
-    Ok(h)
+    Ok(HANDLES.lock().entry(ord).or_insert(h).clone())
 }
 
 // ─── Matmul descriptor ──────────────────────────────────────────────────────
