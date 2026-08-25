@@ -2,7 +2,7 @@
   "ironstack": "1",
   "id": "ironaccelerator",
   "product": "IronAccelerator",
-  "layer": "substrate",
+  "layer": "substrates",
   "role": "Low-level, hardware-agnostic Rust interface over NVIDIA, AMD, Apple, Qualcomm, Intel, Google, and AWS accelerators plus Vulkan/D3D12/OpenGL/WebGPU. Agent-first: predictable shapes, terse APIs, errors that name the failing operation. Includes a faster drop-in replacement for cudarc.",
   "ontology": {
     "api": "ironaccelerator_core::ontology::operations() -- every trait-surface operation with its effects: allocates, executes, compiles, transfers, blocks, unchecked",
