@@ -111,14 +111,11 @@ fn describe(ordinal: u32, a: AdapterInfo) -> DeviceDescriptor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::drv::{bind_adapter, unbind_adapter};
-    use std::sync::Mutex;
-
-    static GUARD: Mutex<()> = Mutex::new(());
+    use crate::drv::{bind_adapter, unbind_adapter, TEST_BINDING_LOCK};
 
     #[test]
     fn unbound_backend_reports_unavailable() {
-        let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _g = TEST_BINDING_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         unbind_adapter();
         assert!(!WEBGPU_BACKEND.is_available());
         assert!(WEBGPU_BACKEND.enumerate().unwrap().is_empty());
@@ -127,7 +124,7 @@ mod tests {
 
     #[test]
     fn bound_adapter_is_described_and_capable() {
-        let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _g = TEST_BINDING_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         bind_adapter(AdapterInfo {
             vendor: "amd".into(),
             architecture: "rdna-3".into(),
@@ -156,7 +153,7 @@ mod tests {
 
     #[test]
     fn without_shader_f16_only_fp32() {
-        let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _g = TEST_BINDING_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         bind_adapter(AdapterInfo {
             vendor: "intel".into(),
             ..Default::default()

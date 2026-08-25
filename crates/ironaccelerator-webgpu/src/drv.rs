@@ -49,6 +49,14 @@ pub struct AdapterInfo {
 
 static BOUND: Mutex<Option<AdapterInfo>> = Mutex::new(None);
 
+/// Test-only: a single lock shared by every test in this crate that touches the
+/// process-global [`BOUND`] binding. The `drv` and `backend` test modules run
+/// in one binary across parallel threads and both mutate `BOUND`; without a
+/// *shared* guard each module would serialise only against itself and the two
+/// would race. Every such test takes this lock first.
+#[cfg(test)]
+pub(crate) static TEST_BINDING_LOCK: Mutex<()> = Mutex::new(());
+
 /// Register the adapter this host negotiated. Replaces any previous binding.
 ///
 /// Call after `requestAdapter()` / `requestDevice()` resolve. The `GPUDevice`
@@ -90,10 +98,10 @@ pub fn enumerate() -> Vec<AdapterInfo> {
 mod tests {
     use super::*;
 
-    /// Serialises the tests below: they share one process-wide binding.
+    /// Serialises the tests below against every other test in the crate that
+    /// touches the process-wide binding, via the shared [`TEST_BINDING_LOCK`].
     fn with_clean_binding<T>(f: impl FnOnce() -> T) -> T {
-        static GUARD: Mutex<()> = Mutex::new(());
-        let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _g = TEST_BINDING_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         unbind_adapter();
         let out = f();
         unbind_adapter();
