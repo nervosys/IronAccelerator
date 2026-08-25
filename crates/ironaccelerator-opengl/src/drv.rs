@@ -49,14 +49,36 @@ pub fn shared_context() -> Option<&'static glow::Context> {
     GL.get()
 }
 
+/// Parse `(major, minor)` from a `GL_VERSION` string such as `"4.3.0 NVIDIA…"`
+/// or `"1.1.0"`. Unlike the `GL_MAJOR_VERSION` / `GL_MINOR_VERSION` enums —
+/// which only exist from GL 3.0 and read back 0 on anything older — the version
+/// *string* is defined on every GL version, so this is the reliable probe on an
+/// ancient context (e.g. a headless runner's GL 1.1 software rasteriser).
+fn parse_gl_version(version: &str) -> (u32, u32) {
+    let head = version.split_whitespace().next().unwrap_or("");
+    let mut parts = head.split('.');
+    let major = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+    let minor = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+    (major, minor)
+}
+
 fn probe(gl: &glow::Context) -> GlInfo {
     unsafe {
         let renderer = gl.get_parameter_string(glow::RENDERER);
         let vendor = gl.get_parameter_string(glow::VENDOR);
         let version = gl.get_parameter_string(glow::VERSION);
-        let glsl_version = gl.get_parameter_string(glow::SHADING_LANGUAGE_VERSION);
-        let major = gl.get_parameter_i32(glow::MAJOR_VERSION).max(0) as u32;
-        let minor = gl.get_parameter_i32(glow::MINOR_VERSION).max(0) as u32;
+        let (major, minor) = parse_gl_version(&version);
+        // GL_SHADING_LANGUAGE_VERSION only exists from GL 2.0. Querying it on an
+        // older context raises GL_INVALID_ENUM, and glow's string getter *panics*
+        // on the failed read ("context version too outdated") rather than
+        // returning an error — a GDI-generic GL 1.1 context on a headless CI box
+        // hits exactly this. Guard the query so probing an ancient context
+        // reports "no compute" cleanly instead of bringing the process down.
+        let glsl_version = if major >= 2 {
+            gl.get_parameter_string(glow::SHADING_LANGUAGE_VERSION)
+        } else {
+            String::new()
+        };
         let supports_compute = (major, minor) >= (4, 3);
 
         let (mcwgi, mcwgc, msm) = if supports_compute {
@@ -92,5 +114,29 @@ fn probe(gl: &glow::Context) -> GlInfo {
             max_shared_memory_bytes: msm,
             supports_compute,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_gl_version;
+
+    #[test]
+    fn parses_vendor_suffixed_and_bare_versions() {
+        assert_eq!(parse_gl_version("4.3.0 NVIDIA 552.44"), (4, 3));
+        assert_eq!(
+            parse_gl_version("4.6.0 Compatibility Profile Context"),
+            (4, 6)
+        );
+        assert_eq!(parse_gl_version("1.1.0"), (1, 1)); // GDI-generic on a CI box
+        assert_eq!(parse_gl_version("3.2 Core Profile"), (3, 2));
+    }
+
+    #[test]
+    fn malformed_versions_degrade_to_zero_not_panic() {
+        assert_eq!(parse_gl_version(""), (0, 0));
+        assert_eq!(parse_gl_version("OpenGL ES 3.1"), (0, 0)); // leading non-numeric token
+        assert_eq!(parse_gl_version("garbage"), (0, 0));
+        assert_eq!(parse_gl_version("4"), (4, 0)); // major only, minor defaults
     }
 }
