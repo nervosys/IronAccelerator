@@ -182,16 +182,27 @@ pub fn get_or_compile(
             bytes
         }
     };
-    let module = Module::load(device.clone(), &ptx)?;
-    let function = module.function(fn_name)?;
+    let compiled = Module::load(device.clone(), &ptx)?;
+    let cstr = CString::new(fn_name).map_err(|_| nvrtc_err("fn_name: NUL in string"))?;
 
-    CACHE.write().insert(
-        key,
-        CacheEntry {
-            module: module.clone(),
-            _fn_name: CString::new(fn_name).map_err(|_| nvrtc_err("fn_name: NUL in string"))?,
-        },
-    );
+    // Double-checked insert. Between the read miss above and here, a parallel
+    // caller may have compiled the same key and published its own module; an
+    // unconditional `insert` would overwrite the `Arc<Module>` that caller (and
+    // anyone it handed the module to) is still holding, so a later read returns
+    // a *different* Arc for an identical key. `get_or_compile` must be
+    // idempotent by identity, not just by value — keep whichever module reached
+    // the cache first and drop our redundant compile.
+    let module = {
+        let mut w = CACHE.write();
+        w.entry(key)
+            .or_insert(CacheEntry {
+                module: compiled,
+                _fn_name: cstr,
+            })
+            .module
+            .clone()
+    };
+    let function = module.function(fn_name)?;
     Ok(CompiledKernel { module, function })
 }
 
