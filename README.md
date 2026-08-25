@@ -52,7 +52,7 @@ Honest current state. **CUDA is the only backend that's production-ready today.*
 | Metal      | Apple                              | ✅ enumerate + compute | ❌ bring your own metallib | ❌            | ❌                   | ⏳ cross-checks; needs macOS to run | macOS 14+ / iOS 17+ |
 | Vulkan     | cross-vendor GPU compute           | ✅ enumerate + compute | ❌ bring your own SPIR-V | ❌              | ❌                   | ✅ dispatch on 3 devices | Vulkan 1.3 ICD          |
 | QNN        | Qualcomm Hexagon NPU               | ⚠️ scaffold      | n/a (QNN is AOT)       | ❌                   | ❌                   | ❌ needs SDK + device | QNN SDK 2.22+              |
-| OpenGL     | legacy / embedded GPU fallback     | ✅ enumerate + compute | ⏳              | ❌                   | ❌                   | ✅ dispatch (WGL 4.3) | GL 4.3+ compute            |
+| OpenGL     | legacy / embedded GPU fallback     | ✅ enumerate + compute | ✅ GLSL (driver compiles) | ❌            | ❌                   | ✅ dispatch (WGL 4.3) | GL 4.3+ compute            |
 | **D3D12**  | Windows, all vendors               | ✅ enumerate + compute | ❌ bring your own DXIL | ❌              | ❌                   | ✅ dispatch on 3 adapters | Windows 10 1507+ |
 | WebGPU     | browser / WASM only                | ✅ host-bound adapter   | n/a (host owns device) | ❌              | ❌                   | ⏳ needs browser harness | Chrome 113+ / Safari 17.4+ |
 | TPU (PJRT) | Google TPU v4 / v5 / v6e           | ⚠️ env probe     | n/a (PJRT plugin AOT)  | ❌                   | ❌                   | ❌ needs TPU VM | PJRT plugin (`libtpu.so`)      |
