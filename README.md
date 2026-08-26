@@ -49,7 +49,7 @@ Honest current state. **CUDA is the only backend that's production-ready today.*
 | ---------- | ---------------------------------- | --------------- | ---------------------- | -------------------- | -------------------- | -------------- | ------------------------------- |
 | **CUDA**   | NVIDIA                             | ✅ full          | ✅ NVRTC + disk cache  | ✅ `cudarc_compat`   | ✅ `MemPool` (~70× cudarc) | ✅ 45 tests | CUDA 12.5+ driver (13.x tested) |
 | ROCm       | AMD                                | ✅ HIP full      | ✅ HIPRTC †            | ❌                   | ⚠️ shared-tier †     | ❌ no AMD GPU on CI host | ROCm 6.2+                |
-| Metal      | Apple                              | ✅ enumerate + compute | ❌ bring your own metallib | ❌            | ❌                   | ⏳ cross-checks; needs macOS to run | macOS 14+ / iOS 17+ |
+| Metal      | Apple                              | ✅ enumerate + compute | ❌ bring your own metallib | ❌            | ❌                   | ✅ live on GitHub macOS CI | macOS 14+ / iOS 17+ |
 | Vulkan     | cross-vendor GPU compute           | ✅ enumerate + compute | ❌ bring your own SPIR-V | ❌              | ❌                   | ✅ dispatch on 3 devices | Vulkan 1.3 ICD          |
 | QNN        | Qualcomm Hexagon NPU               | ⚠️ scaffold      | n/a (QNN is AOT)       | ❌                   | ❌                   | ❌ needs SDK + device | QNN SDK 2.22+              |
 | OpenGL     | legacy / embedded GPU fallback     | ✅ enumerate + compute | ✅ GLSL (driver compiles) | ❌            | ❌                   | ✅ dispatch (WGL 4.3) | GL 4.3+ compute            |
@@ -71,6 +71,8 @@ Legend:
 Every backend is loaded via `libloading` at first use — the workspace builds on any host, with or without the vendor SDK. Missing runtimes surface as typed `NotAvailable` errors, not link failures.
 
 If you're shopping for "drop-in cudarc replacement", use the CUDA backend; that's the whole point of the project today. If you need ROCm/Metal/Vulkan/QNN parity with the CUDA backend's posture, [`STATUS.md`](docs/backends/STATUS.md) lists what remains per backend — none of the non-CUDA backends are at production-ready quality yet, and most need their target hardware in CI to validate further work.
+
+**Hardware validation in CI.** GitHub-hosted runners provide CPUs and real Macs and nothing else, so the live paths split three ways: **Metal runs live for free** on GitHub's macOS runners (a dedicated CI job dispatches a real `ComputeDevice` round-trip on the runner's GPU); **ROCm, Intel GPU, and FPGA** each have a wired [self-hosted-runner lane](.github/workflows/hardware.yml) that validates them the moment you register the hardware; and **TPU / Neuron / Gaudi** need a cloud instance or bespoke host GitHub cannot offer. The full breakdown, with runner-registration steps, is in [`docs/backends/CI-HARDWARE.md`](docs/backends/CI-HARDWARE.md).
 
 Per-backend build prerequisites and runtime environment variables live in [`docs/backends/`](docs/backends/).
 
@@ -390,6 +392,27 @@ Driver-substrate work only — kernels, planners, and workload abstractions belo
       runtime-compile path to build).
 - [ ] QNN SDK FFI + safe wrappers.
 - [ ] Level Zero / oneAPI tighter capability probe (COMPUTE queue-group query).
+
+## Security
+
+- **No build-time code execution.** No `build.rs` in any crate; every vendor
+  runtime is loaded via `libloading` at first use, so there is no compile-time
+  link to a closed-source artifact and no install-time script.
+- **Dependency scanning.** `cargo audit` (RustSec advisory DB) runs on every
+  push and PR, and again in the `cargo audit` CI job. Current state: **no
+  vulnerability advisories**; the one open item is `paste` (RUSTSEC-2024-0436,
+  *unmaintained*), which is a dev-only build dependency of the benchmark harness
+  and absent from every crate's shipped graph.
+- **Audited `unsafe` surface.** The `unsafe` in the tree is FFI-call boundaries
+  and pointer handling against vendor driver allocators — hand-written
+  `extern "C"` vtables and RAII wrappers — with `from_raw` enum coercions
+  range-checked before use. The full review (CVE scan, FIPS 140-3, MITRE
+  ATT&CK, CMMC 2.0, secret scan) lives in
+  [`docs/SECURITY_AUDIT.md`](docs/SECURITY_AUDIT.md).
+- **CI hardware lanes are manual-dispatch only.** The self-hosted-runner
+  [`hardware.yml`](.github/workflows/hardware.yml) workflow never triggers on
+  `pull_request`, so a fork PR cannot execute code on your registered hardware.
+- Report vulnerabilities per [`SECURITY.md`](SECURITY.md).
 
 ## License
 

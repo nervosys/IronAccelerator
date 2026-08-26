@@ -1,8 +1,8 @@
-# Security audit — IronAccelerator 2.0.0
+# Security audit — IronAccelerator 2.2.0
 
-**Audit date:** 2026-07-28
+**Audit date:** 2026-08-26
 **Scope:** the IronAccelerator Rust workspace at `master` HEAD (commit
-`3a86699`), working tree clean. All 16 crates under `crates/`.
+`7e6b12b`), working tree clean. All 17 crates under `crates/`.
 **Auditor:** automated review on `master` HEAD.
 
 This document satisfies the release pre-flight requirement to inventory the
@@ -10,14 +10,18 @@ project against the four frameworks the user named: **CVE / RustSec**, **NIST
 FIPS 140-3**, **MITRE ATT&CK** (supply-chain / native-code attack patterns),
 and **CMMC 2.0** (Level 2, NIST SP 800-171 derived controls).
 
-> **2.0.0 delta.** Since the 1.2.0 audit the WebGPU path was rewritten to
-> drop `wgpu`/`naga` entirely (browser-bound host binding only), a
-> hand-written Direct3D 12 backend was added (`ironaccelerator-dx12`), and
-> the CUDA host copy paths were reworked with pinned staging. A
-> covert-telemetry feature proposed during development was **rejected and
-> never merged**; the single commit that briefly landed a disclosed
-> opt-out variant was reverted (`91f966e`). There is **no build script and
-> no network egress anywhere in the shipped graph** — see §3.
+> **2.2.0 delta.** Since the 2.0.0 audit: cross-vendor `ComputeDevice`
+> compute added across five backends; a new FPGA backend
+> (`ironaccelerator-fpga`) with an XRT `libxrt_core` loader; ROCm depth
+> (`iron_rocm_sys::hiprtc` FFI, `ironaccelerator_rocm::{kernel,pool}`); and a
+> class of concurrency fixes making the CUDA/ROCm module and vendor-library
+> caches race-free. New `unsafe` is confined to the same two shapes already
+> reviewed — hand-written `extern "C"` FFI vtables (HIPRTC, XRT) and RAII
+> pointer wrappers (the ROCm `MemPool`). One **new CI security property**: the
+> self-hosted-runner `hardware.yml` workflow is `workflow_dispatch`-only and
+> never triggers on `pull_request`, so a fork PR cannot execute on registered
+> hardware (§3). Still **no build script and no network egress anywhere in the
+> shipped graph**.
 
 ## Executive summary
 
@@ -29,12 +33,12 @@ and **CMMC 2.0** (Level 2, NIST SP 800-171 derived controls).
 | Embedded secrets in source tree      | 0                | —            | Pass                     |
 | Cryptographic primitives in scope    | 0                | —            | N/A for FIPS 140-3       |
 | Build scripts / install-time egress  | 0                | —            | Pass                     |
-| `unsafe` boundaries reviewed         | 1,030 tokens / 53 files | —      | Pass                     |
+| `unsafe` boundaries reviewed         | 1,110 tokens / 65 files | —      | Pass                     |
 | Panic-across-FFI vectors             | 0                | —            | Pass (no callbacks)      |
 | Supply-chain controls                | —                | —            | Pass                     |
 | CMMC 2.0 Level 2 control gaps        | 0                | —            | Closed (audit in CI)     |
 
-The crate is cleared for the 2.0.0 release. One non-blocking process
+The crate is cleared for the 2.2.0 release. One non-blocking process
 recommendation (SBOM at release) is listed in §6.
 
 ---
@@ -42,10 +46,11 @@ recommendation (SBOM at release) is listed in §6.
 ## 1. CVE / RustSec dependency scan
 
 `cargo audit` (cargo-audit-audit 0.22.2) against the RustSec advisory
-database (1,172 advisories loaded) was run over `Cargo.lock` covering **120
-crate dependencies**.
+database (1,226 advisories loaded) was re-run for this 2.2.0 audit over
+`Cargo.lock` covering **131 crate dependencies**.
 
-**Result: 0 vulnerabilities, 1 informational advisory.**
+**Result: 0 vulnerabilities, 1 informational advisory** (unchanged from
+2.0.0 — the new FPGA/ROCm code adds no new third-party dependencies).
 
 | Advisory          | Crate          | Class        | Disposition                                                                                                                   |
 | ----------------- | -------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------- |
@@ -127,12 +132,13 @@ not runtime endpoint compromise. Techniques considered:
 | Technique                                | ID        | Disposition                                                                                                                                                                                                                                                          |
 | ---------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Supply Chain Compromise                  | T1195     | Mitigated. **No `build.rs` in any crate** — zero install/compile-time code execution. `Cargo.lock` pinned; transitive deps reviewed via `cargo audit` in CI. All vendor SDKs loaded via `libloading` at run time — no compile-time link to closed-source artifacts. |
+| CI Poisoning — self-hosted runner abuse  | T1195.002 | Mitigated. The self-hosted-runner workflow (`.github/workflows/hardware.yml`, for the AMD/Intel/FPGA lanes) triggers on **`workflow_dispatch` only** — never on `pull_request`. A fork PR therefore cannot run attacker-controlled code on registered hardware, which is the standard self-hosted-runner compromise path. The hosted-runner CI (`ci.yml`) uses only ephemeral GitHub-hosted runners. |
 | Exfiltration / C2 over app protocol      | T1041 / T1071 | Mitigated. **No network code in any shipped crate** — no `reqwest`/`hyper`/`ureq`/`std::net`/socket symbols. The proposed telemetry exporter was rejected and the transient commit reverted (`91f966e`).                                                        |
 | Unsecured Credentials                    | T1552     | Mitigated. Tree-wide scan for bearer tokens / API keys / password literals: **0 hits**. No credential, `.env`, `.pem`, or key files tracked in git.                                                                                                                 |
 | Hijack Execution Flow — DLL Search Order | T1574.001 | Considered. Windows hosts resolve `nvcuda.dll`, `amdhip64.dll`, `d3d12.dll`, etc. through `libloading::Library::new`, which uses the OS resolver under safe-DLL-search mode (Windows 10+ default). No `SetDllDirectory` on a user-controlled path.                    |
-| Native Memory Corruption                 | T1055 / CWE-119/787 | 1,030 `unsafe` token occurrences across 53 files; the bulk are `unsafe extern "C" fn` pointer types in the hand-written FFI vtables (321 in `-cuda-sys` alone). All are FFI-call boundaries or pointer arithmetic against the driver allocator. `from_raw(u32)` enum coercions are range-checked before transmute; no `transmute` of non-POD types. |
-| Use After Free                           | CWE-416   | The pool's `DeviceBuf::detach_ptr` nulls `ptr`/`len` so a subsequent `Drop` is a no-op for the pointer. Exercised by the pool smoke tests.                                                                                                                          |
-| Data Race on Hot-Path Cache              | CWE-362   | `AtomicPtr<DriverFns>` cache uses `Acquire`/`Release`; the pointer is set once to a `&'static DriverFns` and never cleared, published happens-after `OnceLock` init.                                                                                                 |
+| Native Memory Corruption                 | T1055 / CWE-119/787 | 1,110 `unsafe` token occurrences across 65 files; the bulk are `unsafe extern "C" fn` pointer types in the hand-written FFI vtables (321 in `-cuda-sys` alone; the 2.2.0 HIPRTC and XRT vtables are the same shape). All are FFI-call boundaries or pointer arithmetic against the driver allocator. `from_raw(u32)` enum coercions are range-checked before transmute; no `transmute` of non-POD types. |
+| Use After Free                           | CWE-416   | The CUDA pool's `DeviceBuf::detach_ptr` nulls `ptr`/`len` so a subsequent `Drop` is a no-op for the pointer. The 2.2.0 ROCm `MemPool` uses a distinct discipline: each `PooledBuf` owns its device pointer uniquely and holds an `Arc<PoolInner>`, so the pool outlives every buffer; on drop the pointer is *either* recycled to a bucket freelist *or* returned to the driver, never both, and `PoolInner::drop` frees exactly the freelisted pointers. Exercised by the pool bucket-math unit tests and the `rocm_smoke` round-trip. |
+| Data Race on Hot-Path Cache              | CWE-362   | `AtomicPtr<DriverFns>` cache uses `Acquire`/`Release`; the pointer is set once to a `&'static DriverFns` and never cleared, published happens-after `OnceLock` init. The NVRTC/HIPRTC module caches and the cuBLASLt/cuDNN/cuSOLVER/cuSPARSE/cuTENSOR handle caches use a **double-checked insert** under the write lock, so concurrent first-use of a key converges on one shared `Arc` rather than a last-writer-wins overwrite (hardened in 2.2.0). |
 | Panic-Across-FFI                         | —         | No Rust function is passed to a C callback. All FFI is C → Rust through return codes; panic-across-`extern "C"` is not reachable. `panic = "abort"` in the release profile removes unwinding entirely.                                                               |
 | Command and Scripting Interpreter        | T1059     | No shell invocation. NVRTC compiles in-process via the loaded library's API; no `Command::new` anywhere in `src/`.                                                                                                                                                  |
 | Data from Local System                   | T1005     | Reads only documented environment variables (see below) and writes the PTX cache to `temp_dir()/ironaccelerator/ptx/` with 64-bit hex-hash filenames (no user string in a filename), atomically via tmp+rename.                                                       |
@@ -268,7 +274,12 @@ the reporting policy — are both **closed** as of 2.0.0.
 The audit found no open vulnerabilities, no leaked private data, no embedded
 secrets, no build-time or runtime network egress, and no cryptographic
 misuse. All CMMC 2.0 Level 2 control gaps identified in the 1.2.0 audit are
-closed. The crate is appropriate for publication to crates.io.
+closed. The 2.2.0 additions — the FPGA/XRT and HIPRTC FFI, the ROCm `MemPool`,
+and the self-hosted CI lanes — introduce no new dependencies, no build scripts,
+and no network egress, and their `unsafe` stays within the two already-reviewed
+shapes (FFI vtables, RAII pointer wrappers). The self-hosted-runner workflow is
+`workflow_dispatch`-only, closing the fork-PR execution path. The crate is
+appropriate for publication to crates.io.
 
-The single recommendation in §6 (SBOM at release) is tracked for the 2.0.x
+The single recommendation in §6 (SBOM at release) is tracked for the 2.2.x
 maintenance window.
