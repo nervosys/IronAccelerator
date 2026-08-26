@@ -339,6 +339,7 @@ dependencies = [
  "ironaccelerator-core",
  "ironaccelerator-cuda",
  "ironaccelerator-dx12",
+ "ironaccelerator-fpga",
  "ironaccelerator-levelzero",
  "ironaccelerator-metal",
  "ironaccelerator-neuron",
@@ -384,6 +385,15 @@ dependencies = [
 
 [[package]]
 name = "ironaccelerator-dx12"
+version = "2.2.0"
+dependencies = [
+ "ironaccelerator-core",
+ "libloading 0.9.0",
+ "once_cell",
+]
+
+[[package]]
+name = "ironaccelerator-fpga"
 version = "2.2.0"
 dependencies = [
  "ironaccelerator-core",

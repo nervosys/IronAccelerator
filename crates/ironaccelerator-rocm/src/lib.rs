@@ -26,6 +26,8 @@
 pub mod backend;
 pub mod blas;
 pub mod drv;
+pub mod kernel;
+pub mod pool;
 
 pub use backend::{RocmBackend, ROCM_BACKEND};
 

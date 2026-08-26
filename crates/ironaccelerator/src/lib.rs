@@ -80,6 +80,8 @@ pub use ironaccelerator_core as core;
 pub use ironaccelerator_cuda as cuda;
 #[cfg(feature = "dx12")]
 pub use ironaccelerator_dx12 as dx12;
+#[cfg(feature = "fpga")]
+pub use ironaccelerator_fpga as fpga;
 #[cfg(feature = "levelzero")]
 pub use ironaccelerator_levelzero as levelzero;
 #[cfg(feature = "metal")]

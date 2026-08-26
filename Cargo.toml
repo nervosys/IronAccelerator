@@ -17,6 +17,7 @@ members = [
     "crates/ironaccelerator-tpu",
     "crates/ironaccelerator-levelzero",
     "crates/ironaccelerator-neuron",
+    "crates/ironaccelerator-fpga",
 ]
 
 [workspace.package]
@@ -47,6 +48,7 @@ ironaccelerator-webgpu    = { path = "crates/ironaccelerator-webgpu",   version 
 ironaccelerator-tpu       = { path = "crates/ironaccelerator-tpu",      version = "2.2.0" }
 ironaccelerator-levelzero = { path = "crates/ironaccelerator-levelzero", version = "2.2.0" }
 ironaccelerator-neuron    = { path = "crates/ironaccelerator-neuron",   version = "2.2.0" }
+ironaccelerator-fpga      = { path = "crates/ironaccelerator-fpga",     version = "2.2.0" }
 
 half      = { version = "2", default-features = false, features = ["num-traits"] }
 bitflags  = "2"

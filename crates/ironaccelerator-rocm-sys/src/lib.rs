@@ -9,6 +9,7 @@
 //! - [`hip`] — HIP runtime (driver + runtime merged, as ROCm ships it)
 //! - [`hipblas`] — hipBLAS dense linear algebra (Level 1/2/3 + batched)
 //! - [`hipblaslt`] — hipBLASLt matmul front-end (FP8 on CDNA3+)
+//! - [`hiprtc`] — HIPRTC runtime kernel compile (the NVRTC analogue)
 //! - [`rccl`] — AMD collective comms
 //!
 //! Everything else (rocFFT, rocSPARSE, rocSOLVER, MIOpen, rocRAND) will
@@ -28,4 +29,5 @@ pub mod loader;
 pub mod hip;
 pub mod hipblas;
 pub mod hipblaslt;
+pub mod hiprtc;
 pub mod rccl;

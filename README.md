@@ -48,7 +48,7 @@ Honest current state. **CUDA is the only backend that's production-ready today.*
 | Backend    | Vendor / API                       | Driver wrappers | Runtime kernel compile | cudarc-shaped compat | `MemPool` equivalent | Live-GPU tests | Min SDK / runtime               |
 | ---------- | ---------------------------------- | --------------- | ---------------------- | -------------------- | -------------------- | -------------- | ------------------------------- |
 | **CUDA**   | NVIDIA                             | ✅ full          | ✅ NVRTC + disk cache  | ✅ `cudarc_compat`   | ✅ `MemPool` (~70× cudarc) | ✅ 45 tests | CUDA 12.5+ driver (13.x tested) |
-| ROCm       | AMD                                | ✅ HIP full      | ⏳ HIPRTC pending      | ❌                   | ❌                   | ❌ no AMD GPU on CI host | ROCm 6.2+                |
+| ROCm       | AMD                                | ✅ HIP full      | ✅ HIPRTC †            | ❌                   | ⚠️ shared-tier †     | ❌ no AMD GPU on CI host | ROCm 6.2+                |
 | Metal      | Apple                              | ✅ enumerate + compute | ❌ bring your own metallib | ❌            | ❌                   | ⏳ cross-checks; needs macOS to run | macOS 14+ / iOS 17+ |
 | Vulkan     | cross-vendor GPU compute           | ✅ enumerate + compute | ❌ bring your own SPIR-V | ❌              | ❌                   | ✅ dispatch on 3 devices | Vulkan 1.3 ICD          |
 | QNN        | Qualcomm Hexagon NPU               | ⚠️ scaffold      | n/a (QNN is AOT)       | ❌                   | ❌                   | ❌ needs SDK + device | QNN SDK 2.22+              |
@@ -58,6 +58,7 @@ Honest current state. **CUDA is the only backend that's production-ready today.*
 | TPU (PJRT) | Google TPU v4 / v5 / v6e           | ⚠️ env probe     | n/a (PJRT plugin AOT)  | ❌                   | ❌                   | ❌ needs TPU VM | PJRT plugin (`libtpu.so`)      |
 | Level Zero | Intel GPU (Arc / Flex / PVC) + NPU | ✅ enumerate + compute | ❌ bring your own SPIR-V | ❌          | ❌                   | ⏳ builds; needs Intel GPU to run | `ze_loader` from Intel compute |
 | AWS Neuron | Trainium / Inferentia              | ⚠️ cores probe   | n/a (NEFF AOT)         | ❌                   | ❌                   | ❌ needs trn/inf instance | `libnrt` (Neuron SDK 2.x)  |
+| FPGA       | AMD/Xilinx Alveo / Versal          | ⚠️ XRT probe     | n/a (AOT bitstream)    | ❌                   | ❌                   | ❌ needs XRT + card | `libxrt_core` (XRT 2.x)         |
 
 Legend:
 - ✅ shipped and exercised against a real device (or the closest equivalent — Vulkan ICD probe, WGSL compile, etc.)
@@ -65,6 +66,7 @@ Legend:
 - ⏳ noted in code, work pending
 - ❌ not present
 - n/a not meaningful for this backend (e.g. Metal Shading Language compile happens offline by design)
+- † implemented in code and unit-tested for what a GPU-less host can check, but **not yet live-tested** — this workspace has no AMD GPU, so the ROCm HIPRTC compile path and the `MemPool` device path compile clean and mirror the validated CUDA design without having run on real hardware.
 
 Every backend is loaded via `libloading` at first use — the workspace builds on any host, with or without the vendor SDK. Missing runtimes surface as typed `NotAvailable` errors, not link failures.
 
@@ -171,6 +173,7 @@ crates/
   ironaccelerator-tpu/        # PJRT plugin loader
   ironaccelerator-levelzero/  # Intel oneAPI / Level Zero
   ironaccelerator-neuron/     # AWS Trainium / Inferentia
+  ironaccelerator-fpga/       # AMD/Xilinx FPGA (XRT) — probe/enumerate scaffold
 ```
 
 For CUDA users the only two crates that matter are `ironaccelerator-cuda` (safe wrappers + `cudarc_compat`) and `ironaccelerator-cuda-sys` (raw FFI re-exported as `ironaccelerator_cuda::sys`).
@@ -376,7 +379,15 @@ Driver-substrate work only — kernels, planners, and workload abstractions belo
       backend-native bytecode, no translation layer.
 - [x] Metal compute bindings via the `metal` crate (`objc2`). The MPS-backed
       GEMM was removed as workload-level — that belongs above the driver line.
-- [ ] HIP FFI + safe wrapper for `ironaccelerator-rocm` matching the CUDA shape.
+- [x] ROCm depth toward CUDA parity: HIPRTC runtime compile (`iron_rocm_sys::hiprtc`),
+      a race-free HIP module cache (`ironaccelerator_rocm::kernel`), and a
+      `MemPool` recycling allocator (`ironaccelerator_rocm::pool`, shared-freelist
+      tier). All compile clean and are unit-tested for what a GPU-less host can
+      check; **live validation and the lock-free front-cache tier need an AMD GPU
+      in CI.** Remaining: a `hip_compat` (cudarc-shaped) surface.
+- [x] FPGA backend (`ironaccelerator-fpga`) — AMD/Xilinx via XRT, at
+      probe/enumerate maturity (FPGA kernels are AOT bitstreams, so there is no
+      runtime-compile path to build).
 - [ ] QNN SDK FFI + safe wrappers.
 - [ ] Level Zero / oneAPI tighter capability probe (COMPUTE queue-group query).
 

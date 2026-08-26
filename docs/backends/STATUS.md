@@ -26,11 +26,12 @@ without the other:
 | **OpenGL**         | ✅ enumerate + compute | ✅              | n/a                    | ✅ GLSL (driver compiles)   | ✅ dispatch on WGL 4.3         | ❌                   | ❌                 |
 | **Metal**          | ✅ enumerate + compute | ✅              | ⏳ (MPS dropped as workload-level) | ❌ bring your own `.metallib` | ⏳ compile-checked; needs macOS | ❌               | ❌                 |
 | **Level Zero**     | ✅ enumerate + compute | ✅              | n/a                    | ❌ bring your own SPIR-V    | ⏳ builds; needs Intel GPU     | ❌                   | ❌                 |
-| **ROCm**           | ✅ HIP full            | ❌              | ⏳ hipBLASLt scaffold  | ⏳ HIPRTC pending           | ❌ no AMD GPU on CI host       | ❌                   | ❌                 |
+| **ROCm**           | ✅ HIP full            | ❌              | ⏳ hipBLASLt scaffold  | ✅ HIPRTC † (not live-tested) | ❌ no AMD GPU on CI host     | ❌                   | ⚠️ shared-tier † (not live-tested) |
 | **Qualcomm (QNN)** | ⚠️ AOT graph substrate | ❌ (AOT model)  | ⏳ QNN SDK FFI partial | n/a (QNN graphs are AOT)    | ❌ no SDK/device here          | ❌                   | ❌                 |
 | **WebGPU**         | ✅ host-bound adapter  | ❌ (async, host-owned) | n/a             | n/a (host owns device)      | ⏳ needs browser harness       | ❌                   | ❌                 |
 | **TPU (PJRT)**     | ⚠️ env/plugin probe    | ❌              | n/a                    | n/a (PJRT plugin is AOT)    | ❌ needs TPU VM                | ❌                   | ❌                 |
 | **AWS Neuron**     | ⚠️ `libnrt` core probe | ❌              | n/a                    | n/a (NEFF is AOT)           | ❌ needs trn/inf instance      | ❌                   | ❌                 |
+| **FPGA**           | ⚠️ XRT `xclProbe`      | ❌ (AOT bitstream) | n/a                 | n/a (bitstream is AOT)      | ❌ needs XRT + card            | ❌                   | ❌                 |
 
 ✅ = shipped and exercised against a real device (or the closest equivalent)
 ⚠️ = scaffold compiles and registers; does device enumeration / probe only
@@ -185,19 +186,31 @@ Status: **driver substrate is real; can't run live here.** Does *not* implement
   cold-error path, `#[inline]` on every wrapped op.
 - `crates/ironaccelerator-rocm/src/blas.rs` — hipBLASLt handle plumbing scaffold.
 - `crates/ironaccelerator-rocm-sys` — clean-room HIP FFI + dynamic loader
-  (`hip`, `hipblas`, `hipblaslt`, `rccl`), same `AtomicPtr<HipFns>` hot-path
-  cache.
+  (`hip`, `hipblas`, `hipblaslt`, `hiprtc`, `rccl`), same `AtomicPtr<HipFns>`
+  hot-path cache.
 
-**Missing for full parity with CUDA:**
-- HIPRTC binding (runtime kernel compile, equivalent to NVRTC).
+**Depth landed (compiles clean, unit-tested where possible, † not yet
+live-tested — no AMD GPU in CI):**
+- `iron_rocm_sys::hiprtc` — HIPRTC FFI, the NVRTC analogue. Output is a code
+  object `hipModuleLoadData` takes directly.
+- `ironaccelerator_rocm::kernel` — `get_or_compile` with an in-memory module
+  cache that is **race-free from the start** (double-checked insert), the same
+  property the CUDA cache had to be hardened to get.
+- `ironaccelerator_rocm::pool` — `MemPool` recycling allocator, the
+  shared-freelist tier (per-bucket `Mutex<Vec>` over `hipMallocAsync` /
+  `hipFreeAsync`). Bucket math is unit-tested.
+
+**Still missing for full parity with CUDA:**
 - `cudarc_compat`-shaped surface (`HipDevice`/`HipSlice`/…).
-- `MemPool` recycling allocator (same three-tier design as CUDA).
-- Live-GPU tests + bench (0 tests today). Workspace is Windows + NVIDIA; the AMD
-  path needs dual-boot or a remote box.
+- The `MemPool` lock-free per-thread front cache (CUDA's ~70×, ~10 ns tier) —
+  needs the `thread_local` per-instance dep and AMD hardware to tune sizing.
+- On-disk kernel cache (the CUDA `kernel` module has one; ROCm is in-memory only).
+- Live-GPU tests + bench. Workspace is Windows + NVIDIA; the AMD path needs
+  dual-boot or a remote box.
 
 This is the backend closest to a second production target: the driver substrate
-is present, and the gap is bounded — HIPRTC, a compat surface, a MemPool port,
-and hardware in CI.
+is present, runtime compile and a recycling allocator now exist in code, and the
+remaining gap is a compat surface plus **hardware in CI to validate and tune**.
 
 ### Qualcomm (QNN)
 
@@ -242,6 +255,24 @@ neither fits the `ComputeDevice` shader-dispatch model.
 - **Neuron** — `crates/ironaccelerator-neuron/src/drv.rs`: `libnrt` loader
   (`nrt_init`, core count, version, generation detection) plus a `runtime::Model`
   stub. Needs a trn/inf instance.
+
+### FPGA (XRT)
+
+Status: **probe/enumerate scaffold.** Does not implement `ComputeDevice`.
+
+- `crates/ironaccelerator-fpga/src/drv.rs` — `libloading` probe of `libxrt_core`
+  and a call to the stable C enumerator `xclProbe`, returning the count of
+  XRT-visible devices. Compiles on any host; a machine without XRT reports zero.
+- `crates/ironaccelerator-fpga/src/backend.rs` — one `DeviceDescriptor` per XRT
+  device, vendor `Amd` (Xilinx/Alveo/Versal), capability reported as **empty**:
+  an FPGA's numeric support is defined by the loaded bitstream, not the silicon,
+  so advertising fixed flags would be fiction.
+
+FPGA is structurally probe-only for the same reason TPU/Neuron are: kernels are
+**pre-synthesised bitstreams** (`.xclbin`), built offline by Vitis, so there is
+no runtime-compile driver path. The execution model (load a bitstream, bind
+memory banks, run compute units) is a workload concern above the driver line.
+Needs XRT installed and a card to go further.
 
 ## What "full hardware support" honestly requires
 

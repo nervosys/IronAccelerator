@@ -41,6 +41,8 @@ impl Runtime {
         ironaccelerator_levelzero::register(&mut registry);
         #[cfg(feature = "neuron")]
         ironaccelerator_neuron::register(&mut registry);
+        #[cfg(feature = "fpga")]
+        ironaccelerator_fpga::register(&mut registry);
 
         Self { registry }
     }

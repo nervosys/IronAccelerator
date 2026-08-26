@@ -26,6 +26,7 @@ ironaccelerator-webgpu    = { workspace = true, optional = true }
 ironaccelerator-tpu       = { workspace = true, optional = true }
 ironaccelerator-levelzero = { workspace = true, optional = true }
 ironaccelerator-neuron    = { workspace = true, optional = true }
+ironaccelerator-fpga      = { workspace = true, optional = true }
 parking_lot = { workspace = true }
 once_cell   = { workspace = true }
 
@@ -42,5 +43,6 @@ webgpu    = ["dep:ironaccelerator-webgpu"]
 tpu       = ["dep:ironaccelerator-tpu"]
 levelzero = ["dep:ironaccelerator-levelzero"]
 neuron    = ["dep:ironaccelerator-neuron"]
+fpga      = ["dep:ironaccelerator-fpga"]
 all       = ["cuda", "rocm", "metal", "qnn", "vulkan", "opengl", "dx12",
-             "webgpu", "tpu", "levelzero", "neuron"]
+             "webgpu", "tpu", "levelzero", "neuron", "fpga"]
