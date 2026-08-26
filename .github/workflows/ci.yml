@@ -54,6 +54,24 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo build -p ironaccelerator --no-default-features --features "${{ matrix.features }}"
 
+  # Live Metal validation on GitHub's macOS runners — which are real Macs with
+  # a Metal GPU, not a VM stub: the runner enumerates a Metal device (that is
+  # how the capabilities()/enumerate() BF16 mismatch was originally caught). So
+  # the Metal ComputeDevice round-trip can actually *run* here for free, not
+  # just compile. `--nocapture` surfaces the "roundtrip verified" line (or the
+  # skip reason) in the log, so whether the dispatch path genuinely executes on
+  # the hosted runner is visible rather than hidden inside the pass/skip of the
+  # umbrella `check / macos` job.
+  metal-live:
+    name: metal / live (macOS GPU)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p ironaccelerator-metal --test dispatch -- --nocapture
+      - run: cargo test -p ironaccelerator --test runtime_smoke -- --nocapture
+
   # `ironaccelerator-core` declares `#![cfg_attr(not(feature = "std"), no_std)]`.
   # Nothing else in CI builds that configuration, so without this job the
   # no_std path rots silently — it had in fact been broken for several
