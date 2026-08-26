@@ -1,5 +1,5 @@
 //! HIPRTC runtime kernel compilation + an in-memory module cache — the ROCm
-//! analogue of [`ironaccelerator_cuda::kernel`].
+//! analogue of `ironaccelerator_cuda::kernel`.
 //!
 //! Compiles HIP C++ source to a code object with HIPRTC and loads it via
 //! `hipModuleLoadData`, caching the resulting `Arc<Module>` per (source, arch,

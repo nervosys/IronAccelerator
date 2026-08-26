@@ -7,7 +7,7 @@
 //! has NVRTC. What a driver substrate *can* do here is discover the cards.
 //!
 //! We dynamically load `libxrt_core` and call the stable C enumerator
-//! [`xclProbe`], which returns the number of XRT-managed devices. Nothing here
+//! `xclProbe`, which returns the number of XRT-managed devices. Nothing here
 //! links XRT at build time — the crate compiles on any host, and a machine with
 //! no XRT install simply reports zero devices.
 //!

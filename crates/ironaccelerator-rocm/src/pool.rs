@@ -1,5 +1,5 @@
 //! Per-stream small-buffer pool for ROCm — the AMD analogue of
-//! [`ironaccelerator_cuda::pool::MemPool`].
+//! `ironaccelerator_cuda::pool::MemPool`.
 //!
 //! A dispatch loop that allocates and frees thousands of small buffers per
 //! second spends real time in `hipMallocAsync` / `hipFreeAsync`. [`MemPool`]
