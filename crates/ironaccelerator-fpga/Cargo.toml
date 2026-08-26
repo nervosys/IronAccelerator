@@ -1,0 +1,21 @@
+[package]
+name = "ironaccelerator-fpga"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "FPGA backend for IronAccelerator — AMD/Xilinx Alveo / Versal via the Xilinx Runtime (XRT). Enumeration/probe only; FPGA kernels are pre-synthesised bitstreams."
+keywords = ["fpga", "xilinx", "alveo", "xrt", "accelerator"]
+categories = ["api-bindings", "hardware-support"]
+documentation = "https://docs.rs/ironaccelerator-fpga"
+
+[dependencies]
+ironaccelerator-core = { workspace = true }
+once_cell  = { workspace = true }
+libloading = { workspace = true }
+
+[features]
+default = []

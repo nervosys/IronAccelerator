@@ -42,7 +42,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            features: "cuda,rocm,vulkan,opengl,webgpu,levelzero,tpu,neuron"
+            features: "cuda,rocm,vulkan,opengl,webgpu,levelzero,tpu,neuron,fpga"
           - os: windows-latest
             features: "cuda,vulkan,opengl,dx12,webgpu,levelzero"
           - os: macos-latest

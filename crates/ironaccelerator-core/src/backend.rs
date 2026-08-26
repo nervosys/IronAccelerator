@@ -41,6 +41,10 @@ pub enum BackendKind {
     LevelZero,
     /// AWS Trainium / Inferentia via the Neuron Runtime (`libnrt`).
     Neuron,
+    /// AMD/Xilinx FPGA accelerators (Alveo / Versal) via the Xilinx
+    /// Runtime (`libxrt_core`). Enumeration/probe only — FPGA kernels are
+    /// pre-synthesised bitstreams, so there is no runtime-compile path.
+    Fpga,
 }
 
 impl BackendKind {
@@ -57,6 +61,7 @@ impl BackendKind {
         BackendKind::Tpu,
         BackendKind::LevelZero,
         BackendKind::Neuron,
+        BackendKind::Fpga,
     ];
 
     pub const fn name(self) -> &'static str {
@@ -73,6 +78,7 @@ impl BackendKind {
             BackendKind::Tpu => "tpu",
             BackendKind::LevelZero => "level-zero",
             BackendKind::Neuron => "neuron",
+            BackendKind::Fpga => "fpga",
         }
     }
 }
