@@ -130,13 +130,22 @@ IronAccelerator gives the same surface area, faster, and lets you drop down to `
   planners, recipes, autotuners all belong in downstream libraries. The
   surface area is small enough that an LLM agent can hold the whole API
   in context.
+- **Machine-readable capability manifest.** Every driver-substrate operation
+  and what it costs — `allocates` / `executes` / `compiles` / `unchecked` — is
+  declared in the `ironaccelerator_core::ontology` module and published at
+  [`.well-known/ironstack.json`](.well-known/ironstack.json), so an agent,
+  scheduler, or gateway can reason about a call before making it rather than
+  discover the cost afterward.
 - **Cached driver pointers.** `Device`, `Stream`, `Event`, `Module`,
   `Function` each carry a `&'static DriverFns` reference resolved once at
   construction. Hot paths reach the function table via a struct-field load,
   not an atomic.
-- **Process-global handle caches.** cuBLASLt, cuDNN, cuSOLVER, cuSPARSE,
-  cuTENSOR handles are cached per-device-ordinal behind `Mutex<HashMap>`
-  and stream-rebound on each borrow.
+- **Process-global handle caches.** cuBLASLt, cuDNN, cuSOLVER, cuSPARSE, and
+  cuTENSOR handles are cached per-device-ordinal behind `Mutex<HashMap>` and
+  stream-rebound on each borrow; the NVRTC module cache is keyed by source
+  hash + arch + options. Both populate with a double-checked insert, so two
+  threads that miss the same key concurrently converge on one shared `Arc`
+  rather than the second overwriting — and orphaning — the first.
 - **Errors name the operation.** `Error::Driver { op: "cuMemAllocAsync", code }`
   — no anonymous `CUDA_ERROR_*` payloads. An agent can grep for the op string
   to locate the call site.
