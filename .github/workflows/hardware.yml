@@ -21,7 +21,7 @@ on:
         description: "Which hardware lane to run"
         type: choice
         default: rocm
-        options: [rocm]
+        options: [rocm, levelzero, fpga]
 
 env:
   CARGO_TERM_COLOR: always
@@ -44,7 +44,32 @@ jobs:
       # The pure-host unit tests (cache-key hashing, pool bucket math) too.
       - run: cargo test -p ironaccelerator-rocm --lib -- --nocapture
 
-  # To add Intel-GPU (Level Zero) or FPGA (XRT) lanes: give this workflow's
-  # `backend` input another option, add a job gated on it with
-  # `runs-on: [self-hosted, linux, <label>]`, and point it at that backend's
-  # smoke test. The pattern is identical to the rocm lane above.
+  levelzero:
+    name: level-zero / live (Intel GPU, self-hosted)
+    if: ${{ github.event.inputs.backend == 'levelzero' }}
+    # Register an Intel Arc/Flex/PVC host with:
+    #   ./config.sh --labels self-hosted,linux,intel-gpu
+    # `ze_loader` from the Intel compute runtime must be installed. The dispatch
+    # test consumes a Kernel-model SPIR-V binary via IA_LEVELZERO_SHADER (build
+    # one with Intel's `ocloc`); without it the test skips cleanly.
+    runs-on: [self-hosted, linux, intel-gpu]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test -p ironaccelerator-levelzero --test dispatch -- --nocapture
+      - run: cargo test -p ironaccelerator-levelzero --lib -- --nocapture
+
+  fpga:
+    name: fpga / live (XRT, self-hosted)
+    if: ${{ github.event.inputs.backend == 'fpga' }}
+    # Register an XRT host (Alveo / Versal card + XRT 2.x) with:
+    #   ./config.sh --labels self-hosted,linux,fpga
+    # FPGA support is probe/enumerate only (kernels are AOT bitstreams), so this
+    # lane validates that `xclProbe` finds the card and the backend enumerates
+    # it — there is no compute round-trip to run at the driver line.
+    runs-on: [self-hosted, linux, fpga]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test -p ironaccelerator-fpga -- --nocapture
+      - run: cargo test -p ironaccelerator --no-default-features --features fpga --test runtime_smoke -- --nocapture

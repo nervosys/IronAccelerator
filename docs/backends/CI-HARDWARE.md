@@ -49,8 +49,13 @@ a repo that has no such runner.
    here is the signal that promotes ROCm's `†` (compiled, not live-tested)
    rows in [`STATUS.md`](STATUS.md) to validated.
 
-Intel-GPU and FPGA lanes follow the identical pattern; the workflow's trailing
-comment shows how to add them.
+**Intel GPU (Level Zero)** and **FPGA (XRT)** have their own lanes in the same
+workflow — pick `levelzero` or `fpga` as the run input and register a runner
+labelled `self-hosted,linux,intel-gpu` or `self-hosted,linux,fpga`. The Level
+Zero lane runs the `dispatch` round-trip (supply a `Kernel`-model SPIR-V via
+`IA_LEVELZERO_SHADER`, built with Intel's `ocloc`, or it skips); the FPGA lane
+validates that `xclProbe` finds the card and the backend enumerates it, since
+FPGA is probe-only at the driver line.
 
 ### 3. No path GitHub can offer
 
