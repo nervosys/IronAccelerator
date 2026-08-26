@@ -1,0 +1,50 @@
+name: hardware
+
+# Live-accelerator validation for hardware that GitHub-HOSTED runners do not
+# provide (AMD GPU, Intel GPU, FPGA, Gaudi). These jobs run on SELF-HOSTED
+# runners you register against this repo with matching labels — see
+# docs/backends/CI-HARDWARE.md.
+#
+# Trigger is workflow_dispatch ONLY (manual), deliberately: a job targeting a
+# self-hosted label that no runner satisfies would otherwise sit queued. Run it
+# by hand once the matching runner is online (Actions tab → "hardware" → Run
+# workflow), or wire a schedule once a runner is permanently attached.
+#
+# Each job sets IRON_RUN_GPU_TESTS=1, the opt-in the backend smoke tests gate
+# on; without it (and without a device) those tests skip cleanly, which is why
+# the normal CI on hosted runners stays green.
+
+on:
+  workflow_dispatch:
+    inputs:
+      backend:
+        description: "Which hardware lane to run"
+        type: choice
+        default: rocm
+        options: [rocm]
+
+env:
+  CARGO_TERM_COLOR: always
+  IRON_RUN_GPU_TESTS: "1"
+
+jobs:
+  rocm:
+    name: rocm / live (AMD GPU, self-hosted)
+    if: ${{ github.event.inputs.backend == 'rocm' }}
+    # Register an AMD-GPU host with, e.g.:
+    #   ./config.sh --url https://github.com/nervosys/IronAccelerator \
+    #               --labels self-hosted,linux,rocm
+    # ROCm 6.2+ and its libraries (libamdhip64, libhiprtc) must be installed.
+    runs-on: [self-hosted, linux, rocm]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # End-to-end: HIPRTC compile → module load → launch → MemPool round-trip.
+      - run: cargo test -p ironaccelerator-rocm --test rocm_smoke -- --nocapture
+      # The pure-host unit tests (cache-key hashing, pool bucket math) too.
+      - run: cargo test -p ironaccelerator-rocm --lib -- --nocapture
+
+  # To add Intel-GPU (Level Zero) or FPGA (XRT) lanes: give this workflow's
+  # `backend` input another option, add a job gated on it with
+  # `runs-on: [self-hosted, linux, <label>]`, and point it at that backend's
+  # smoke test. The pattern is identical to the rocm lane above.

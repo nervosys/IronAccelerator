@@ -149,13 +149,19 @@ Status: **compute dispatch implemented; can't run live here.** Implements
 - `dispatch_sized` takes an explicit threadgroup size for non-64-wide geometries.
 - `tests/dispatch.rs` compiles an MSL kernel with `xcrun` and runs the trait
   round-trip — gated to `target_vendor = "apple"`, so it reports zero tests on
-  this Windows CI and runs only on an actual Mac.
+  the Windows dev box and runs on an actual Mac.
+- **Validated on CI, for free.** GitHub's `macos-latest` runners are real Macs
+  with a Metal GPU, so the dedicated `metal / live (macOS GPU)` CI job runs the
+  round-trip on an actual device — Metal is the one non-CUDA backend whose live
+  path GitHub-hosted CI can exercise at no cost. See
+  [`CI-HARDWARE.md`](CI-HARDWARE.md).
 
 **Removed for scope:** the MPS-backed GEMM (workload-level, belongs above the
 driver line).
 
-**Missing for full parity with CUDA:** MTLHeap-based `MemPool`, a cudarc-shaped
-surface, and live-GPU validation (needs a Mac).
+**Missing for full parity with CUDA:** MTLHeap-based `MemPool` and a
+cudarc-shaped surface. (Live-GPU validation is now covered by the macOS CI job
+above.)
 
 ### Level Zero
 
@@ -205,12 +211,19 @@ live-tested — no AMD GPU in CI):**
 - The `MemPool` lock-free per-thread front cache (CUDA's ~70×, ~10 ns tier) —
   needs the `thread_local` per-instance dep and AMD hardware to tune sizing.
 - On-disk kernel cache (the CUDA `kernel` module has one; ROCm is in-memory only).
-- Live-GPU tests + bench. Workspace is Windows + NVIDIA; the AMD path needs
-  dual-boot or a remote box.
+
+**Validation path is wired.** `crates/ironaccelerator-rocm/tests/rocm_smoke.rs`
+drives the whole depth path end-to-end — HIPRTC compile → module load → kernel
+launch → `MemPool` round-trip → cache-identity check — skipping cleanly when no
+HIP device is present. The `hardware.yml` workflow's `rocm` lane runs it on a
+self-hosted AMD runner (see [`CI-HARDWARE.md`](CI-HARDWARE.md)). Green there is
+what promotes the `†` rows above to validated. Until an AMD runner is
+registered, the test reports skipped, as it does on this Windows + NVIDIA host.
 
 This is the backend closest to a second production target: the driver substrate
-is present, runtime compile and a recycling allocator now exist in code, and the
-remaining gap is a compat surface plus **hardware in CI to validate and tune**.
+is present, runtime compile and a recycling allocator now exist in code with an
+end-to-end test ready, and the remaining gap is a compat surface plus **an AMD
+runner in CI to validate and tune**.
 
 ### Qualcomm (QNN)
 
