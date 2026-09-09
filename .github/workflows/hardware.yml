@@ -1,8 +1,8 @@
 name: hardware
 
 # Live-accelerator validation for hardware that GitHub-HOSTED runners do not
-# provide (AMD GPU, Intel GPU, FPGA, Gaudi). These jobs run on SELF-HOSTED
-# runners you register against this repo with matching labels — see
+# provide (NVIDIA GPU, AMD GPU, Intel GPU, FPGA, Gaudi). These jobs run on
+# SELF-HOSTED runners you register against this repo with matching labels — see
 # docs/backends/CI-HARDWARE.md.
 #
 # Trigger is workflow_dispatch ONLY (manual), deliberately: a job targeting a
@@ -20,14 +20,64 @@ on:
       backend:
         description: "Which hardware lane to run"
         type: choice
-        default: rocm
-        options: [rocm, levelzero, fpga]
+        default: cuda
+        options: [cuda, rocm, levelzero, fpga]
 
 env:
   CARGO_TERM_COLOR: always
   IRON_RUN_GPU_TESTS: "1"
 
 jobs:
+  cuda:
+    name: cuda / live (NVIDIA GPU, self-hosted)
+    if: ${{ github.event.inputs.backend == 'cuda' }}
+    # Register an NVIDIA host with, e.g.:
+    #   ./config.sh --url https://github.com/nervosys/IronAccelerator \
+    #               --labels self-hosted,linux,cuda
+    # The CUDA driver (libcuda) and NVRTC must be installed; the full Toolkit is
+    # only needed for the vendor-library handles (cuBLASLt/cuDNN/…).
+    #
+    # CUDA is the largest and most `unsafe`-dense backend in the workspace, and
+    # it was the last one with no live lane — its driver paths were exercised
+    # only on developer machines, which CI cannot see. That is what this closes.
+    runs-on: [self-hosted, linux, cuda]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Fail loudly if this runner has no GPU. The CUDA tests gate on device
+      # presence and skip *cleanly* when there is none (green, having asserted
+      # nothing) — the exact false-pass this lane exists to prevent. Every step
+      # below is only meaningful once this one has proved a device is visible.
+      - name: Require a visible CUDA device
+        run: |
+          nvidia-smi -L
+          test "$(nvidia-smi -L | grep -c '^GPU')" -ge 1
+
+      # End-to-end driver path: enumerate/bind, stream + event lifecycle,
+      # H2D/D2H/D2D memcpy, NVRTC compile → launch (SAXPY), and safe-wrapper vs
+      # raw `iron_cuda_sys` parity.
+      - run: cargo test -p ironaccelerator-cuda --test gpu_smoke -- --nocapture
+
+      # The `#[ignore]`-gated cudarc round-trips. These never run anywhere else
+      # — not in hosted CI, not in a plain `cargo test` on a GPU box — so this
+      # is the only place the advertised drop-in semantics are actually
+      # executed rather than merely type-checked.
+      - run: cargo test -p ironaccelerator-cuda --test cudarc_compat -- --ignored --nocapture
+
+      # Remaining device-touching suites: staged/pinned memcpy, the MemPool
+      # recycling allocator, and the driver extras (peer access, graphs, RNG).
+      - run: cargo test -p ironaccelerator-cuda --test memcpy_staged -- --nocapture
+      - run: cargo test -p ironaccelerator-cuda --test pool_smoke -- --nocapture
+      - run: cargo test -p ironaccelerator-cuda --test driver_extras -- --nocapture
+
+      # Pure-host unit tests (cache-key hashing, launch geometry, pool buckets).
+      - run: cargo test -p ironaccelerator-cuda --lib -- --nocapture
+      - run: cargo test -p ironaccelerator-cuda-sys --lib -- --nocapture
+
+      # The umbrella survey, with CUDA actually present in the registry.
+      - run: cargo test -p ironaccelerator --no-default-features --features cuda --test runtime_smoke -- --nocapture
+
   rocm:
     name: rocm / live (AMD GPU, self-hosted)
     if: ${{ github.event.inputs.backend == 'rocm' }}

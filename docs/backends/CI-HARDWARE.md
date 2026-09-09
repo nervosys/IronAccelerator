@@ -27,12 +27,30 @@ multi-adapter hardware on the maintainer's box, not on hosted CI.
 
 ### 2. Needs a self-hosted runner (your hardware, GitHub's orchestration)
 
-AMD GPU (ROCm), Intel GPU (Level Zero), and FPGA (XRT) reach CI **only** through
-a [self-hosted runner](https://docs.github.com/en/actions/hosting-your-own-runners):
+NVIDIA GPU (CUDA), AMD GPU (ROCm), Intel GPU (Level Zero), and FPGA (XRT) reach
+CI **only** through a
+[self-hosted runner](https://docs.github.com/en/actions/hosting-your-own-runners):
 your machine, registered to the repo with a label, driven by GitHub Actions like
 any hosted job. The [`hardware.yml`](../../.github/workflows/hardware.yml)
 workflow is the wiring — manual-dispatch only, so it never leaves queued runs on
 a repo that has no such runner.
+
+**CUDA** is the lane that matters most, and it was the last one added. CUDA is
+the largest crate in the workspace and carries the densest `unsafe` surface of
+any backend, yet until this lane existed its driver paths were exercised only on
+developer machines — real validation that CI could not see or reproduce.
+Register an NVIDIA Linux box (CUDA driver + NVRTC; the full Toolkit only if you
+want the vendor-library handles) with the label `self-hosted,linux,cuda`, then
+run the `cuda` lane. Two properties of that job are deliberate:
+
+- It **fails if `nvidia-smi` reports no GPU**, before running a single test. The
+  CUDA suites gate on device presence and skip cleanly when there is none — so
+  without this guard the lane would pass green having asserted nothing, which is
+  precisely the false-pass the lane exists to prevent.
+- It runs `cudarc_compat` with `-- --ignored`. Those round-trips are
+  `#[ignore]`-gated and therefore run *nowhere else* — not in hosted CI, not in
+  a plain `cargo test` on a GPU box. This lane is the only place the advertised
+  cudarc drop-in semantics are executed rather than merely type-checked.
 
 **To close the ROCm gap for real:**
 
@@ -71,9 +89,12 @@ Every live smoke test skips-and-passes when its device is absent, which is what
 keeps hosted-runner CI green with no accelerators at all. The opt-in differs by
 backend maturity:
 
-- **CUDA** (`gpu_smoke`) gates on **device presence only** — CUDA is the
-  production backend, so it validates automatically wherever a GPU exists (the
-  maintainer's box, a CUDA self-hosted runner).
+- **CUDA** (`gpu_smoke`, `memcpy_staged`, `pool_smoke`, `driver_extras`) gates on
+  **device presence only** — CUDA is the production backend, so it validates
+  automatically wherever a GPU exists (the maintainer's box, a CUDA self-hosted
+  runner). The `cudarc_compat` round-trips are the exception: they are
+  `#[ignore]`-gated rather than presence-gated, so they need an explicit
+  `-- --ignored`, which the `cuda` lane supplies.
 - **ROCm** (`rocm_smoke`) additionally requires **`IRON_RUN_GPU_TESTS=1`** — a
   deliberate opt-in for a backend that has not yet been proven on hardware, so
   it stays inert for a developer who merely has ROCm installed and only fires in

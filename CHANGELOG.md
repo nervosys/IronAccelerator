@@ -6,6 +6,94 @@ All notable changes to **IronAccelerator** are documented here. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- **FPGA backend** — new `ironaccelerator-fpga` crate and `BackendKind::Fpga`.
+  Probes Xilinx Runtime (`libxrt_core`) via `libloading` and enumerates one
+  descriptor per device through `xclProbe`. Probe/enumerate only by design:
+  FPGA kernels are pre-synthesised bitstreams, so there is no runtime-compile
+  path and no `ComputeDevice` impl, and capability is reported empty because it
+  is bitstream-defined rather than silicon-defined. Wired into the workspace,
+  the facade (`fpga` feature, and `all`), and the device-survey registry.
+- **Capability/cost ontology** — `ironaccelerator_core::ontology` declares 27
+  operations across the trait surface with their effects (`allocates`,
+  `executes`, `compiles`, `transfers`, `blocks`, `unchecked`), plus
+  `.well-known/ironstack.json` publishing the IronStack capability manifest.
+  Two distinctions the effect set exists to carry: `compute.pipeline` declares
+  `compiles` rather than `executes`, since it turns caller-supplied bytes into
+  device instructions without running them; and `allocation.as_ptr` is the only
+  member of the `unchecked` set, pinned by a test so each further guard-rail
+  trade is reviewed individually rather than accumulating. Hand-maintained —
+  Rust offers no reflection over trait methods, so no drift test can walk the
+  real surface, and the module preamble says so.
+- **ROCm depth toward CUDA parity** — `iron_rocm_sys::hiprtc` (HIPRTC FFI, the
+  NVRTC analogue), `ironaccelerator_rocm::kernel` (`get_or_compile` plus an
+  in-memory module cache, race-free from the start), and
+  `ironaccelerator_rocm::pool` (`MemPool` recycling allocator over
+  `hipMallocAsync`/`FreeAsync`, bucket math unit-tested). Structurally mirrors
+  the validated CUDA design; the device paths are **not yet live-tested**.
+- **Hardware validation in CI** — `metal-live` job runs the Metal
+  `ComputeDevice` round-trip on GitHub's macOS runners (real Macs with a Metal
+  GPU, so this is live validation at no cost), and a new manual-dispatch
+  `hardware.yml` workflow carries self-hosted lanes for **CUDA** (NVIDIA),
+  **ROCm** (AMD), **Level Zero** (Intel), and **FPGA** (XRT). The CUDA lane
+  closes the last and largest hardware gap: it fails if `nvidia-smi` reports no
+  GPU — so it cannot pass green having silently skipped — and runs the
+  `#[ignore]`-gated `cudarc_compat` round-trips with `-- --ignored`, which run
+  nowhere else. New `rocm_smoke` end-to-end test (HIPRTC compile → module load
+  → launch → `MemPool` round-trip → cache identity), double-gated on a HIP
+  device and `IRON_RUN_GPU_TESTS`. Documented in `docs/backends/CI-HARDWARE.md`.
+
+### Fixed
+
+- **cuda:** the NVRTC module cache was not race-free. `get_or_compile` checked
+  under a read lock, dropped it to compile, then unconditionally `insert`ed —
+  so two threads missing the same key both compiled and the second `insert`
+  overwrote the first's `Arc<Module>`, meaning a caller holding the earlier
+  `Arc` saw a *different* `Arc` on its next read for an identical key. Surfaced
+  as an intermittent `gpu_smoke` failure. Now a double-checked insert.
+- **cuda:** the cuBLASLt, cuDNN, cuSOLVER, cuSPARSE, and cuTENSOR per-ordinal
+  handle caches shared the same check-then-act shape. Concurrent first use of
+  one ordinal created two handles and the second `insert` orphaned the first,
+  defeating the "one shared handle per device ordinal" contract and leaking a
+  vendor handle until its `Arc` dropped. Replaced with
+  `entry(ord).or_insert(..).clone()` so the first handle to arrive wins; for the
+  three stream-rebinding handles (cuDNN/cuSOLVER/cuSPARSE), the caller's stream
+  is bound to the *winning* handle after adoption, preserving the
+  rebind-on-each-borrow behaviour of the cache-hit path.
+- **webgpu:** a shared `TEST_BINDING_LOCK` ends a cross-module race on the
+  global binding.
+- **metal:** `capabilities()` now derives per-family flags, matching
+  `enumerate()` (BF16 mismatch).
+- **opengl:** probe the GL version from `GL_VERSION` and guard the GLSL query,
+  so an old context skips cleanly instead of panicking.
+- **ci:** install the wasm32 target explicitly; install `cargo-audit` with
+  `--locked`.
+- **docs:** three module-doc intra-doc links pointed at items their crate cannot
+  resolve (`xclProbe`, a C symbol; `ironaccelerator_cuda::{kernel, pool::MemPool}`
+  from the ROCm crate, which does not depend on it), failing
+  `cargo doc -D warnings`. Demoted to plain code spans.
+
+### Changed
+
+- `docs/backends/STATUS.md` rewritten against the 2.2.0 code: the unified
+  `ComputeDevice` trait across five backends, corrected Metal/Vulkan/QNN rows,
+  and new rows for OpenGL, Level Zero, TPU, Neuron, and FPGA.
+- README: race-free cache behaviour and the capability manifest added to the
+  design principles; the CI hardware-validation split documented (free Metal /
+  self-hosted CUDA+ROCm+Intel+FPGA / cloud-only TPU+Neuron); new Security
+  section covering the no-`build.rs` posture, `cargo audit` status, the audited
+  `unsafe` surface, and the `workflow_dispatch`-only property of the
+  self-hosted lanes.
+- `docs/SECURITY_AUDIT.md` refreshed for 2.2.0 across 17 crates: `cargo audit`
+  still reports 0 vulnerabilities over 131 dependencies (only the dev-only
+  `paste` unmaintained advisory); `unsafe` surface measured at 1,110 tokens
+  across 65 files, with the new HIPRTC and XRT FFI vtables in the same reviewed
+  shape; new ATT&CK row T1195.002 recording that self-hosted runners are
+  `workflow_dispatch`-only, so a fork PR cannot execute on registered hardware;
+  and the ROCm `MemPool` use-after-free discipline plus the double-checked cache
+  inserts documented under the data-race technique.
+
 ## [2.2.0] - 2026-07-29
 
 ### Added

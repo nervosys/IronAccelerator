@@ -20,11 +20,11 @@ without the other:
 
 | Backend            | Driver wrappers        | `ComputeDevice` | Vendor libs            | Runtime kernel compile      | Live-GPU tests                | cudarc-shaped compat | MemPool equivalent |
 | ------------------ | ---------------------- | --------------- | ---------------------- | --------------------------- | ----------------------------- | -------------------- | ------------------ |
-| **CUDA**           | ✅ full                | n/a (own stack) | ✅ 12 libs             | ✅ NVRTC + disk cache       | ✅ 52 test fns                | ✅ `cudarc_compat`   | ✅ `MemPool`       |
+| **CUDA**           | ✅ full                | n/a (own stack) | ✅ 12 libs             | ✅ NVRTC + disk cache       | ✅ 59 fns, `cuda` CI lane     | ✅ `cudarc_compat`   | ✅ `MemPool`       |
 | **D3D12**          | ✅ enumerate + compute | ✅              | n/a                    | ❌ bring your own DXIL      | ✅ dispatch on 3 adapters      | ❌                   | ❌                 |
 | **Vulkan**         | ✅ enumerate + compute | ✅              | n/a                    | ❌ bring your own SPIR-V    | ✅ dispatch on 3 devices       | ❌                   | ❌                 |
 | **OpenGL**         | ✅ enumerate + compute | ✅              | n/a                    | ✅ GLSL (driver compiles)   | ✅ dispatch on WGL 4.3         | ❌                   | ❌                 |
-| **Metal**          | ✅ enumerate + compute | ✅              | ⏳ (MPS dropped as workload-level) | ❌ bring your own `.metallib` | ⏳ compile-checked; needs macOS | ❌               | ❌                 |
+| **Metal**          | ✅ enumerate + compute | ✅              | ⏳ (MPS dropped as workload-level) | ❌ bring your own `.metallib` | ✅ `metal-live` on hosted CI  | ❌               | ❌                 |
 | **Level Zero**     | ✅ enumerate + compute | ✅              | n/a                    | ❌ bring your own SPIR-V    | ⏳ builds; needs Intel GPU     | ❌                   | ❌                 |
 | **ROCm**           | ✅ HIP full            | ❌              | ⏳ hipBLASLt scaffold  | ✅ HIPRTC † (not live-tested) | ❌ no AMD GPU on CI host     | ❌                   | ⚠️ shared-tier † (not live-tested) |
 | **Qualcomm (QNN)** | ⚠️ AOT graph substrate | ❌ (AOT model)  | ⏳ QNN SDK FFI partial | n/a (QNN graphs are AOT)    | ❌ no SDK/device here          | ❌                   | ❌                 |

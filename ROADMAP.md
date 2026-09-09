@@ -2,9 +2,11 @@
 
 Live progress tracker. Each section is a milestone; each bullet is a
 deliverable with a status box. Move items to **Shipped** with the version
-they land in. When all **Path to 1.1** boxes are ticked, we cut 1.1.
+they land in.
 
-Last updated: **2026-07-26**
+Last updated: **2026-09-09** — workspace at **2.2.0**, with unreleased work on
+`master` (FPGA backend, capability ontology, ROCm depth, the CUDA/ROCm/Intel/
+FPGA hardware lanes). See the CHANGELOG's `[Unreleased]` section.
 
 > **Scope.** IronAccelerator is a driver substrate. Kernels, planners,
 > workload/strategy types, quantization schemes, CPU reference ops, and the
@@ -16,29 +18,32 @@ Last updated: **2026-07-26**
 
 ## Status snapshot
 
-| backend        | crate                         | enumerate | compute scaffold | vendor-library plumbing |
-|----------------|-------------------------------|-----------|------------------|-------------------------|
-| CUDA           | `ironaccelerator-cuda`        | ✅        | ✅               | ✅ (cuBLASLt / cuDNN / NCCL / cuFFT handles) |
-| ROCm           | `ironaccelerator-rocm`        | ✅        | ✅               | ✅ (hipBLASLt) |
-| Metal          | `ironaccelerator-metal`       | ✅ Apple  | ✅ Apple         | ✅ (MPSMatrix wrapper) |
-| QNN (Hexagon)  | `ironaccelerator-qnn`         | ✅        | ⚠️ needs HDK     | — |
-| Vulkan         | `ironaccelerator-vulkan`      | ✅        | ✅ (compute.rs)  | — (bring your own SPIR-V) |
-| OpenGL 4.3+    | `ironaccelerator-opengl`      | ✅ ctx    | ✅ (compute.rs)  | — |
-| Direct3D 12    | `ironaccelerator-dx12`        | ✅ probed | ⏳ device only   | — (bring your own DXIL) |
-| WebGPU (WASM)  | `ironaccelerator-webgpu`      | ✅ bound  | — (host owns device) | — |
-| TPU (PJRT)     | `ironaccelerator-tpu`         | ✅ env    | ⏳ PJRT client   | — |
-| Level Zero     | `ironaccelerator-levelzero`   | ✅        | ✅ (compute.rs)  | — |
-| AWS Neuron     | `ironaccelerator-neuron`      | ✅ cores  | ⏳ NEFF load     | — |
+Per-backend status lives in one place — [`docs/backends/STATUS.md`](docs/backends/STATUS.md)
+— which tracks, for every backend, what the crate actually supplies, what has
+run against a live device, and what is still scaffold. It is kept current with
+the code; this file deliberately no longer carries a second copy of that table,
+because the duplicate is what drifted.
+
+The shape in one paragraph: **CUDA** is the complete driver substrate and the
+reference target. **ROCm** is the closest follower (HIPRTC + `MemPool` landed;
+device paths await an AMD runner). **Vulkan, D3D12, OpenGL, Metal, and Level
+Zero** implement the unified `ComputeDevice` submission trait. **QNN, TPU,
+Neuron, and FPGA** are probe/enumerate only — for FPGA that is the endpoint, not
+a gap, since bitstreams are AOT.
 
 Workspace: `cargo build --workspace --features ironaccelerator/all` clean;
-`cargo test --workspace` green as of 2026-07-26 (workspace version `2.0.0`).
+`cargo test --workspace --all-features` green (114 passed, 7 `#[ignore]`d for
+GPU, 0 failed) and `cargo clippy --workspace --all-features --all-targets
+-- -D warnings` clean, as of 2026-09-09.
 
 ---
 
-## Path to 1.1
+## Open driver-level work
 
-Blocking items for the next minor. All checkboxes here must flip before
-we tag `1.1.0`.
+What remains at the driver line, by backend. These were originally scoped as
+"Path to 1.1" blockers; 1.1 shipped 2026-04-18 and the workspace is now at
+2.2.0, so the unticked boxes below are simply the work still outstanding — no
+longer a release gate.
 
 ### Cross-backend plumbing
 
@@ -53,6 +58,43 @@ we tag `1.1.0`.
       (`crates/ironaccelerator/tests/runtime_smoke.rs`)
 - [x] `Backend` trait reduced to discovery only — `kind`, `is_available`,
       `enumerate`, `capabilities`. Strategy selection moved to IronWorks.
+
+### CUDA
+
+- [x] Complete driver substrate — the reference target for every other
+      backend. Device / Stream / Event / DeviceBuf / Module / Function,
+      NVRTC compile + disk cache, 12 vendor libraries, `MemPool`,
+      `cudarc_compat`.
+- [x] Race-free NVRTC module cache and vendor-handle caches
+      (double-checked insert; both were check-then-act).
+- [x] Live hardware lane in CI — `hardware.yml` (lane: `cuda`) on a
+      `[self-hosted, linux, cuda]` runner. Fails if `nvidia-smi` reports
+      no GPU, so it cannot pass green having skipped, and runs the
+      `#[ignore]`-gated `cudarc_compat` round-trips that execute nowhere
+      else. **Needs an NVIDIA runner registered to actually run.**
+- [ ] Re-enable `RUSTDOCFLAGS=-D warnings` once the 0.1-era sys-crate
+      doc links are cleaned (see *Docs + release engineering*).
+
+### ROCm
+
+The closest follower to CUDA, and the largest open gap in the workspace.
+
+- [x] HIP driver wrappers (Device / Stream / Event / DeviceBuf / Module).
+- [x] `iron_rocm_sys::hiprtc` — HIPRTC FFI, the NVRTC analogue.
+- [x] `kernel::get_or_compile` + in-memory module cache, race-free from
+      the start.
+- [x] `pool::MemPool` — recycling allocator over
+      `hipMallocAsync`/`FreeAsync`, shared-freelist tier; bucket math
+      unit-tested.
+- [x] `rocm_smoke` end-to-end test, double-gated on a HIP device and
+      `IRON_RUN_GPU_TESTS`, plus the `rocm` lane in `hardware.yml`.
+- [ ] **Run it.** Every ROCm device path is structurally mirrored from
+      the validated CUDA design but has never executed on an AMD GPU.
+      Registering an AMD runner is the whole remaining step, and it is
+      what promotes the `†` rows in `STATUS.md` to validated.
+- [ ] Lock-free per-thread front cache for `MemPool` (CUDA's ~70× tier).
+- [ ] `hip_compat` surface mirroring `cudarc_compat`.
+- [ ] hipBLASLt beyond the current scaffold; MIOpen handle plumbing.
 
 ### Vulkan
 
@@ -153,6 +195,19 @@ we tag `1.1.0`.
 - [ ] Serialise + rehydrate a compiled graph through a temp file
       round-trip in CI.
 
+### FPGA (XRT)
+
+- [x] `libxrt_core` `libloading` probe + `xclProbe` enumeration, one
+      descriptor per device; wired into the facade and the registry.
+- [x] `fpga` lane in `hardware.yml` for a `[self-hosted, linux, fpga]`
+      runner.
+- [ ] Run the lane against a real Alveo / Versal card.
+
+> Probe/enumerate is the **endpoint** here, not a gap. FPGA kernels are
+> pre-synthesised bitstreams, so there is no runtime-compile path and no
+> `ComputeDevice` impl to write; capability is bitstream-defined rather
+> than silicon-defined and is reported empty.
+
 ### Moved out of scope
 
 Shipped in 1.0/1.1, removed from IronAccelerator in the driver-substrate
@@ -187,10 +242,18 @@ cut. Tracked in IronWorks from here on — see the CHANGELOG's
 - [ ] Public-API review: no `#[doc(hidden)]` leaks, every `pub`
       item documented. Pre-existing broken intra-doc links in the
       0.1-era CUDA sys / metal / cuda crates must be fixed before we
-      can re-enable `RUSTDOCFLAGS=-D warnings` in CI. (Tracked;
-      non-blocking for 1.1.)
+      can re-enable `RUSTDOCFLAGS=-D warnings` in CI. (The FPGA/ROCm
+      links that failed `cargo doc -D warnings` were fixed in the
+      unreleased work; the 0.1-era ones remain.)
+- [x] `docs/backends/CI-HARDWARE.md` — the three tiers of hardware path
+      (free on hosted / self-hosted / no path GitHub can offer) and how
+      to register a runner for each lane.
+- [x] `docs/backends/STATUS.md` is the single source of per-backend
+      status; this file points at it rather than duplicating it.
 - [x] `CHANGELOG.md` `[1.1.0]` entry cut; workspace version bumped
       to **1.1.0**. (Git tag is operator-driven — push when ready.)
+- [ ] Cut the next release from the `[Unreleased]` entry — FPGA backend
+      and capability ontology are additive, so **2.3.0**.
 
 ---
 
@@ -203,7 +266,8 @@ Known-useful driver-level work that isn't blocking the next minor:
 - `#[no_std]` feature for embedded NPU targets.
 - MIOpen handle plumbing (ROCm convolution + fused ops).
 - rocFFT / rocRAND / rocSOLVER / rocSPARSE safe wrappers.
-- HIPRTC runtime compile + disk cache, matching the CUDA NVRTC shape.
+- HIPRTC *disk* cache, matching the CUDA NVRTC shape (the runtime
+  compile and in-memory cache shipped in the unreleased work).
 - Per-stream custom `cuMemPool` wrappers (default-pool retention shipped).
 - NVLink / xGMI / NVSwitch topology *reporting* (planning is a consumer
   concern).
