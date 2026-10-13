@@ -14,46 +14,26 @@ pub struct CuptiSubscriber(pub *mut c_void);
 unsafe impl Send for CuptiSubscriber {}
 unsafe impl Sync for CuptiSubscriber {}
 
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CuptiResult {
-    Success = 0,
-    InvalidParameter = 1,
-    InvalidDevice = 2,
-    InvalidContext = 3,
-    InvalidEventDomainId = 4,
-    InvalidEventId = 5,
-    InvalidEventName = 6,
-    InvalidOperation = 7,
-    OutOfMemory = 8,
-    HardwareError = 9,
-    NotReady = 13,
-    NotCompatible = 14,
-    NotInitialized = 15,
-    NotSupported = 27,
-    Other = 0xFFFF_FFFF,
+ffi_code! {
+    pub struct CuptiResult {
+        Success = 0,
+        InvalidParameter = 1,
+        InvalidDevice = 2,
+        InvalidContext = 3,
+        InvalidEventDomainId = 4,
+        InvalidEventId = 5,
+        InvalidEventName = 6,
+        InvalidOperation = 7,
+        OutOfMemory = 8,
+        HardwareError = 9,
+        NotReady = 13,
+        NotCompatible = 14,
+        NotInitialized = 15,
+        NotSupported = 27,
+    }
 }
 
 impl CuptiResult {
-    pub fn from_raw(r: u32) -> Self {
-        match r {
-            0 => Self::Success,
-            1 => Self::InvalidParameter,
-            2 => Self::InvalidDevice,
-            3 => Self::InvalidContext,
-            4 => Self::InvalidEventDomainId,
-            5 => Self::InvalidEventId,
-            6 => Self::InvalidEventName,
-            7 => Self::InvalidOperation,
-            8 => Self::OutOfMemory,
-            9 => Self::HardwareError,
-            13 => Self::NotReady,
-            14 => Self::NotCompatible,
-            15 => Self::NotInitialized,
-            27 => Self::NotSupported,
-            _ => Self::Other,
-        }
-    }
     pub fn ok(self) -> Result<(), Self> {
         if self == Self::Success {
             Ok(())

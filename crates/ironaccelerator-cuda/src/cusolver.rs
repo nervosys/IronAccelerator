@@ -26,7 +26,7 @@ fn check(_op: &'static str, s: CusolverStatus) -> Result<()> {
     } else {
         Err(Error::Backend {
             backend: ironaccelerator_core::BackendKind::Cuda,
-            code: (s as u32) as i64,
+            code: s.raw() as i64,
         })
     }
 }

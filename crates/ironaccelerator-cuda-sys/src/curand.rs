@@ -16,44 +16,25 @@ pub struct CurandGenerator(pub *mut c_void);
 unsafe impl Send for CurandGenerator {}
 unsafe impl Sync for CurandGenerator {}
 
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CurandStatus {
-    Success = 0,
-    VersionMismatch = 100,
-    NotInitialized = 101,
-    AllocationFailed = 102,
-    TypeError = 103,
-    OutOfRange = 104,
-    LengthNotMultiple = 105,
-    DoublePrecisionRequired = 106,
-    LaunchFailure = 201,
-    PreexistingFailure = 202,
-    InitializationFailed = 203,
-    ArchMismatch = 204,
-    InternalError = 999,
-    Other = 0xFFFF_FFFF,
+ffi_code! {
+    pub struct CurandStatus {
+        Success = 0,
+        VersionMismatch = 100,
+        NotInitialized = 101,
+        AllocationFailed = 102,
+        TypeError = 103,
+        OutOfRange = 104,
+        LengthNotMultiple = 105,
+        DoublePrecisionRequired = 106,
+        LaunchFailure = 201,
+        PreexistingFailure = 202,
+        InitializationFailed = 203,
+        ArchMismatch = 204,
+        InternalError = 999,
+    }
 }
 
 impl CurandStatus {
-    pub fn from_raw(r: u32) -> Self {
-        match r {
-            0 => Self::Success,
-            100 => Self::VersionMismatch,
-            101 => Self::NotInitialized,
-            102 => Self::AllocationFailed,
-            103 => Self::TypeError,
-            104 => Self::OutOfRange,
-            105 => Self::LengthNotMultiple,
-            106 => Self::DoublePrecisionRequired,
-            201 => Self::LaunchFailure,
-            202 => Self::PreexistingFailure,
-            203 => Self::InitializationFailed,
-            204 => Self::ArchMismatch,
-            999 => Self::InternalError,
-            _ => Self::Other,
-        }
-    }
     pub fn ok(self) -> Result<(), Self> {
         if self == Self::Success {
             Ok(())

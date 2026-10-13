@@ -6,6 +6,49 @@ All notable changes to **IronAccelerator** are documented here. Format follows
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-10-13
+
+A soundness release. Every FFI function in the `-sys` crates returned its
+status as a Rust `enum`; a C library returning a code the enum did not list
+(a newer driver, a header addition, or one of the many codes never modelled —
+`CUresult` named 31 of ~100) was **undefined behaviour**, and the `Other`
+catch-all could never be reached on that path. Status types are now integer
+newtypes, so every value is representable.
+
+### Changed (breaking)
+
+- **cuda-sys / rocm-sys:** `CUresult`, `CublasStatus`, `CudnnStatus`,
+  `CufftResult`, `CuptiResult`, `CurandStatus`, `CusolverStatus`,
+  `CusparseStatus`, `CutensorStatus`, `NcclResult`, `NvrtcResult`,
+  `HipResult`, `HipblasStatus`, `HiprtcResult`, `RcclResult` — plus the two
+  driver-written enums `CUgraphNodeType` (from `cuGraphNodeGetType`) and
+  `CUgraphExecUpdateResult_enum` (filled in by `cuGraphExecUpdate`) — are now
+  `#[repr(transparent)] struct X(pub u32)` with the known codes as associated
+  constants, `from_raw` / `raw` / `name`, and a `Debug` that prints
+  `CUresult::IllegalAddress` or `CUresult(12345)`.
+  **Migration:** `X::Success`, `==`, and `match` arms on the constants are
+  unchanged; add a `_` arm to matches (no exhaustiveness on a newtype); replace
+  `status as u32` with `status.raw()`; replace comparisons with `X::Other`
+  with `status.name().is_none()` — an unknown code now keeps its value instead
+  of collapsing to `Other`.
+- Removed the deprecated items announced in 2.x: `CudnnStatus::{AllocFailed,
+  InvalidValue, MappingError}`, `CutensorStatus::CuSolverError`, and the no-op
+  `ironaccelerator-metal` features `mps` / `mpsgraph` / `mlx` / `coreml`.
+
+### Fixed
+
+- **cuda:** `blas::MatmulDesc::set_attr_raw_u32` transmuted any `u32` into
+  `CublasLtMatmulDescAttr` (undefined behaviour for an undeclared value), and
+  its doc named `CUBLASLT_MATMUL_DESC_FAST_ACCUM = 11` — which is really
+  `EPILOGUE_AUX_POINTER`; `FAST_ACCUM` is 25. It now calls through a `u32`
+  view of the function pointer (same C ABI), and is `unsafe` with a stated
+  contract.
+
+### Added
+
+- **cuda:** `blas::MatmulDesc::set_fast_accum(bool)` and
+  `CublasLtMatmulDescAttr::FastAccum`; live-tested against cuBLASLt.
+
 ## [2.5.0] - 2026-10-13
 
 ### Added

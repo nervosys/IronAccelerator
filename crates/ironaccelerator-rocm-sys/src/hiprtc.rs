@@ -20,44 +20,26 @@ pub struct HiprtcProgram(pub *mut c_void);
 unsafe impl Send for HiprtcProgram {}
 unsafe impl Sync for HiprtcProgram {}
 
-/// HIPRTC status codes. The numeric values match NVRTC's, which is intentional
-/// on AMD's part — the two runtime compilers share an interface shape.
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HiprtcResult {
-    Success = 0,
-    OutOfMemory = 1,
-    ProgramCreationFailure = 2,
-    InvalidInput = 3,
-    InvalidProgram = 4,
-    InvalidOption = 5,
-    Compilation = 6,
-    BuiltinOperationFailure = 7,
-    NoNameExpressionsAfterCompilation = 8,
-    NoLoweredNamesBeforeCompilation = 9,
-    NameExpressionNotValid = 10,
-    InternalError = 11,
-    Other = 0xFFFF_FFFF,
+ffi_code! {
+    /// HIPRTC status codes. The numeric values match NVRTC's, which is intentional
+    /// on AMD's part — the two runtime compilers share an interface shape.
+    pub struct HiprtcResult {
+        Success = 0,
+        OutOfMemory = 1,
+        ProgramCreationFailure = 2,
+        InvalidInput = 3,
+        InvalidProgram = 4,
+        InvalidOption = 5,
+        Compilation = 6,
+        BuiltinOperationFailure = 7,
+        NoNameExpressionsAfterCompilation = 8,
+        NoLoweredNamesBeforeCompilation = 9,
+        NameExpressionNotValid = 10,
+        InternalError = 11,
+    }
 }
 
 impl HiprtcResult {
-    pub fn from_raw(r: u32) -> Self {
-        match r {
-            0 => Self::Success,
-            1 => Self::OutOfMemory,
-            2 => Self::ProgramCreationFailure,
-            3 => Self::InvalidInput,
-            4 => Self::InvalidProgram,
-            5 => Self::InvalidOption,
-            6 => Self::Compilation,
-            7 => Self::BuiltinOperationFailure,
-            8 => Self::NoNameExpressionsAfterCompilation,
-            9 => Self::NoLoweredNamesBeforeCompilation,
-            10 => Self::NameExpressionNotValid,
-            11 => Self::InternalError,
-            _ => Self::Other,
-        }
-    }
     pub fn ok(self) -> Result<(), Self> {
         if self == Self::Success {
             Ok(())

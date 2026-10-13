@@ -4,7 +4,7 @@ Live progress tracker. Each section is a milestone; each bullet is a
 deliverable with a status box. Move items to **Shipped** with the version
 they land in.
 
-Last updated: **2026-10-13** — workspace at **2.5.0** (FPGA backend, capability
+Last updated: **2026-10-13** — workspace at **3.0.0** (FPGA backend, capability
 ontology, ROCm depth, the CUDA/ROCm/Intel/FPGA hardware lanes). See the
 CHANGELOG.
 
@@ -278,6 +278,11 @@ FlashAttention variants, Triton-style JIT, MLX kernels) belong to IronWorks.
 ---
 
 ## Shipped
+
+### 3.0.0 — 2026-10-13
+
+- Soundness: every C-written status/code in `cuda-sys` and `rocm-sys` is a
+  `u32` newtype (no UB on an unmodelled code). Deprecated 2.x items removed.
 
 ### 2.5.0 — 2026-10-13
 

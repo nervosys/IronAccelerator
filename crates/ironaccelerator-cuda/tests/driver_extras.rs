@@ -300,3 +300,17 @@ fn device_open_sets_default_pool_retain_on_free() {
     }
     assert_eq!(threshold, u64::MAX, "default pool must retain freed memory");
 }
+
+#[test]
+fn cublaslt_fast_accum_and_raw_attr_are_accepted() {
+    use ironaccelerator_cuda::blas::{ComputeType, DType, MatmulDesc};
+    let _gpu = gpu_lock();
+    let Ok(mut desc) = MatmulDesc::new(ComputeType::F32, DType::R32F) else {
+        eprintln!("SKIPPED cublaslt_fast_accum_and_raw_attr_are_accepted: cuBLASLt not available");
+        return;
+    };
+    desc.set_fast_accum(true).unwrap();
+    desc.set_fast_accum(false).unwrap();
+    // CUBLASLT_MATMUL_DESC_SCALE_TYPE (1) is a 4-byte attribute.
+    unsafe { desc.set_attr_raw_u32(1, DType::R32F as u32) }.unwrap();
+}

@@ -31,7 +31,7 @@ fn check(_op: &'static str, s: sys::HipblasStatus) -> Result<()> {
     } else {
         Err(Error::Backend {
             backend: BackendKind::Rocm,
-            code: (s as u32) as i64,
+            code: s.raw() as i64,
         })
     }
 }

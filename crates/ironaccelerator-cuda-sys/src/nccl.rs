@@ -26,28 +26,20 @@ impl Default for NcclUniqueId {
     }
 }
 
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NcclResult {
-    Success = 0,
-    UnhandledCudaError = 1,
-    SystemError = 2,
-    InternalError = 3,
-    InvalidArgument = 4,
-    InvalidUsage = 5,
-    RemoteError = 6,
-    InProgress = 7,
-    Other = 0xFFFF_FFFF,
+ffi_code! {
+    pub struct NcclResult {
+        Success = 0,
+        UnhandledCudaError = 1,
+        SystemError = 2,
+        InternalError = 3,
+        InvalidArgument = 4,
+        InvalidUsage = 5,
+        RemoteError = 6,
+        InProgress = 7,
+    }
 }
 
 impl NcclResult {
-    pub fn from_raw(r: u32) -> Self {
-        if r <= 7 {
-            unsafe { std::mem::transmute(r) }
-        } else {
-            Self::Other
-        }
-    }
     pub fn ok(self) -> Result<(), Self> {
         if self == Self::Success {
             Ok(())

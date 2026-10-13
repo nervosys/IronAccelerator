@@ -15,8 +15,8 @@ use iron_cuda_sys::driver::CUresult;
 
 #[test]
 fn cuda_result_codes() {
-    assert_eq!(CUresult::IllegalAddress as u32, 700);
-    assert_eq!(CUresult::LaunchFailed as u32, 719);
+    assert_eq!(CUresult::IllegalAddress.raw(), 700);
+    assert_eq!(CUresult::LaunchFailed.raw(), 719);
     assert_eq!(CUresult::from_raw(700), CUresult::IllegalAddress);
     assert_eq!(CUresult::from_raw(719), CUresult::LaunchFailed);
 }
@@ -43,7 +43,7 @@ fn cupti_result_codes() {
     assert_eq!(CuptiResult::from_raw(14), CuptiResult::NotCompatible);
     assert_eq!(CuptiResult::from_raw(15), CuptiResult::NotInitialized);
     assert_eq!(CuptiResult::from_raw(27), CuptiResult::NotSupported);
-    assert_eq!(CuptiResult::from_raw(10), CuptiResult::Other);
+    assert_eq!(CuptiResult::from_raw(10).name(), None);
 }
 
 #[test]
@@ -55,7 +55,7 @@ fn cudnn9_status_codes() {
     assert_eq!(CudnnStatus::from_raw(3007), CudnnStatus::ArchMismatch);
     assert_eq!(CudnnStatus::from_raw(4000), CudnnStatus::InternalError);
     assert_eq!(CudnnStatus::from_raw(5000), CudnnStatus::ExecutionFailed);
-    assert_eq!(CudnnStatus::from_raw(9), CudnnStatus::Other);
+    assert_eq!(CudnnStatus::from_raw(9).name(), None);
 }
 
 #[test]
@@ -80,4 +80,22 @@ fn cutensor2_values() {
         CutensorStatus::from_raw(19),
         CutensorStatus::InsufficientWorkspace
     );
+}
+
+/// The point of the newtype codes: any value a library returns is
+/// representable — no undefined behaviour, no information lost.
+#[test]
+fn unknown_codes_round_trip() {
+    for raw in [1u32, 46, 222, 999, 12345, u32::MAX] {
+        let r = CUresult::from_raw(raw);
+        assert_eq!(r.raw(), raw);
+    }
+    let unknown = CUresult::from_raw(12345);
+    assert_eq!(unknown.name(), None);
+    assert_eq!(format!("{unknown:?}"), "CUresult(12345)");
+    assert_eq!(
+        format!("{:?}", CUresult::IllegalAddress),
+        "CUresult::IllegalAddress"
+    );
+    assert_eq!(std::mem::size_of::<CUresult>(), 4);
 }

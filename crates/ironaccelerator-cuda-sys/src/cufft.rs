@@ -10,37 +10,29 @@ use std::sync::{LazyLock, OnceLock};
 #[derive(Copy, Clone, Debug, Default)]
 pub struct CufftHandle(pub c_int);
 
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CufftResult {
-    Success = 0,
-    InvalidPlan = 1,
-    AllocFailed = 2,
-    InvalidType = 3,
-    InvalidValue = 4,
-    InternalError = 5,
-    ExecFailed = 6,
-    SetupFailed = 7,
-    InvalidSize = 8,
-    UnalignedData = 9,
-    IncompleteParameterList = 10,
-    InvalidDevice = 11,
-    ParseError = 12,
-    NoWorkspace = 13,
-    NotImplemented = 14,
-    LicenseError = 15,
-    NotSupported = 16,
-    Other = 0xFFFF_FFFF,
+ffi_code! {
+    pub struct CufftResult {
+        Success = 0,
+        InvalidPlan = 1,
+        AllocFailed = 2,
+        InvalidType = 3,
+        InvalidValue = 4,
+        InternalError = 5,
+        ExecFailed = 6,
+        SetupFailed = 7,
+        InvalidSize = 8,
+        UnalignedData = 9,
+        IncompleteParameterList = 10,
+        InvalidDevice = 11,
+        ParseError = 12,
+        NoWorkspace = 13,
+        NotImplemented = 14,
+        LicenseError = 15,
+        NotSupported = 16,
+    }
 }
 
 impl CufftResult {
-    pub fn from_raw(r: u32) -> Self {
-        if r <= 16 {
-            unsafe { std::mem::transmute(r) }
-        } else {
-            Self::Other
-        }
-    }
     pub fn ok(self) -> Result<(), Self> {
         if self == Self::Success {
             Ok(())

@@ -68,21 +68,22 @@ pub struct CUgraph(pub *mut c_void);
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct CUgraphExec(pub *mut c_void);
-/// `CUgraphExecUpdateResult` — why an in-place graph update succeeded or
-/// failed. Per `cuda.h` `CUgraphExecUpdateResult_enum`.
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(non_camel_case_types)]
-pub enum CUgraphExecUpdateResult_enum {
-    CU_GRAPH_EXEC_UPDATE_SUCCESS = 0x0,
-    CU_GRAPH_EXEC_UPDATE_ERROR = 0x1,
-    CU_GRAPH_EXEC_UPDATE_ERROR_TOPOLOGY_CHANGED = 0x2,
-    CU_GRAPH_EXEC_UPDATE_ERROR_NODE_TYPE_CHANGED = 0x3,
-    CU_GRAPH_EXEC_UPDATE_ERROR_FUNCTION_CHANGED = 0x4,
-    CU_GRAPH_EXEC_UPDATE_ERROR_PARAMETERS_CHANGED = 0x5,
-    CU_GRAPH_EXEC_UPDATE_ERROR_NOT_SUPPORTED = 0x6,
-    CU_GRAPH_EXEC_UPDATE_ERROR_UNSUPPORTED_FUNCTION_CHANGE = 0x7,
-    CU_GRAPH_EXEC_UPDATE_ERROR_ATTRIBUTES_CHANGED = 0x8,
+
+ffi_code! {
+    /// `CUgraphExecUpdateResult` — why an in-place graph update succeeded or
+    /// failed. Per `cuda.h` `CUgraphExecUpdateResult_enum`.
+    #[allow(non_camel_case_types)]
+    pub struct CUgraphExecUpdateResult_enum {
+        CU_GRAPH_EXEC_UPDATE_SUCCESS = 0x0,
+        CU_GRAPH_EXEC_UPDATE_ERROR = 0x1,
+        CU_GRAPH_EXEC_UPDATE_ERROR_TOPOLOGY_CHANGED = 0x2,
+        CU_GRAPH_EXEC_UPDATE_ERROR_NODE_TYPE_CHANGED = 0x3,
+        CU_GRAPH_EXEC_UPDATE_ERROR_FUNCTION_CHANGED = 0x4,
+        CU_GRAPH_EXEC_UPDATE_ERROR_PARAMETERS_CHANGED = 0x5,
+        CU_GRAPH_EXEC_UPDATE_ERROR_NOT_SUPPORTED = 0x6,
+        CU_GRAPH_EXEC_UPDATE_ERROR_UNSUPPORTED_FUNCTION_CHANGE = 0x7,
+        CU_GRAPH_EXEC_UPDATE_ERROR_ATTRIBUTES_CHANGED = 0x8,
+    }
 }
 
 /// `CUgraphExecUpdateResultInfo_st` — result-info struct out-parameter of
@@ -249,24 +250,24 @@ pub struct CUmemAccessDesc {
     pub flags: u32, // CUmemAccess_flags: None=0, Read=1, ReadWrite=3
 }
 
-/// Graph-node type.
-#[repr(u32)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum CUgraphNodeType {
-    Kernel = 0,
-    Memcpy = 1,
-    Memset = 2,
-    Host = 3,
-    Graph = 4,
-    Empty = 5,
-    WaitEvent = 6,
-    EventRecord = 7,
-    ExtSemasSignal = 8,
-    ExtSemasWait = 9,
-    MemAlloc = 10,
-    MemFree = 11,
-    BatchMemOp = 12,
-    Conditional = 13,
+ffi_code! {
+    /// Graph-node type.
+    pub struct CUgraphNodeType {
+        Kernel = 0,
+        Memcpy = 1,
+        Memset = 2,
+        Host = 3,
+        Graph = 4,
+        Empty = 5,
+        WaitEvent = 6,
+        EventRecord = 7,
+        ExtSemasSignal = 8,
+        ExtSemasWait = 9,
+        MemAlloc = 10,
+        MemFree = 11,
+        BatchMemOp = 12,
+        Conditional = 13,
+    }
 }
 
 impl CUgraphNodeType {
@@ -333,44 +334,42 @@ unsafe impl Sync for CUmemPool {}
 
 // ── result codes (subset, with `Ok` = 0) ───────────────────────────────────
 
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CUresult {
-    Success = 0,
-    InvalidValue = 1,
-    OutOfMemory = 2,
-    NotInitialized = 3,
-    Deinitialized = 4,
-    NoDevice = 100,
-    InvalidDevice = 101,
-    InvalidContext = 201,
-    MapFailed = 205,
-    UnmapFailed = 206,
-    ArrayIsMapped = 207,
-    AlreadyMapped = 208,
-    NoBinaryForGpu = 209,
-    AlreadyAcquired = 210,
-    NotMapped = 211,
-    InvalidSource = 300,
-    FileNotFound = 301,
-    SharedObjectSymbolNotFound = 302,
-    SharedObjectInitFailed = 303,
-    OperatingSystem = 304,
-    InvalidHandle = 400,
-    NotFound = 500,
-    NotReady = 600,
-    /// `CUDA_ERROR_ILLEGAL_ADDRESS` — a kernel touched an invalid address.
-    IllegalAddress = 700,
-    LaunchOutOfResources = 701,
-    LaunchTimeout = 702,
-    PeerAccessAlreadyEnabled = 704,
-    ContextIsDestroyed = 709,
-    /// `CUDA_ERROR_LAUNCH_FAILED` — an exception occurred on the device.
-    LaunchFailed = 719,
-    StreamCaptureUnsupported = 900,
-    Unknown = 999,
-    /// Any code we don't model — hold on to the numeric value.
-    Other = 0xFFFF_FFFF,
+ffi_code! {
+    pub struct CUresult {
+        Success = 0,
+        InvalidValue = 1,
+        OutOfMemory = 2,
+        NotInitialized = 3,
+        Deinitialized = 4,
+        NoDevice = 100,
+        InvalidDevice = 101,
+        InvalidContext = 201,
+        MapFailed = 205,
+        UnmapFailed = 206,
+        ArrayIsMapped = 207,
+        AlreadyMapped = 208,
+        NoBinaryForGpu = 209,
+        AlreadyAcquired = 210,
+        NotMapped = 211,
+        InvalidSource = 300,
+        FileNotFound = 301,
+        SharedObjectSymbolNotFound = 302,
+        SharedObjectInitFailed = 303,
+        OperatingSystem = 304,
+        InvalidHandle = 400,
+        NotFound = 500,
+        NotReady = 600,
+        /// `CUDA_ERROR_ILLEGAL_ADDRESS` — a kernel touched an invalid address.
+        IllegalAddress = 700,
+        LaunchOutOfResources = 701,
+        LaunchTimeout = 702,
+        PeerAccessAlreadyEnabled = 704,
+        ContextIsDestroyed = 709,
+        /// `CUDA_ERROR_LAUNCH_FAILED` — an exception occurred on the device.
+        LaunchFailed = 719,
+        StreamCaptureUnsupported = 900,
+        Unknown = 999,
+    }
 }
 
 impl CUresult {
@@ -380,45 +379,6 @@ impl CUresult {
     /// other change. Same memory representation as `Success` (variant 0).
     #[allow(non_upper_case_globals)]
     pub const CUDA_SUCCESS: Self = Self::Success;
-
-    #[inline]
-    pub fn from_raw(r: u32) -> Self {
-        // Map the ones we know; everything else → Other.
-        match r {
-            0 => Self::Success,
-            1 => Self::InvalidValue,
-            2 => Self::OutOfMemory,
-            3 => Self::NotInitialized,
-            4 => Self::Deinitialized,
-            100 => Self::NoDevice,
-            101 => Self::InvalidDevice,
-            201 => Self::InvalidContext,
-            205 => Self::MapFailed,
-            206 => Self::UnmapFailed,
-            207 => Self::ArrayIsMapped,
-            208 => Self::AlreadyMapped,
-            209 => Self::NoBinaryForGpu,
-            210 => Self::AlreadyAcquired,
-            211 => Self::NotMapped,
-            300 => Self::InvalidSource,
-            301 => Self::FileNotFound,
-            302 => Self::SharedObjectSymbolNotFound,
-            303 => Self::SharedObjectInitFailed,
-            304 => Self::OperatingSystem,
-            400 => Self::InvalidHandle,
-            500 => Self::NotFound,
-            600 => Self::NotReady,
-            700 => Self::IllegalAddress,
-            701 => Self::LaunchOutOfResources,
-            702 => Self::LaunchTimeout,
-            704 => Self::PeerAccessAlreadyEnabled,
-            709 => Self::ContextIsDestroyed,
-            719 => Self::LaunchFailed,
-            900 => Self::StreamCaptureUnsupported,
-            999 => Self::Unknown,
-            _ => Self::Other,
-        }
-    }
 
     #[inline]
     pub fn ok(self) -> Result<(), Self> {
@@ -1118,7 +1078,8 @@ mod tests {
         assert_eq!(CUresult::from_raw(0), CUresult::Success);
         assert_eq!(CUresult::from_raw(700), CUresult::IllegalAddress);
         assert_eq!(CUresult::from_raw(719), CUresult::LaunchFailed);
-        assert_eq!(CUresult::from_raw(12345), CUresult::Other);
+        assert_eq!(CUresult::from_raw(12345).raw(), 12345);
+        assert_eq!(CUresult::from_raw(12345).name(), None);
     }
 
     #[test]

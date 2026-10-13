@@ -14,22 +14,21 @@ pub struct HipblasHandle(pub *mut c_void);
 unsafe impl Send for HipblasHandle {}
 unsafe impl Sync for HipblasHandle {}
 
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HipblasStatus {
-    Success = 0,
-    NotInitialized = 1,
-    AllocFailed = 3,
-    InvalidValue = 7,
-    MappingError = 11,
-    ExecutionFailed = 13,
-    InternalError = 14,
-    NotSupported = 15,
-    ArchMismatch = 16,
-    HandleIsNullptr = 17,
-    InvalidEnum = 18,
-    Unknown = 19,
-    Other = 0xFFFF_FFFF,
+ffi_code! {
+    pub struct HipblasStatus {
+        Success = 0,
+        NotInitialized = 1,
+        AllocFailed = 3,
+        InvalidValue = 7,
+        MappingError = 11,
+        ExecutionFailed = 13,
+        InternalError = 14,
+        NotSupported = 15,
+        ArchMismatch = 16,
+        HandleIsNullptr = 17,
+        InvalidEnum = 18,
+        Unknown = 19,
+    }
 }
 impl HipblasStatus {
     #[inline]

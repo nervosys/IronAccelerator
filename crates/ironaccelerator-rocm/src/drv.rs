@@ -51,7 +51,7 @@ impl Error {
     pub fn numeric(&self) -> i64 {
         match self {
             Self::NotAvailable { .. } => -1,
-            Self::Driver { code, .. } => (*code as u32) as i64,
+            Self::Driver { code, .. } => code.raw() as i64,
             Self::Precondition { .. } => -2,
         }
     }

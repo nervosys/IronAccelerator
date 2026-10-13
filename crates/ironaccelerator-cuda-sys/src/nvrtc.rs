@@ -14,44 +14,25 @@ pub struct NvrtcProgram(pub *mut c_void);
 unsafe impl Send for NvrtcProgram {}
 unsafe impl Sync for NvrtcProgram {}
 
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NvrtcResult {
-    Success = 0,
-    OutOfMemory = 1,
-    ProgramCreationFailure = 2,
-    InvalidInput = 3,
-    InvalidProgram = 4,
-    InvalidOption = 5,
-    Compilation = 6,
-    BuiltinOperationFailure = 7,
-    NoNameExpressionsAfterCompilation = 8,
-    NoLoweredNamesBeforeCompilation = 9,
-    NameExpressionNotValid = 10,
-    InternalError = 11,
-    TimeFileWriteFailed = 12,
-    Other = 0xFFFF_FFFF,
+ffi_code! {
+    pub struct NvrtcResult {
+        Success = 0,
+        OutOfMemory = 1,
+        ProgramCreationFailure = 2,
+        InvalidInput = 3,
+        InvalidProgram = 4,
+        InvalidOption = 5,
+        Compilation = 6,
+        BuiltinOperationFailure = 7,
+        NoNameExpressionsAfterCompilation = 8,
+        NoLoweredNamesBeforeCompilation = 9,
+        NameExpressionNotValid = 10,
+        InternalError = 11,
+        TimeFileWriteFailed = 12,
+    }
 }
 
 impl NvrtcResult {
-    pub fn from_raw(r: u32) -> Self {
-        match r {
-            0 => Self::Success,
-            1 => Self::OutOfMemory,
-            2 => Self::ProgramCreationFailure,
-            3 => Self::InvalidInput,
-            4 => Self::InvalidProgram,
-            5 => Self::InvalidOption,
-            6 => Self::Compilation,
-            7 => Self::BuiltinOperationFailure,
-            8 => Self::NoNameExpressionsAfterCompilation,
-            9 => Self::NoLoweredNamesBeforeCompilation,
-            10 => Self::NameExpressionNotValid,
-            11 => Self::InternalError,
-            12 => Self::TimeFileWriteFailed,
-            _ => Self::Other,
-        }
-    }
     pub fn ok(self) -> Result<(), Self> {
         if self == Self::Success {
             Ok(())

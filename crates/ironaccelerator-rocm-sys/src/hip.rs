@@ -43,45 +43,25 @@ unsafe impl Sync for HipCtx {}
 
 // ── result codes ────────────────────────────────────────────────────────────
 
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HipResult {
-    Success = 0,
-    ErrorInvalidValue = 1,
-    ErrorOutOfMemory = 2,
-    ErrorNotInitialized = 3,
-    ErrorDeinitialized = 4,
-    ErrorNoDevice = 100,
-    ErrorInvalidDevice = 101,
-    ErrorInvalidContext = 201,
-    ErrorInvalidHandle = 400,
-    ErrorNotFound = 500,
-    ErrorNotReady = 600,
-    ErrorLaunchFailure = 719,
-    ErrorUnknown = 999,
-    Other = 0xFFFF_FFFF,
+ffi_code! {
+    pub struct HipResult {
+        Success = 0,
+        ErrorInvalidValue = 1,
+        ErrorOutOfMemory = 2,
+        ErrorNotInitialized = 3,
+        ErrorDeinitialized = 4,
+        ErrorNoDevice = 100,
+        ErrorInvalidDevice = 101,
+        ErrorInvalidContext = 201,
+        ErrorInvalidHandle = 400,
+        ErrorNotFound = 500,
+        ErrorNotReady = 600,
+        ErrorLaunchFailure = 719,
+        ErrorUnknown = 999,
+    }
 }
 
 impl HipResult {
-    #[inline]
-    pub fn from_raw(r: u32) -> Self {
-        match r {
-            0 => Self::Success,
-            1 => Self::ErrorInvalidValue,
-            2 => Self::ErrorOutOfMemory,
-            3 => Self::ErrorNotInitialized,
-            4 => Self::ErrorDeinitialized,
-            100 => Self::ErrorNoDevice,
-            101 => Self::ErrorInvalidDevice,
-            201 => Self::ErrorInvalidContext,
-            400 => Self::ErrorInvalidHandle,
-            500 => Self::ErrorNotFound,
-            600 => Self::ErrorNotReady,
-            719 => Self::ErrorLaunchFailure,
-            999 => Self::ErrorUnknown,
-            _ => Self::Other,
-        }
-    }
     #[inline]
     pub fn ok(self) -> Result<(), Self> {
         if self == Self::Success {

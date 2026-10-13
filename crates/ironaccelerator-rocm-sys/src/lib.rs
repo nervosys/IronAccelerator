@@ -32,6 +32,9 @@
     clippy::type_complexity
 )]
 
+#[macro_use]
+mod code;
+
 pub mod loader;
 
 pub mod hip;

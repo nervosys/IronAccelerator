@@ -18,7 +18,10 @@
 //!
 //! - **No opaque-pointer guesswork.** Handle types are `#[repr(transparent)]`
 //!   newtypes over `*mut ()` with matching `Send`/`Sync` and `Default`
-//!   impls. Result enums are `#[repr(u32)]` with `Success = 0`.
+//!   impls. Status codes and other values the library *writes* (`CUresult`,
+//!   `CublasStatus`, …) are `#[repr(transparent)]` `u32` newtypes with the
+//!   known codes as associated constants, so any value a library returns is
+//!   representable; enums are used only for values Rust passes *in*.
 //!
 //! - **Only what we use.** Every function, every type in this crate is
 //!   exercised by the safe layer. No dead FFI.
@@ -57,6 +60,9 @@
     clippy::type_complexity,
     clippy::missing_transmute_annotations
 )]
+
+#[macro_use]
+mod code;
 
 pub mod cublas;
 pub mod cublas_lt;

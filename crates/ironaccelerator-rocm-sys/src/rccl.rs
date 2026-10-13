@@ -12,17 +12,16 @@ pub struct RcclComm(pub *mut c_void);
 unsafe impl Send for RcclComm {}
 unsafe impl Sync for RcclComm {}
 
-#[repr(u32)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum RcclResult {
-    Success = 0,
-    UnhandledHipError = 1,
-    SystemError = 2,
-    InternalError = 3,
-    InvalidArgument = 4,
-    InvalidUsage = 5,
-    RemoteError = 6,
-    Other = 0xFFFF_FFFF,
+ffi_code! {
+    pub struct RcclResult {
+        Success = 0,
+        UnhandledHipError = 1,
+        SystemError = 2,
+        InternalError = 3,
+        InvalidArgument = 4,
+        InvalidUsage = 5,
+        RemoteError = 6,
+    }
 }
 impl RcclResult {
     #[inline]

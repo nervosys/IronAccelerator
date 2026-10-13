@@ -27,32 +27,24 @@ unsafe impl Sync for CusparseDnMatDescr {}
 unsafe impl Send for CusparseSpMatDescr {}
 unsafe impl Sync for CusparseSpMatDescr {}
 
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CusparseStatus {
-    Success = 0,
-    NotInitialized = 1,
-    AllocFailed = 2,
-    InvalidValue = 3,
-    ArchMismatch = 4,
-    MappingError = 5,
-    ExecutionFailed = 6,
-    InternalError = 7,
-    MatrixTypeNotSupported = 8,
-    ZeroPivot = 9,
-    NotSupported = 10,
-    InsufficientResources = 11,
-    Other = 0xFFFF_FFFF,
+ffi_code! {
+    pub struct CusparseStatus {
+        Success = 0,
+        NotInitialized = 1,
+        AllocFailed = 2,
+        InvalidValue = 3,
+        ArchMismatch = 4,
+        MappingError = 5,
+        ExecutionFailed = 6,
+        InternalError = 7,
+        MatrixTypeNotSupported = 8,
+        ZeroPivot = 9,
+        NotSupported = 10,
+        InsufficientResources = 11,
+    }
 }
 
 impl CusparseStatus {
-    pub fn from_raw(r: u32) -> Self {
-        if r <= 11 {
-            unsafe { std::mem::transmute(r) }
-        } else {
-            Self::Other
-        }
-    }
     pub fn ok(self) -> Result<(), Self> {
         if self == Self::Success {
             Ok(())

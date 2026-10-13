@@ -30,39 +30,23 @@ unsafe impl Sync for CublasLtMatrixLayout {}
 unsafe impl Send for CublasLtMatmulPreference {}
 unsafe impl Sync for CublasLtMatmulPreference {}
 
-/// cuBLAS status code. 0 = success.
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CublasStatus {
-    Success = 0,
-    NotInitialized = 1,
-    AllocFailed = 3,
-    InvalidValue = 7,
-    ArchMismatch = 8,
-    MappingError = 11,
-    ExecutionFailed = 13,
-    InternalError = 14,
-    NotSupported = 15,
-    LicenseError = 16,
-    Other = 0xFFFF_FFFF,
+ffi_code! {
+    /// cuBLAS status code. 0 = success.
+    pub struct CublasStatus {
+        Success = 0,
+        NotInitialized = 1,
+        AllocFailed = 3,
+        InvalidValue = 7,
+        ArchMismatch = 8,
+        MappingError = 11,
+        ExecutionFailed = 13,
+        InternalError = 14,
+        NotSupported = 15,
+        LicenseError = 16,
+    }
 }
 
 impl CublasStatus {
-    pub fn from_raw(r: u32) -> Self {
-        match r {
-            0 => Self::Success,
-            1 => Self::NotInitialized,
-            3 => Self::AllocFailed,
-            7 => Self::InvalidValue,
-            8 => Self::ArchMismatch,
-            11 => Self::MappingError,
-            13 => Self::ExecutionFailed,
-            14 => Self::InternalError,
-            15 => Self::NotSupported,
-            16 => Self::LicenseError,
-            _ => Self::Other,
-        }
-    }
     pub fn ok(self) -> Result<(), Self> {
         if self == Self::Success {
             Ok(())
@@ -190,6 +174,8 @@ pub enum CublasLtMatmulDescAttr {
     ScaleC = 19,
     ScaleD = 20,
     AmaxDPointer = 21,
+    /// `CUBLASLT_MATMUL_DESC_FAST_ACCUM` (`int8_t`, 0/1): FP8 fast accumulation.
+    FastAccum = 25,
 }
 
 /// `cublasLtMatrixLayoutAttributes_t`.

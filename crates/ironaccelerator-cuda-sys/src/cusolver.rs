@@ -13,32 +13,24 @@ pub struct CusolverDnHandle(pub *mut c_void);
 unsafe impl Send for CusolverDnHandle {}
 unsafe impl Sync for CusolverDnHandle {}
 
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CusolverStatus {
-    Success = 0,
-    NotInitialized = 1,
-    AllocFailed = 2,
-    InvalidValue = 3,
-    ArchMismatch = 4,
-    MappingError = 5,
-    ExecutionFailed = 6,
-    InternalError = 7,
-    MatrixTypeNotSupported = 8,
-    NotSupported = 9,
-    ZeroPivot = 10,
-    InvalidLicense = 11,
-    Other = 0xFFFF_FFFF,
+ffi_code! {
+    pub struct CusolverStatus {
+        Success = 0,
+        NotInitialized = 1,
+        AllocFailed = 2,
+        InvalidValue = 3,
+        ArchMismatch = 4,
+        MappingError = 5,
+        ExecutionFailed = 6,
+        InternalError = 7,
+        MatrixTypeNotSupported = 8,
+        NotSupported = 9,
+        ZeroPivot = 10,
+        InvalidLicense = 11,
+    }
 }
 
 impl CusolverStatus {
-    pub fn from_raw(r: u32) -> Self {
-        if r <= 11 {
-            unsafe { std::mem::transmute(r) }
-        } else {
-            Self::Other
-        }
-    }
     pub fn ok(self) -> Result<(), Self> {
         if self == Self::Success {
             Ok(())

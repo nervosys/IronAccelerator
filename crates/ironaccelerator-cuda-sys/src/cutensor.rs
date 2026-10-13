@@ -36,54 +36,29 @@ unsafe impl Sync for CutensorPlan {}
 unsafe impl Send for CutensorPlanPref {}
 unsafe impl Sync for CutensorPlanPref {}
 
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CutensorStatus {
-    Success = 0,
-    NotInitialized = 1,
-    AllocFailed = 3,
-    InvalidValue = 7,
-    ArchMismatch = 8,
-    MappingError = 11,
-    ExecutionFailed = 13,
-    InternalError = 14,
-    NotSupported = 15,
-    LicenseError = 16,
-    CublasError = 17,
-    /// `CUTENSOR_STATUS_CUDA_ERROR`.
-    CudartError = 18,
-    /// `CUTENSOR_STATUS_INSUFFICIENT_WORKSPACE`.
-    InsufficientWorkspace = 19,
-    InsufficientDriver = 20,
-    IoError = 21,
-    /// Not a cuTENSOR 2 status; it was mis-numbered onto 19
-    /// (`INSUFFICIENT_WORKSPACE`) and is never returned.
-    #[deprecated(note = "cuTENSOR 2 has no cuSOLVER status; code 19 is InsufficientWorkspace")]
-    CuSolverError = 22,
-    Other = 0xFFFF_FFFF,
+ffi_code! {
+    pub struct CutensorStatus {
+        Success = 0,
+        NotInitialized = 1,
+        AllocFailed = 3,
+        InvalidValue = 7,
+        ArchMismatch = 8,
+        MappingError = 11,
+        ExecutionFailed = 13,
+        InternalError = 14,
+        NotSupported = 15,
+        LicenseError = 16,
+        CublasError = 17,
+        /// `CUTENSOR_STATUS_CUDA_ERROR`.
+        CudartError = 18,
+        /// `CUTENSOR_STATUS_INSUFFICIENT_WORKSPACE`.
+        InsufficientWorkspace = 19,
+        InsufficientDriver = 20,
+        IoError = 21,
+    }
 }
 
 impl CutensorStatus {
-    pub fn from_raw(r: u32) -> Self {
-        match r {
-            0 => Self::Success,
-            1 => Self::NotInitialized,
-            3 => Self::AllocFailed,
-            7 => Self::InvalidValue,
-            8 => Self::ArchMismatch,
-            11 => Self::MappingError,
-            13 => Self::ExecutionFailed,
-            14 => Self::InternalError,
-            15 => Self::NotSupported,
-            16 => Self::LicenseError,
-            17 => Self::CublasError,
-            18 => Self::CudartError,
-            19 => Self::InsufficientWorkspace,
-            20 => Self::InsufficientDriver,
-            21 => Self::IoError,
-            _ => Self::Other,
-        }
-    }
     pub fn ok(self) -> Result<(), Self> {
         if self == Self::Success {
             Ok(())

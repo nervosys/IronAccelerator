@@ -31,7 +31,7 @@ fn check(_op: &'static str, s: sys::CublasStatus) -> Result<()> {
     } else {
         Err(Error::Backend {
             backend: ironaccelerator_core::BackendKind::Cuda,
-            code: (s as u32) as i64,
+            code: s.raw() as i64,
         })
     }
 }
@@ -175,19 +175,49 @@ impl MatmulDesc {
         }
     }
 
-    /// Set a matmul-desc attribute identified by its raw enum value.
-    /// `CUBLASLT_MATMUL_DESC_FAST_ACCUM = 11` is the only one we need beyond
-    /// the typed setters, so this escape hatch is kept deliberately narrow.
+    /// Enable or disable FP8 fast accumulation
+    /// (`CUBLASLT_MATMUL_DESC_FAST_ACCUM`, an `int8_t` flag).
+    pub fn set_fast_accum(&mut self, enabled: bool) -> Result<()> {
+        let f = fns()?;
+        let v: i8 = enabled as i8;
+        unsafe {
+            check(
+                "cublasLtMatmulDescSetAttribute(FAST_ACCUM)",
+                (f.cublasLtMatmulDescSetAttribute)(
+                    self.raw,
+                    sys::CublasLtMatmulDescAttr::FastAccum,
+                    &v as *const i8 as *const c_void,
+                    std::mem::size_of::<i8>(),
+                ),
+            )
+        }
+    }
+
+    /// Set a 4-byte matmul-desc attribute by its raw
+    /// `cublasLtMatmulDescAttributes_t` value, for attributes without a typed
+    /// setter.
+    ///
+    /// # Safety
+    /// `attr_raw` must name an attribute whose value is exactly 4 bytes and
+    /// `value` must be valid for it; cuBLASLt reads it as such.
     pub unsafe fn set_attr_raw_u32(&mut self, attr_raw: u32, value: u32) -> Result<()> {
         let f = fns()?;
-        // SAFETY: `CublasLtMatmulDescAttr` is `#[repr(u32)]`; any in-range
-        // discriminant is valid. The caller vouches for the raw attribute.
-        let attr: sys::CublasLtMatmulDescAttr = std::mem::transmute(attr_raw);
+        // Call through a `u32` view of the function pointer rather than
+        // transmuting `attr_raw` into the enum: an undeclared discriminant
+        // would be undefined behaviour, while `#[repr(u32)]` enum and `u32`
+        // parameters share one C ABI.
+        type RawSetAttr = unsafe extern "C" fn(
+            sys::CublasLtMatmulDesc,
+            u32,
+            *const c_void,
+            usize,
+        ) -> sys::CublasStatus;
+        let set: RawSetAttr = std::mem::transmute(f.cublasLtMatmulDescSetAttribute);
         check(
             "cublasLtMatmulDescSetAttribute(raw)",
-            (f.cublasLtMatmulDescSetAttribute)(
+            set(
                 self.raw,
-                attr,
+                attr_raw,
                 &value as *const u32 as *const c_void,
                 std::mem::size_of::<u32>(),
             ),
