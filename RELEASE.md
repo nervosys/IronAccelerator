@@ -67,6 +67,7 @@ cargo publish -p ironaccelerator-webgpu
 cargo publish -p ironaccelerator-tpu
 cargo publish -p ironaccelerator-levelzero
 cargo publish -p ironaccelerator-neuron
+cargo publish -p ironaccelerator-fpga
 cargo publish -p ironaccelerator             # umbrella crate goes last
 ```
 

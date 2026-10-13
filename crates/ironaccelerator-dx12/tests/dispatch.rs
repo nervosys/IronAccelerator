@@ -96,7 +96,9 @@ fn compile_dxil(dxc: &PathBuf) -> Option<Vec<u8>> {
 fn dispatch_doubles_a_buffer_on_every_adapter() {
     let adapters = drv::enumerate();
     if adapters.is_empty() {
-        eprintln!("skipped: no D3D12 adapter on this host");
+        eprintln!(
+            "SKIPPED dispatch_doubles_a_buffer_on_every_adapter: no D3D12 adapter on this host"
+        );
         return;
     }
     // Escape hatch for bringing your own precompiled blob (DXIL or DXBC),
@@ -108,11 +110,13 @@ fn dispatch_doubles_a_buffer_on_every_adapter() {
         return;
     }
     let Some(dxc) = find_dxc() else {
-        eprintln!("skipped: dxc not found (PATH, Vulkan SDK, or Windows Kits)");
+        eprintln!(
+            "SKIPPED dispatch_doubles_a_buffer_on_every_adapter: dxc not found (PATH, Vulkan SDK, or Windows Kits)"
+        );
         return;
     };
     let Some(dxil) = compile_dxil(&dxc) else {
-        eprintln!("skipped: dxc could not produce DXIL");
+        eprintln!("SKIPPED dispatch_doubles_a_buffer_on_every_adapter: dxc could not produce DXIL");
         return;
     };
     assert!(

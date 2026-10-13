@@ -132,16 +132,20 @@ fn one_generic_routine_runs_on_vulkan() {
     use ironaccelerator::vulkan::{drv, Context};
     let devices = drv::enumerate();
     if devices.is_empty() {
-        eprintln!("skipped: no Vulkan device");
+        eprintln!("SKIPPED one_generic_routine_runs_on_vulkan: no Vulkan device");
         return;
     }
     let Some(code) = spirv() else {
-        eprintln!("skipped: glslc unavailable");
+        eprintln!("SKIPPED one_generic_routine_runs_on_vulkan: glslc unavailable");
         return;
     };
     let mut ran = 0;
     for pd in devices.iter().filter(|d| d.compute_queue_family.is_some()) {
         let Some(ctx) = Context::new(pd.ordinal) else {
+            eprintln!(
+                "SKIPPED one_generic_routine_runs_on_vulkan: vulkan [{}] {}: no compute context",
+                pd.ordinal, pd.name
+            );
             continue;
         };
         let got = double_roundtrip(&ctx, &code).expect("vulkan roundtrip");
@@ -150,7 +154,7 @@ fn one_generic_routine_runs_on_vulkan() {
         ran += 1;
     }
     if ran == 0 {
-        eprintln!("skipped: no Vulkan compute queue");
+        eprintln!("SKIPPED one_generic_routine_runs_on_vulkan: no Vulkan compute queue");
     }
 }
 
@@ -159,11 +163,11 @@ fn the_same_generic_routine_runs_on_d3d12() {
     use ironaccelerator::dx12::{drv, Context};
     let adapters = drv::enumerate();
     if adapters.is_empty() {
-        eprintln!("skipped: no D3D12 adapter");
+        eprintln!("SKIPPED the_same_generic_routine_runs_on_d3d12: no D3D12 adapter");
         return;
     }
     let Some(code) = dxil() else {
-        eprintln!("skipped: signing dxc unavailable");
+        eprintln!("SKIPPED the_same_generic_routine_runs_on_d3d12: signing dxc unavailable");
         return;
     };
     for a in &adapters {
@@ -175,7 +179,10 @@ fn the_same_generic_routine_runs_on_d3d12() {
             }
             // WARP and some virtual adapters can reject a real dispatch; report,
             // don't fail the suite over a software rasteriser.
-            Err(e) => eprintln!("d3d12 [{}] {} — skipped: {e}", a.ordinal, a.name),
+            Err(e) => eprintln!(
+                "SKIPPED the_same_generic_routine_runs_on_d3d12: d3d12 [{}] {} rejected dispatch: {e}",
+                a.ordinal, a.name
+            ),
         }
     }
 }

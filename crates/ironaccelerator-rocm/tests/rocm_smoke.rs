@@ -34,7 +34,9 @@ extern "C" __global__ void double_kernel(float* data, int n) {
 #[test]
 fn hiprtc_compile_launch_and_pool_roundtrip() {
     if !gpu_enabled() {
-        eprintln!("rocm_smoke: no HIP device or IRON_RUN_GPU_TESTS unset — skipping");
+        eprintln!(
+            "SKIPPED hiprtc_compile_launch_and_pool_roundtrip: no HIP device or IRON_RUN_GPU_TESTS unset"
+        );
         return;
     }
 

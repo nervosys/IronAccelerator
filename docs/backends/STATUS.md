@@ -20,7 +20,7 @@ without the other:
 
 | Backend            | Driver wrappers        | `ComputeDevice` | Vendor libs            | Runtime kernel compile      | Live-GPU tests                | cudarc-shaped compat | MemPool equivalent |
 | ------------------ | ---------------------- | --------------- | ---------------------- | --------------------------- | ----------------------------- | -------------------- | ------------------ |
-| **CUDA**           | ✅ full                | n/a (own stack) | ✅ 12 libs             | ✅ NVRTC + disk cache       | ✅ 59 fns, `cuda` CI lane     | ✅ `cudarc_compat`   | ✅ `MemPool`       |
+| **CUDA**           | ✅ full                | n/a (own stack) | ✅ 12 libs             | ✅ NVRTC + disk cache       | ✅ 52 test fns, `cuda` CI lane | ✅ `cudarc_compat`   | ✅ `MemPool`       |
 | **D3D12**          | ✅ enumerate + compute | ✅              | n/a                    | ❌ bring your own DXIL      | ✅ dispatch on 3 adapters      | ❌                   | ❌                 |
 | **Vulkan**         | ✅ enumerate + compute | ✅              | n/a                    | ❌ bring your own SPIR-V    | ✅ dispatch on 3 devices       | ❌                   | ❌                 |
 | **OpenGL**         | ✅ enumerate + compute | ✅              | n/a                    | ✅ GLSL (driver compiles)   | ✅ dispatch on WGL 4.3         | ❌                   | ❌                 |
@@ -30,7 +30,7 @@ without the other:
 | **Qualcomm (QNN)** | ⚠️ AOT graph substrate | ❌ (AOT model)  | ⏳ QNN SDK FFI partial | n/a (QNN graphs are AOT)    | ❌ no SDK/device here          | ❌                   | ❌                 |
 | **WebGPU**         | ✅ host-bound adapter  | ❌ (async, host-owned) | n/a             | n/a (host owns device)      | ⏳ needs browser harness       | ❌                   | ❌                 |
 | **TPU (PJRT)**     | ⚠️ env/plugin probe    | ❌              | n/a                    | n/a (PJRT plugin is AOT)    | ❌ needs TPU VM                | ❌                   | ❌                 |
-| **AWS Neuron**     | ⚠️ `libnrt` core probe | ❌              | n/a                    | n/a (NEFF is AOT)           | ❌ needs trn/inf instance      | ❌                   | ❌                 |
+| **AWS Neuron**     | ⚠️ `libnrt` probe + NEFF load/execute (untested) | ❌              | n/a                    | n/a (NEFF is AOT)           | ❌ needs trn/inf instance      | ❌                   | ❌                 |
 | **FPGA**           | ⚠️ XRT `xclProbe`      | ❌ (AOT bitstream) | n/a                 | n/a (bitstream is AOT)      | ❌ needs XRT + card            | ❌                   | ❌                 |
 
 ✅ = shipped and exercised against a real device (or the closest equivalent)
@@ -81,8 +81,10 @@ every size, up to ~1.29×; ~2× on plain `DeviceBuf::alloc`; ~70× via the opt-i
 `MemPool` recycling allocator). Twelve vendor libraries plumbed (cuBLAS,
 cuBLASLt, cuDNN, cuFFT, cuRAND, cuSOLVER, cuSPARSE, cuTENSOR, NCCL, NVRTC, CUPTI,
 NVTX), NVRTC runtime compile with in-memory + on-disk PTX cache, stream-capture
-graphs, VMM / green contexts / multicast in `advanced`. 52 test functions across
-unit and live-GPU (`gpu_smoke`) suites.
+graphs, VMM / green contexts / multicast in `advanced`. 52 test functions: 22
+unit tests plus 30 integration-test functions across five suites in
+`crates/ironaccelerator-cuda/tests`. The 8 `#[ignore]`d live round-trips in
+`cudarc_compat` run on the `cuda` CI lane.
 
 ### D3D12
 
@@ -266,8 +268,10 @@ neither fits the `ComputeDevice` shader-dispatch model.
   GKE PJRT plugin paths and reads topology from `TPU_ACCELERATOR_TYPE` /
   `TPU_NUM_DEVICES` / `TPU_CHIPS_PER_HOST`. Needs a TPU VM to go further.
 - **Neuron** — `crates/ironaccelerator-neuron/src/drv.rs`: `libnrt` loader
-  (`nrt_init`, core count, version, generation detection) plus a `runtime::Model`
-  stub. Needs a trn/inf instance.
+  (`nrt_init`, core count, version, generation detection) plus `runtime::Model`
+  NEFF load/execute over `nrt_load` / `nrt_execute` with TensorSet I/O. The FFI
+  is real, but it has no tests and has never run on hardware. Needs a trn/inf
+  instance.
 
 ### FPGA (XRT)
 
@@ -317,8 +321,9 @@ fundamentally need their target hardware.
 Use CUDA today — it's the production backend. Five backends (Vulkan, D3D12,
 OpenGL, Metal, Level Zero) now share the unified `ComputeDevice` compute-
 submission trait, three of them (Vulkan, D3D12, OpenGL) verified on real
-hardware. ROCm has a real driver substrate but no runtime compile, compat
-surface, or live tests. QNN is an AOT-graph scaffold; WebGPU is browser-bound;
-TPU and Neuron are probe-only. Every backend loads its vendor runtime via
+hardware. ROCm has a real driver substrate plus HIPRTC runtime compile and a
+`MemPool` shared tier, but no compat surface and no live run yet. QNN is an
+AOT-graph scaffold; WebGPU is browser-bound; TPU is probe-only; Neuron has
+untested NEFF load/execute. Every backend loads its vendor runtime via
 `libloading` at first use, so the workspace builds on any host and surfaces
 missing runtimes as typed `NotAvailable` errors rather than link failures.

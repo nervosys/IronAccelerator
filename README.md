@@ -47,7 +47,7 @@ Honest current state. **CUDA is the only backend that's production-ready today.*
 
 | Backend    | Vendor / API                       | Driver wrappers | Runtime kernel compile | cudarc-shaped compat | `MemPool` equivalent | Live-GPU tests | Min SDK / runtime               |
 | ---------- | ---------------------------------- | --------------- | ---------------------- | -------------------- | -------------------- | -------------- | ------------------------------- |
-| **CUDA**   | NVIDIA                             | ✅ full          | ✅ NVRTC + disk cache  | ✅ `cudarc_compat`   | ✅ `MemPool` (~70× cudarc) | ✅ 45 tests | CUDA 12.5+ driver (13.x tested) |
+| **CUDA**   | NVIDIA                             | ✅ full          | ✅ NVRTC + disk cache  | ✅ `cudarc_compat`   | ✅ `MemPool` (~70× cudarc) | ✅ 52 tests | CUDA 12.5+ driver (13.x tested) |
 | ROCm       | AMD                                | ✅ HIP full      | ✅ HIPRTC †            | ❌                   | ⚠️ shared-tier †     | ❌ no AMD GPU on CI host | ROCm 6.2+                |
 | Metal      | Apple                              | ✅ enumerate + compute | ❌ bring your own metallib | ❌            | ❌                   | ✅ live on GitHub macOS CI | macOS 14+ / iOS 17+ |
 | Vulkan     | cross-vendor GPU compute           | ✅ enumerate + compute | ❌ bring your own SPIR-V | ❌              | ❌                   | ✅ dispatch on 3 devices | Vulkan 1.3 ICD          |
@@ -57,7 +57,7 @@ Honest current state. **CUDA is the only backend that's production-ready today.*
 | WebGPU     | browser / WASM only                | ✅ host-bound adapter   | n/a (host owns device) | ❌              | ❌                   | ⏳ needs browser harness | Chrome 113+ / Safari 17.4+ |
 | TPU (PJRT) | Google TPU v4 / v5 / v6e           | ⚠️ env probe     | n/a (PJRT plugin AOT)  | ❌                   | ❌                   | ❌ needs TPU VM | PJRT plugin (`libtpu.so`)      |
 | Level Zero | Intel GPU (Arc / Flex / PVC) + NPU | ✅ enumerate + compute | ❌ bring your own SPIR-V | ❌          | ❌                   | ⏳ builds; needs Intel GPU to run | `ze_loader` from Intel compute |
-| AWS Neuron | Trainium / Inferentia              | ⚠️ cores probe   | n/a (NEFF AOT)         | ❌                   | ❌                   | ❌ needs trn/inf instance | `libnrt` (Neuron SDK 2.x)  |
+| AWS Neuron | Trainium / Inferentia              | ⚠️ probe + NEFF load/execute | n/a (NEFF AOT)         | ❌                   | ❌                   | ❌ needs trn/inf instance | `libnrt` (Neuron SDK 2.x)  |
 | FPGA       | AMD/Xilinx Alveo / Versal          | ⚠️ XRT probe     | n/a (AOT bitstream)    | ❌                   | ❌                   | ❌ needs XRT + card | `libxrt_core` (XRT 2.x)         |
 
 Legend:

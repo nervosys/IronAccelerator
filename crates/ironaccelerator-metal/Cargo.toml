@@ -7,7 +7,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Apple Metal / MPS driver wrappers for IronAccelerator."
+description = "Apple Metal driver wrappers and compute dispatch for IronAccelerator."
 keywords = ["metal", "apple", "gpu", "mps", "driver"]
 categories = ["api-bindings", "hardware-support"]
 documentation = "https://docs.rs/ironaccelerator-metal"
@@ -24,9 +24,9 @@ block2           = "0.6"
 
 [features]
 default = []
-# Placeholders for higher-level acceleration paths, not yet wired. MPS/MPSGraph
-# GEMM and kernels are workload-level and belong above the driver line, not in
-# this crate.
+# Deprecated no-op features, kept only for SemVer compatibility; nothing in this
+# crate reads them. MPS / MPSGraph / MLX / Core ML paths are workload-level and
+# belong above the driver line. Scheduled for removal in 3.0.
 mps     = ["metal/mps"]
 mpsgraph = []
 mlx     = []

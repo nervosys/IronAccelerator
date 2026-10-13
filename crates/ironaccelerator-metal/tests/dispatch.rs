@@ -64,11 +64,11 @@ fn build_metallib() -> Option<Vec<u8>> {
 #[test]
 fn dispatch_doubles_a_buffer() {
     let Some(ctx) = Context::system_default() else {
-        eprintln!("skipped: no Metal device");
+        eprintln!("SKIPPED dispatch_doubles_a_buffer: no Metal device");
         return;
     };
     let Some(metallib) = build_metallib() else {
-        eprintln!("skipped: xcrun could not build a metallib");
+        eprintln!("SKIPPED dispatch_doubles_a_buffer: xcrun could not build a metallib");
         return;
     };
 

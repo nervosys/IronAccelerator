@@ -106,15 +106,21 @@ fn compile_spirv(tool: &PathBuf, is_glslc: bool) -> Option<Vec<u32>> {
 fn dispatch_doubles_a_buffer_on_every_device() {
     let devices = drv::enumerate();
     if devices.is_empty() {
-        eprintln!("skipped: no Vulkan device on this host");
+        eprintln!(
+            "SKIPPED dispatch_doubles_a_buffer_on_every_device: no Vulkan device on this host"
+        );
         return;
     }
     let Some((tool, is_glslc)) = find_compiler() else {
-        eprintln!("skipped: no glslc / glslangValidator (install the Vulkan SDK)");
+        eprintln!(
+            "SKIPPED dispatch_doubles_a_buffer_on_every_device: no glslc / glslangValidator (install the Vulkan SDK)"
+        );
         return;
     };
     let Some(spirv) = compile_spirv(&tool, is_glslc) else {
-        eprintln!("skipped: SPIR-V compiler could not produce output");
+        eprintln!(
+            "SKIPPED dispatch_doubles_a_buffer_on_every_device: SPIR-V compiler could not produce output"
+        );
         return;
     };
     assert_eq!(spirv.first(), Some(&0x0723_0203), "not a SPIR-V module");
@@ -129,7 +135,10 @@ fn dispatch_doubles_a_buffer_on_every_device() {
             continue;
         }
         let Some(ctx) = Context::new(pd.ordinal) else {
-            eprintln!("[{}] {}: no compute context, skipping", pd.ordinal, pd.name);
+            eprintln!(
+                "SKIPPED dispatch_doubles_a_buffer_on_every_device: [{}] {}: no compute context",
+                pd.ordinal, pd.name
+            );
             continue;
         };
 
@@ -167,6 +176,8 @@ fn dispatch_doubles_a_buffer_on_every_device() {
         ran += 1;
     }
     if ran == 0 {
-        eprintln!("skipped: devices enumerated but none exposed a compute queue");
+        eprintln!(
+            "SKIPPED dispatch_doubles_a_buffer_on_every_device: devices enumerated but none exposed a compute queue"
+        );
     }
 }

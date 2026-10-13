@@ -16,12 +16,16 @@
 //! | `ironaccelerator-cuda-sys`  | clean-room CUDA 13.2 FFI + dynamic loader (no link deps)   |
 //! | `ironaccelerator-cuda`      | safe CUDA driver wrappers + cudarc-shaped compatibility    |
 //! | `ironaccelerator-rocm`      | safe ROCm/HIP driver wrappers (same fast-path pattern)     |
-//! | `ironaccelerator-metal`     | Apple Metal / MPS scaffold                                 |
-//! | `ironaccelerator-qnn`       | Qualcomm Hexagon NPU scaffold                              |
+//! | `ironaccelerator-metal`     | Apple Metal compute (`ComputeDevice`)                      |
+//! | `ironaccelerator-qnn`       | Qualcomm Hexagon NPU (QNN AOT graph substrate)             |
 //! | `ironaccelerator-vulkan`    | Vulkan compute: enumerate, buffers, SPIR-V pipeline, dispatch |
 //! | `ironaccelerator-dx12`      | Direct3D 12 compute: enumerate, buffers, DXIL pipeline, dispatch |
 //! | `ironaccelerator-opengl`    | OpenGL 4.3+ compute-shader fallback (host-bound GL context) |
-//! | `ironaccelerator-webgpu`    | browser/WASM compute path, host-bound                      |
+//! | `ironaccelerator-webgpu`    | browser/WASM adapter binding (host owns the `GPUDevice`)   |
+//! | `ironaccelerator-levelzero` | Intel GPU/NPU via Level Zero (`ComputeDevice`)             |
+//! | `ironaccelerator-tpu`       | Google TPU via PJRT plugin (probe/enumerate)               |
+//! | `ironaccelerator-neuron`    | AWS Trainium/Inferentia via libnrt (probe + NEFF load/exec) |
+//! | `ironaccelerator-fpga`      | AMD/Xilinx FPGA via XRT (probe/enumerate)                  |
 //!
 //! ## Native vs browser
 //!

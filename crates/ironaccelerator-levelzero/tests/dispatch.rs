@@ -23,12 +23,14 @@ use ironaccelerator_levelzero::Context;
 #[test]
 fn dispatch_doubles_a_buffer() {
     let Some(ctx) = Context::new(0) else {
-        eprintln!("skipped: no Level Zero device (no ze_loader / Intel compute)");
+        eprintln!(
+            "SKIPPED dispatch_doubles_a_buffer: no Level Zero device (no ze_loader / Intel compute)"
+        );
         return;
     };
     let Ok(path) = std::env::var("IA_LEVELZERO_SHADER") else {
         eprintln!(
-            "skipped: device present but no IA_LEVELZERO_SHADER supplied \
+            "SKIPPED dispatch_doubles_a_buffer: device present but no IA_LEVELZERO_SHADER supplied \
              (Kernel-model SPIR-V needs ocloc / clang -target spir64)"
         );
         return;

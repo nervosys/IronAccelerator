@@ -105,7 +105,7 @@ unsafe fn create_context() -> Option<Context> {
         core::ptr::null(),
     );
     if hwnd.is_null() {
-        eprintln!("skipped: CreateWindowExW failed");
+        eprintln!("SKIPPED compute_doubles_a_buffer_on_a_real_gl_context: CreateWindowExW failed");
         return None;
     }
     // Deliberately not shown — a hidden window still yields a usable GL context.
@@ -113,7 +113,7 @@ unsafe fn create_context() -> Option<Context> {
     let hdc = GetDC(hwnd);
     if hdc.is_null() {
         DestroyWindow(hwnd);
-        eprintln!("skipped: GetDC failed");
+        eprintln!("SKIPPED compute_doubles_a_buffer_on_a_real_gl_context: GetDC failed");
         return None;
     }
 
@@ -130,7 +130,9 @@ unsafe fn create_context() -> Option<Context> {
     if fmt == 0 || SetPixelFormat(hdc, fmt, &pfd) == 0 {
         ReleaseDC(hwnd, hdc);
         DestroyWindow(hwnd);
-        eprintln!("skipped: no compatible pixel format");
+        eprintln!(
+            "SKIPPED compute_doubles_a_buffer_on_a_real_gl_context: no compatible pixel format"
+        );
         return None;
     }
 
@@ -143,7 +145,9 @@ unsafe fn create_context() -> Option<Context> {
         }
         ReleaseDC(hwnd, hdc);
         DestroyWindow(hwnd);
-        eprintln!("skipped: legacy wglCreateContext failed");
+        eprintln!(
+            "SKIPPED compute_doubles_a_buffer_on_a_real_gl_context: legacy wglCreateContext failed"
+        );
         return None;
     }
 
@@ -180,7 +184,9 @@ unsafe fn create_context() -> Option<Context> {
         wglDeleteContext(glrc);
         ReleaseDC(hwnd, hdc);
         DestroyWindow(hwnd);
-        eprintln!("skipped: LoadLibraryA(opengl32) failed");
+        eprintln!(
+            "SKIPPED compute_doubles_a_buffer_on_a_real_gl_context: LoadLibraryA(opengl32) failed"
+        );
         return None;
     }
 
@@ -235,7 +241,9 @@ fn compute_doubles_a_buffer_on_a_real_gl_context() {
         info.major, info.minor, info.vendor, info.renderer
     );
     if !info.supports_compute {
-        eprintln!("skipped: driver reports GL < 4.3 (no compute shaders)");
+        eprintln!(
+            "SKIPPED compute_doubles_a_buffer_on_a_real_gl_context: driver reports GL < 4.3 (no compute shaders)"
+        );
         return;
     }
 
