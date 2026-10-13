@@ -40,6 +40,15 @@
 //! | [`nccl`]      | `libnccl`          | Collectives                             |
 //! | [`nvtx`]      | `libnvToolsExt`    | Profiler ranges/marks                   |
 //! | [`cupti`]     | `libcupti`         | Profiling/tracing activity records      |
+//!
+//! ## Documentation policy
+//!
+//! Items here mirror the CUDA C headers one-to-one: a `Fns` field is named
+//! exactly after the C symbol it resolves, and enum variants and struct
+//! fields carry the C names minus their prefix. They are deliberately not
+//! documented item by item — NVIDIA's reference for the same symbol is the
+//! authority, and a paraphrase here could only drift from it. The safe crate
+//! (`ironaccelerator-cuda`) is fully documented and enforces `missing_docs`.
 
 #![allow(non_snake_case, non_camel_case_types, non_upper_case_globals)]
 #![allow(

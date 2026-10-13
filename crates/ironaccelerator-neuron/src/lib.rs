@@ -13,6 +13,7 @@
 //! when root is reachable); generation is inferred from the runtime
 //! version string.
 
+#![warn(missing_docs)]
 #![allow(clippy::missing_safety_doc)]
 
 pub mod backend;
@@ -21,6 +22,7 @@ pub mod runtime;
 
 pub use backend::{NeuronBackend, NEURON_BACKEND};
 
+/// Registers the Neuron backend with `reg`.
 pub fn register(reg: &mut ironaccelerator_core::BackendRegistry) {
     reg.register(&NEURON_BACKEND);
 }

@@ -6,7 +6,9 @@ use ironaccelerator_core::{
     Result, Vendor,
 };
 
+/// TPU backend handle; zero-sized.
 pub struct TpuBackend;
+/// Process-wide TPU backend instance.
 pub static TPU_BACKEND: TpuBackend = TpuBackend;
 
 impl Backend for TpuBackend {

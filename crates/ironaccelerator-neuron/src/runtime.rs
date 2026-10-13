@@ -9,10 +9,15 @@ use core::ffi::{c_void, CStr};
 use crate::drv::{self, Loaded, NrtModelHandle, NrtTensorSetHandle, NRT_SUCCESS};
 
 #[derive(Debug)]
+/// Errors from the Neuron runtime wrappers.
 pub enum NeuronError {
+    /// `libnrt` is not loaded.
     Unavailable,
+    /// The loaded `libnrt` does not export the named symbol.
     MissingSymbol(&'static str),
+    /// `libnrt` returned a non-success `NRT_STATUS`.
     Runtime(u32),
+    /// A name could not be converted to a C string.
     BadName,
 }
 
@@ -52,6 +57,7 @@ impl Model {
         Ok(())
     }
 
+    /// Returns the raw `nrt_model_t` handle.
     pub fn raw(&self) -> NrtModelHandle {
         self.handle
     }
@@ -75,6 +81,7 @@ pub struct TensorSet {
 }
 
 impl TensorSet {
+    /// Allocates an empty tensor set via `nrt_allocate_tensor_set`.
     pub fn new() -> Result<Self, NeuronError> {
         let l = drv::loaded().ok_or(NeuronError::Unavailable)?;
         let alloc = l
@@ -105,6 +112,7 @@ impl TensorSet {
         Ok(())
     }
 
+    /// Returns the raw `nrt_tensor_set_t` handle.
     pub fn raw(&self) -> NrtTensorSetHandle {
         self.handle
     }

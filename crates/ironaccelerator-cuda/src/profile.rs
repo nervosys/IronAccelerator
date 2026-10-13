@@ -42,27 +42,43 @@ use std::time::Instant;
 pub enum Event {
     /// CPU-side span `[start_ns, end_ns)` relative to profiler epoch.
     Cpu {
+        /// Span name.
         name: String,
+        /// Span start, in nanoseconds since the profiler epoch.
         start_ns: u64,
+        /// Span end, in nanoseconds since the profiler epoch.
         end_ns: u64,
+        /// Hashed ID of the recording thread.
         tid: u32,
     },
     /// GPU span still awaiting resolution.
     GpuPending {
+        /// Span name.
         name: String,
+        /// Start event, recorded on the stream before the span.
         start: Arc<TimingEvent>,
+        /// Stop event, recorded on the stream after the span.
         stop: Arc<TimingEvent>,
     },
     /// Resolved GPU span (`μs` since profiler epoch — converted at flush).
     Gpu {
+        /// Span name.
         name: String,
+        /// Span start, in microseconds on the stitched GPU track.
         start_us: u64,
+        /// Span end, in microseconds on the stitched GPU track.
         end_us: u64,
     },
     /// Instant marker — no duration.
-    Mark { name: String, at_ns: u64 },
+    Mark {
+        /// Marker name.
+        name: String,
+        /// Marker time, in nanoseconds since the profiler epoch.
+        at_ns: u64,
+    },
 }
 
+/// Profiler that buffers CPU, GPU and marker events; off until [`Profiler::enable`] is called.
 pub struct Profiler {
     enabled: AtomicBool,
     epoch: Instant,
@@ -80,6 +96,7 @@ impl Default for Profiler {
 }
 
 impl Profiler {
+    /// Creates a disabled profiler with an empty buffer and a 65,536-event cap.
     pub fn new() -> Self {
         Self {
             enabled: AtomicBool::new(false),
@@ -90,14 +107,17 @@ impl Profiler {
         }
     }
 
+    /// Returns `true` if the profiler is recording.
     #[inline(always)]
     pub fn is_enabled(&self) -> bool {
         self.enabled.load(Ordering::Relaxed)
     }
+    /// Starts recording.
     #[inline(always)]
     pub fn enable(&self) {
         self.enabled.store(true, Ordering::Relaxed);
     }
+    /// Stops recording. Already-buffered events are kept.
     #[inline(always)]
     pub fn disable(&self) {
         self.enabled.store(false, Ordering::Relaxed);
@@ -109,15 +129,19 @@ impl Profiler {
         self.capacity.store(n, Ordering::Relaxed);
     }
 
+    /// Number of events dropped because the buffer was full.
     pub fn dropped(&self) -> u64 {
         self.dropped.load(Ordering::Relaxed)
     }
+    /// Number of buffered events.
     pub fn len(&self) -> usize {
         self.events.lock().len()
     }
+    /// Returns `true` if no events are buffered.
     pub fn is_empty(&self) -> bool {
         self.events.lock().is_empty()
     }
+    /// Discards all buffered events and resets the dropped counter.
     pub fn clear(&self) {
         self.events.lock().clear();
         self.dropped.store(0, Ordering::Relaxed);

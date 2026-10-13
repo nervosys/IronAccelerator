@@ -38,6 +38,7 @@ fn check(_op: &'static str, s: sys::CublasStatus) -> Result<()> {
 
 // ─── Handle ─────────────────────────────────────────────────────────────────
 
+/// Owned cuBLASLt handle bound to one device. Destroyed on drop.
 pub struct BlasLt {
     handle: sys::CublasLtHandle,
     _device: Arc<drv::Device>,
@@ -47,6 +48,7 @@ unsafe impl Send for BlasLt {}
 unsafe impl Sync for BlasLt {}
 
 impl BlasLt {
+    /// Create a cuBLASLt handle on `device`. Wraps `cublasLtCreate`.
     pub fn new(device: Arc<drv::Device>) -> Result<Arc<Self>> {
         device.bind()?;
         let f = fns()?;
@@ -60,11 +62,13 @@ impl BlasLt {
         }))
     }
 
+    /// Raw `cublasLtHandle_t`.
     #[inline]
     pub fn raw(&self) -> sys::CublasLtHandle {
         self.handle
     }
 
+    /// cuBLASLt library version number. Wraps `cublasLtGetVersion`.
     pub fn version() -> Result<usize> {
         Ok(unsafe { (fns()?.cublasLtGetVersion)() })
     }
@@ -85,6 +89,7 @@ impl Drop for BlasLt {
 static HANDLES: once_cell::sync::Lazy<Mutex<HashMap<u32, Arc<BlasLt>>>> =
     once_cell::sync::Lazy::new(|| Mutex::new(HashMap::new()));
 
+/// Return the process-wide cuBLASLt handle for `stream`'s device, creating it on first use.
 pub fn handle_for(stream: &Arc<Stream>) -> Result<Arc<BlasLt>> {
     let device = stream.device();
     let ord = device.ordinal();
@@ -104,6 +109,7 @@ pub fn handle_for(stream: &Arc<Stream>) -> Result<Arc<BlasLt>> {
 
 // ─── Matmul descriptor ──────────────────────────────────────────────────────
 
+/// Owned `cublasLtMatmulDesc_t`. Destroyed on drop.
 pub struct MatmulDesc {
     raw: sys::CublasLtMatmulDesc,
 }
@@ -112,6 +118,7 @@ unsafe impl Send for MatmulDesc {}
 unsafe impl Sync for MatmulDesc {}
 
 impl MatmulDesc {
+    /// Create a matmul descriptor with the given compute and scale types. Wraps `cublasLtMatmulDescCreate`.
     pub fn new(compute: ComputeType, scale: DType) -> Result<Self> {
         let f = fns()?;
         let mut raw = sys::CublasLtMatmulDesc::default();
@@ -124,6 +131,7 @@ impl MatmulDesc {
         Ok(Self { raw })
     }
 
+    /// Set the transpose flags for operands A and B. Wraps `cublasLtMatmulDescSetAttribute`.
     pub fn set_transpose(&mut self, trans_a: Op, trans_b: Op) -> Result<()> {
         let f = fns()?;
         let ta = trans_a as u32;
@@ -186,6 +194,7 @@ impl MatmulDesc {
         )
     }
 
+    /// Set the device pointer that receives the amax of D. Wraps `cublasLtMatmulDescSetAttribute`.
     pub fn set_amax_d_pointer(&mut self, ptr: iron_cuda_sys::driver::CUdeviceptr) -> Result<()> {
         let f = fns()?;
         unsafe {
@@ -201,6 +210,7 @@ impl MatmulDesc {
         }
     }
 
+    /// Set the device pointer to the epilogue bias vector. Wraps `cublasLtMatmulDescSetAttribute`.
     pub fn set_bias_pointer(&mut self, ptr: iron_cuda_sys::driver::CUdeviceptr) -> Result<()> {
         let f = fns()?;
         unsafe {
@@ -243,6 +253,7 @@ impl MatmulDesc {
         }
     }
 
+    /// Raw `cublasLtMatmulDesc_t`.
     #[inline]
     pub fn raw(&self) -> sys::CublasLtMatmulDesc {
         self.raw
@@ -259,16 +270,22 @@ impl Drop for MatmulDesc {
     }
 }
 
+/// Operand whose FP8 scale pointer is set by [`MatmulDesc::set_scale_pointer`].
 #[derive(Copy, Clone, Debug)]
 pub enum ScaleTensor {
+    /// Scale for operand A.
     A,
+    /// Scale for operand B.
     B,
+    /// Scale for operand C.
     C,
+    /// Scale for the output D.
     D,
 }
 
 // ─── Matrix layout ──────────────────────────────────────────────────────────
 
+/// Owned `cublasLtMatrixLayout_t`. Destroyed on drop.
 pub struct MatrixLayout {
     raw: sys::CublasLtMatrixLayout,
 }
@@ -277,6 +294,7 @@ unsafe impl Send for MatrixLayout {}
 unsafe impl Sync for MatrixLayout {}
 
 impl MatrixLayout {
+    /// Create a `rows` x `cols` layout of `dtype` with leading dimension `ld`. Wraps `cublasLtMatrixLayoutCreate`.
     pub fn new(dtype: DType, rows: u64, cols: u64, ld: i64) -> Result<Self> {
         let f = fns()?;
         let mut raw = sys::CublasLtMatrixLayout::default();
@@ -289,6 +307,7 @@ impl MatrixLayout {
         Ok(Self { raw })
     }
 
+    /// Set the element order (row- or column-major). Wraps `cublasLtMatrixLayoutSetAttribute`.
     pub fn set_order(&mut self, order: Order) -> Result<()> {
         let f = fns()?;
         let v = order as u32;
@@ -305,6 +324,7 @@ impl MatrixLayout {
         }
     }
 
+    /// Set the batch count and the stride between batches. Wraps `cublasLtMatrixLayoutSetAttribute` for `BatchCount` and `StridedBatchOffset`.
     pub fn set_batch(&mut self, count: i32, stride: i64) -> Result<()> {
         let f = fns()?;
         unsafe {
@@ -330,6 +350,7 @@ impl MatrixLayout {
         Ok(())
     }
 
+    /// Raw `cublasLtMatrixLayout_t`.
     #[inline]
     pub fn raw(&self) -> sys::CublasLtMatrixLayout {
         self.raw
@@ -348,6 +369,7 @@ impl Drop for MatrixLayout {
 
 // ─── Preference ─────────────────────────────────────────────────────────────
 
+/// Owned `cublasLtMatmulPreference_t` that constrains heuristic queries. Destroyed on drop.
 pub struct Preference {
     raw: sys::CublasLtMatmulPreference,
 }
@@ -356,6 +378,7 @@ unsafe impl Send for Preference {}
 unsafe impl Sync for Preference {}
 
 impl Preference {
+    /// Create an empty matmul preference. Wraps `cublasLtMatmulPreferenceCreate`.
     pub fn new() -> Result<Self> {
         let f = fns()?;
         let mut raw = sys::CublasLtMatmulPreference::default();
@@ -368,6 +391,7 @@ impl Preference {
         Ok(Self { raw })
     }
 
+    /// Cap the workspace size in bytes that heuristics may request. Wraps `cublasLtMatmulPreferenceSetAttribute`.
     pub fn set_max_workspace(&mut self, bytes: usize) -> Result<()> {
         let f = fns()?;
         // cuBLASLt documents MaxWorkspaceBytes as u64 (size_t). On 64-bit
@@ -386,6 +410,7 @@ impl Preference {
         }
     }
 
+    /// Raw `cublasLtMatmulPreference_t`.
     #[inline]
     pub fn raw(&self) -> sys::CublasLtMatmulPreference {
         self.raw

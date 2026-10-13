@@ -30,6 +30,7 @@ fn check(_op: &'static str, s: sys::CurandStatus) -> Result<()> {
     }
 }
 
+/// cuRAND generator bound to a stream. Destroyed on drop.
 pub struct Rng {
     gen: sys::CurandGenerator,
 }
@@ -38,10 +39,14 @@ unsafe impl Send for Rng {}
 unsafe impl Sync for Rng {}
 
 impl Rng {
+    /// Create a Philox 4x32-10 generator seeded with `seed`, bound to `stream`.
     pub fn new(device: &Arc<Device>, stream: &Arc<Stream>, seed: u64) -> Result<Self> {
         Self::with_type(device, stream, seed, RngType::PseudoPhilox4_32_10)
     }
 
+    /// Create a generator of type `ty` seeded with `seed`, bound to `stream`.
+    /// Wraps `curandCreateGenerator`, `curandSetStream`, and
+    /// `curandSetPseudoRandomGeneratorSeed`.
     pub fn with_type(
         device: &Arc<Device>,
         stream: &Arc<Stream>,
@@ -65,6 +70,7 @@ impl Rng {
         Ok(Self { gen: g })
     }
 
+    /// Reseed the generator. Wraps `curandSetPseudoRandomGeneratorSeed`.
     pub fn set_seed(&mut self, seed: u64) -> Result<()> {
         unsafe {
             check(
@@ -74,6 +80,7 @@ impl Rng {
         }
     }
 
+    /// Set the generator offset. Wraps `curandSetGeneratorOffset`.
     pub fn set_offset(&mut self, offset: u64) -> Result<()> {
         unsafe {
             check(
@@ -83,6 +90,7 @@ impl Rng {
         }
     }
 
+    /// Fill `dst` with uniform `f32` samples. Wraps `curandGenerateUniform`.
     pub fn fill_uniform_f32(&mut self, dst: &mut DeviceBuf<f32>) -> Result<()> {
         unsafe {
             check(
@@ -92,6 +100,7 @@ impl Rng {
         }
     }
 
+    /// Fill `dst` with uniform `f64` samples. Wraps `curandGenerateUniformDouble`.
     pub fn fill_uniform_f64(&mut self, dst: &mut DeviceBuf<f64>) -> Result<()> {
         unsafe {
             check(
@@ -101,6 +110,7 @@ impl Rng {
         }
     }
 
+    /// Fill `dst` with normal `f32` samples of the given `mean` and `std`. Wraps `curandGenerateNormal`.
     pub fn fill_normal_f32(&mut self, dst: &mut DeviceBuf<f32>, mean: f32, std: f32) -> Result<()> {
         unsafe {
             check(
@@ -110,6 +120,7 @@ impl Rng {
         }
     }
 
+    /// Fill `dst` with normal `f64` samples of the given `mean` and `std`. Wraps `curandGenerateNormalDouble`.
     pub fn fill_normal_f64(&mut self, dst: &mut DeviceBuf<f64>, mean: f64, std: f64) -> Result<()> {
         unsafe {
             check(

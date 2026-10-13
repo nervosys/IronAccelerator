@@ -45,8 +45,11 @@ pub struct CompileOptions {
     pub extras: Vec<String>,
 }
 
+/// A compiled kernel: the owning module and the resolved function handle.
 pub struct CompiledKernel {
+    /// Module holding the PTX image; shared with the process-wide cache.
     pub module: Arc<Module>,
+    /// Function handle resolved from `module` for the requested name.
     pub function: Function,
 }
 

@@ -15,6 +15,14 @@
 //! Everything else (rocFFT, rocSPARSE, rocSOLVER, MIOpen, rocRAND) will
 //! be added as needed. Pattern is identical: add a module, implement
 //! `load_fns`, stash the result in a `LazyLock<Result<Fns, LoadError>>`.
+//!
+//! ## Documentation policy
+//!
+//! Items here mirror the ROCm C headers one-to-one (each `Fns` field is
+//! named after the C symbol it resolves), so they are not documented item
+//! by item — AMD's reference for the same symbol is the authority. The safe
+//! crate (`ironaccelerator-rocm`) is fully documented and enforces
+//! `missing_docs`.
 
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]

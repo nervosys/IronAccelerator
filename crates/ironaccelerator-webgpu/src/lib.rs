@@ -40,6 +40,7 @@
 //! target, `wasm32-unknown-unknown` included, with no feature flags and no
 //! `--cfg` requirements.
 
+#![warn(missing_docs)]
 pub mod backend;
 pub mod drv;
 

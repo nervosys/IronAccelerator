@@ -109,14 +109,17 @@ impl CudaDevice {
         crate::drv::Device::count()
     }
 
+    /// Ordinal of this device.
     #[inline]
     pub fn ordinal(&self) -> u32 {
         self.device.ordinal()
     }
+    /// Device name. Wraps `cuDeviceGetName`.
     #[inline]
     pub fn name(&self) -> DriverResult<String> {
         self.device.name()
     }
+    /// Total device memory in bytes.
     #[inline]
     pub fn total_mem(&self) -> DriverResult<usize> {
         self.device.total_mem()
@@ -135,6 +138,7 @@ impl CudaDevice {
         CudaStream::new(self.device.clone())
     }
 
+    /// Create a stream on this device with the given `priority`.
     pub fn new_stream_with_priority(&self, priority: Priority) -> DriverResult<Arc<CudaStream>> {
         CudaStream::with_priority(self.device.clone(), priority)
     }
@@ -206,6 +210,7 @@ pub fn compile_ptx_with_opts(
 /// Marker trait for anything exposing a raw `CUdeviceptr`. Mirrors
 /// `cudarc::driver::DevicePtr`. Implemented for our slice / view types.
 pub trait DevicePtr {
+    /// Raw device pointer to the start of the buffer or view.
     fn device_ptr(&self) -> iron_cuda_sys::driver::CUdeviceptr;
 }
 
@@ -376,6 +381,7 @@ impl CudaStreamExt for Arc<CudaStream> {
 /// cudarc's `LaunchAsync` trait: kernels expose `launch_async(cfg, args)`.
 /// We adapt our [`CudaFunction::launch`] which takes an explicit stream.
 pub trait LaunchAsync {
+    /// Launch this function with `cfg` and `args` on `stream`.
     fn launch_async<A: LaunchArgs>(
         &self,
         cfg: LaunchCfg,
@@ -405,6 +411,7 @@ impl LaunchAsync for CudaFunction {
 /// is [`compile_ptx`] / [`compile_ptx_with_opts`].
 #[derive(Clone, Debug)]
 pub struct Ptx {
+    /// PTX image bytes, NUL-terminated.
     pub ptx: Vec<u8>,
 }
 

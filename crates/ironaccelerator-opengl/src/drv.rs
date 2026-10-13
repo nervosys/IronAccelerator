@@ -11,17 +11,28 @@ use once_cell::sync::OnceCell;
 static GL: OnceCell<glow::Context> = OnceCell::new();
 static INFO: OnceCell<GlInfo> = OnceCell::new();
 
+/// Probed GL context properties, captured once by [`bind_current_context`].
 #[derive(Debug, Clone)]
 pub struct GlInfo {
+    /// `GL_RENDERER` string.
     pub renderer: String,
+    /// `GL_VENDOR` string.
     pub vendor: String,
+    /// `GL_VERSION` string.
     pub version: String,
+    /// `GL_SHADING_LANGUAGE_VERSION` string; empty on GL 1.x.
     pub glsl_version: String,
+    /// Major version parsed from `GL_VERSION`.
     pub major: u32,
+    /// Minor version parsed from `GL_VERSION`.
     pub minor: u32,
+    /// `GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS`; 0 below GL 4.3.
     pub max_compute_work_group_invocations: u32,
+    /// `GL_MAX_COMPUTE_WORK_GROUP_COUNT` per axis; zeros below GL 4.3.
     pub max_compute_work_group_count: [u32; 3],
+    /// `GL_MAX_COMPUTE_SHARED_MEMORY_SIZE` in bytes; 0 below GL 4.3.
     pub max_shared_memory_bytes: u32,
+    /// True when the context is GL 4.3 or later.
     pub supports_compute: bool,
 }
 
@@ -41,10 +52,12 @@ where
     let _ = INFO.set(info);
 }
 
+/// Returns the probed info, or `None` if no context has been bound.
 pub fn info() -> Option<GlInfo> {
     INFO.get().cloned()
 }
 
+/// Returns the context cached by [`bind_current_context`], if any.
 pub fn shared_context() -> Option<&'static glow::Context> {
     GL.get()
 }

@@ -34,6 +34,7 @@ fn check(_op: &'static str, s: CutensorStatus) -> Result<()> {
     }
 }
 
+/// Owned cuTENSOR handle (`cutensorHandle_t`) for one device; destroyed on drop.
 pub struct CutensorHandle {
     handle: sys::CutensorHandle,
     _device: Arc<drv::Device>,
@@ -43,6 +44,7 @@ unsafe impl Send for CutensorHandle {}
 unsafe impl Sync for CutensorHandle {}
 
 impl CutensorHandle {
+    /// Creates a cuTENSOR handle on `device` (`cutensorCreate`). Binds the device first.
     pub fn new(device: Arc<drv::Device>) -> Result<Arc<Self>> {
         device.bind()?;
         let f = fns()?;
@@ -56,6 +58,7 @@ impl CutensorHandle {
         }))
     }
 
+    /// Returns the underlying `cutensorHandle_t`.
     #[inline]
     pub fn raw(&self) -> sys::CutensorHandle {
         self.handle
@@ -75,6 +78,7 @@ impl Drop for CutensorHandle {
 static HANDLES: once_cell::sync::Lazy<Mutex<HashMap<u32, Arc<CutensorHandle>>>> =
     once_cell::sync::Lazy::new(|| Mutex::new(HashMap::new()));
 
+/// Returns the cached per-device cuTENSOR handle for `device`, creating it on first use.
 pub fn handle_for(device: Arc<drv::Device>) -> Result<Arc<CutensorHandle>> {
     let ord = device.ordinal();
     {
@@ -89,6 +93,7 @@ pub fn handle_for(device: Arc<drv::Device>) -> Result<Arc<CutensorHandle>> {
     Ok(HANDLES.lock().entry(ord).or_insert(h).clone())
 }
 
+/// Returns `true` if the cuTENSOR library loads at runtime.
 pub fn is_available() -> bool {
     sys::is_available()
 }
@@ -109,6 +114,7 @@ fn dtype_of<T: Repr>() -> Result<CudaDataType> {
 
 // ─── Tensor descriptor ─────────────────────────────────────────────────────
 
+/// Tensor descriptor (`cutensorTensorDescriptor_t`); destroyed on drop. Holds its handle alive.
 pub struct TensorDescr {
     raw: sys::CutensorTensorDescr,
     _handle: Arc<CutensorHandle>,
@@ -153,6 +159,7 @@ impl TensorDescr {
         })
     }
 
+    /// Returns the underlying `cutensorTensorDescriptor_t`.
     #[inline]
     pub fn raw(&self) -> sys::CutensorTensorDescr {
         self.raw
@@ -185,6 +192,7 @@ unsafe impl Send for Contract {}
 unsafe impl Sync for Contract {}
 
 impl Contract {
+    /// Builds a contraction plan: operation descriptor, plan preference, workspace estimate, then plan (`cutensorCreateContraction`, `cutensorCreatePlanPreference`, `cutensorEstimateWorkspaceSize`, `cutensorCreatePlan`).
     pub fn build(
         handle: Arc<CutensorHandle>,
         a: &TensorDescr,
@@ -263,6 +271,7 @@ impl Contract {
         })
     }
 
+    /// Workspace size in bytes that the plan was built for.
     #[inline]
     pub fn workspace_bytes(&self) -> u64 {
         self.workspace_bytes

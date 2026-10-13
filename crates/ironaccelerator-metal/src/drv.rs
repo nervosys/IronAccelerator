@@ -22,14 +22,17 @@ impl Device {
             .collect()
     }
 
+    /// The default device, or `None` when Metal has none (`MTLCreateSystemDefaultDevice`).
     pub fn system_default() -> Option<Arc<Self>> {
         MtlDevice::system_default().map(|inner| Arc::new(Self { inner }))
     }
 
+    /// Device name from `-[MTLDevice name]`.
     #[inline]
     pub fn name(&self) -> String {
         self.inner.name().to_string()
     }
+    /// `registryID` of the device.
     #[inline]
     pub fn registry_id(&self) -> u64 {
         self.inner.registry_id()
@@ -54,24 +57,29 @@ impl Device {
         0
     }
 
+    /// `hasUnifiedMemory`: true when the CPU and GPU share physical memory.
     #[inline]
     pub fn has_unified_memory(&self) -> bool {
         self.inner.has_unified_memory()
     }
+    /// `maxBufferLength` in bytes.
     #[inline]
     pub fn max_buffer_length(&self) -> u64 {
         self.inner.max_buffer_length()
     }
+    /// `recommendedMaxWorkingSetSize` in bytes.
     #[inline]
     pub fn recommended_max_working_set_size(&self) -> u64 {
         self.inner.recommended_max_working_set_size()
     }
 
+    /// The underlying `MTLDevice` handle.
     #[inline]
     pub fn raw(&self) -> &MtlDevice {
         &self.inner
     }
 
+    /// Creates a command queue on this device (`newCommandQueue`).
     pub fn new_queue(self: &Arc<Self>) -> Arc<Queue> {
         let q = self.inner.new_command_queue();
         Arc::new(Queue {
@@ -80,6 +88,7 @@ impl Device {
         })
     }
 
+    /// Allocates a buffer of `bytes` bytes. `shared` selects `StorageModeShared` (CPU-mappable) over `StorageModePrivate`. Errors on zero size.
     pub fn new_buffer(self: &Arc<Self>, bytes: usize, shared: bool) -> Result<Arc<Buffer>> {
         if bytes == 0 {
             return Err(Error::InvalidArgument("new_buffer: size is zero"));
@@ -98,6 +107,7 @@ impl Device {
     }
 }
 
+/// A command queue, held together with the [`Device`] it was created on.
 pub struct Queue {
     device: Arc<Device>,
     inner: CommandQueue,
@@ -107,10 +117,12 @@ unsafe impl Send for Queue {}
 unsafe impl Sync for Queue {}
 
 impl Queue {
+    /// The device this queue was created on.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
         &self.device
     }
+    /// The underlying `MTLCommandQueue` handle.
     #[inline]
     pub fn raw(&self) -> &CommandQueue {
         &self.inner
@@ -126,6 +138,7 @@ impl Queue {
     }
 }
 
+/// A `MTLBuffer` and its byte length. Keeps its device alive.
 pub struct Buffer {
     _device: Arc<Device>,
     inner: MtlBuffer,
@@ -136,10 +149,12 @@ unsafe impl Send for Buffer {}
 unsafe impl Sync for Buffer {}
 
 impl Buffer {
+    /// The underlying `MTLBuffer` handle.
     #[inline]
     pub fn raw(&self) -> &MtlBuffer {
         &self.inner
     }
+    /// Buffer length in bytes.
     #[inline]
     pub fn bytes(&self) -> usize {
         self.bytes

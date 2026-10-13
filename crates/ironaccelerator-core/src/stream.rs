@@ -7,6 +7,7 @@ use crate::error::Result;
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
 
+/// Submission queue for asynchronous device work.
 pub trait Stream: Send + Sync {
     /// Submit a no-op barrier and return when GPU has caught up.
     fn synchronize(&self) -> Result<()>;
@@ -16,6 +17,7 @@ pub trait Stream: Send + Sync {
     fn record(&self) -> Result<Box<dyn Event>>;
 }
 
+/// Marker recorded on a stream, used to wait on or time a point in its work.
 pub trait Event: Send + Sync {
     /// Block until the recorded point is reached.
     fn wait(&self) -> Result<()>;

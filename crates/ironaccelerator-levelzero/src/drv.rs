@@ -18,162 +18,261 @@ use once_cell::sync::OnceCell;
 
 // ── Raw FFI types ──────────────────────────────────────────────────────────
 
+/// Mirrors `ze_result_t`; `0` is success.
 pub type ZeResult = u32;
+/// `ZE_RESULT_SUCCESS` value of `ze_result_t`.
 pub const ZE_RESULT_SUCCESS: ZeResult = 0;
 
+/// `ze_driver_handle_t`.
 pub type ZeDriverHandle = *mut c_void;
+/// `ze_device_handle_t`.
 pub type ZeDeviceHandle = *mut c_void;
 
+/// `ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES` value of `ze_structure_type_t`, for `ze_device_properties_t::stype`.
 pub const ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES: u32 = 0x1;
 
+/// `ZE_DEVICE_TYPE_GPU` value of `ze_device_type_t`: integrated or discrete GPU.
 pub const ZE_DEVICE_TYPE_GPU: u32 = 1;
+/// `ZE_DEVICE_TYPE_CPU` value of `ze_device_type_t`: CPU device.
 pub const ZE_DEVICE_TYPE_CPU: u32 = 2;
+/// `ZE_DEVICE_TYPE_FPGA` value of `ze_device_type_t`: FPGA device.
 pub const ZE_DEVICE_TYPE_FPGA: u32 = 3;
+/// `ZE_DEVICE_TYPE_MCA` value of `ze_device_type_t`: memory copy accelerator.
 pub const ZE_DEVICE_TYPE_MCA: u32 = 4;
+/// `ZE_DEVICE_TYPE_VPU` value of `ze_device_type_t`: vision processing unit (NPU).
 pub const ZE_DEVICE_TYPE_VPU: u32 = 5;
 
+/// Length of `ze_device_properties_t::name` in bytes.
 pub const ZE_MAX_DEVICE_NAME: usize = 256;
 
+/// Mirrors `ze_device_uuid_t`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct ZeDeviceUuid {
+    /// Raw 16-byte UUID.
     pub id: [u8; 16],
 }
 
+/// Mirrors `ze_device_properties_t`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct ZeDeviceProperties {
+    /// `ze_device_properties_t::stype`.
     pub stype: u32,
+    /// `ze_device_properties_t::pNext`.
     pub p_next: *mut c_void,
+    /// `ze_device_properties_t::type`, one of the `ZE_DEVICE_TYPE_*` values.
     pub type_: u32,
+    /// `ze_device_properties_t::vendorId`: PCI vendor ID.
     pub vendor_id: u32,
+    /// `ze_device_properties_t::deviceId`: PCI device ID.
     pub device_id: u32,
+    /// `ze_device_properties_t::subdeviceId`.
     pub subdevice_id: u32,
+    /// `ze_device_properties_t::coreClockRate`, in MHz.
     pub core_clock_rate: u32,
+    /// `ze_device_properties_t::maxMemAllocSize`, in bytes.
     pub max_mem_alloc_size: u64,
+    /// `ze_device_properties_t::maxHardwareContexts`.
     pub max_hardware_contexts: u32,
+    /// `ze_device_properties_t::maxCommandQueuePriority`.
     pub max_command_queue_priority: u32,
+    /// `ze_device_properties_t::numThreadsPerEU`.
     pub num_threads_per_eu: u32,
+    /// `ze_device_properties_t::physicalEUSimdWidth`.
     pub physical_eu_simd_width: u32,
+    /// `ze_device_properties_t::numEUsPerSubslice`.
     pub num_eus_per_subslice: u32,
+    /// `ze_device_properties_t::numSubslicesPerSlice`.
     pub num_subslices_per_slice: u32,
+    /// `ze_device_properties_t::numSlices`.
     pub num_slices: u32,
+    /// `ze_device_properties_t::timerResolution`.
     pub timer_resolution: u64,
+    /// `ze_device_properties_t::timestampValidBits`.
     pub timestamp_valid_bits: u32,
+    /// `ze_device_properties_t::kernelTimestampValidBits`.
     pub kernel_timestamp_valid_bits: u32,
+    /// `ze_device_properties_t::uuid`.
     pub uuid: ZeDeviceUuid,
+    /// `ze_device_properties_t::name`: NUL-terminated device name.
     pub name: [core::ffi::c_char; ZE_MAX_DEVICE_NAME],
 }
 
+/// `ze_context_handle_t`.
 pub type ZeContextHandle = *mut c_void;
+/// `ze_command_queue_handle_t`.
 pub type ZeCommandQueueHandle = *mut c_void;
+/// `ze_command_list_handle_t`.
 pub type ZeCommandListHandle = *mut c_void;
 
+/// `ZE_STRUCTURE_TYPE_CONTEXT_DESC` value of `ze_structure_type_t`.
 pub const ZE_STRUCTURE_TYPE_CONTEXT_DESC: u32 = 0x2;
+/// `ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC` value of `ze_structure_type_t`.
 pub const ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC: u32 = 0x3;
+/// `ZE_STRUCTURE_TYPE_COMMAND_LIST_DESC` value of `ze_structure_type_t`.
 pub const ZE_STRUCTURE_TYPE_COMMAND_LIST_DESC: u32 = 0x4;
+/// `ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC` value of `ze_structure_type_t`.
 pub const ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC: u32 = 0xc;
+/// `ZE_STRUCTURE_TYPE_HOST_MEM_ALLOC_DESC` value of `ze_structure_type_t`.
 pub const ZE_STRUCTURE_TYPE_HOST_MEM_ALLOC_DESC: u32 = 0xd;
+/// `ZE_STRUCTURE_TYPE_MODULE_DESC` value of `ze_structure_type_t`.
 pub const ZE_STRUCTURE_TYPE_MODULE_DESC: u32 = 0xf;
+/// `ZE_STRUCTURE_TYPE_KERNEL_DESC` value of `ze_structure_type_t`.
 pub const ZE_STRUCTURE_TYPE_KERNEL_DESC: u32 = 0x10;
 
+/// `ZE_MODULE_FORMAT_IL_SPIRV` value of `ze_module_format_t`: SPIR-V input.
 pub const ZE_MODULE_FORMAT_IL_SPIRV: u32 = 0;
+/// `ZE_MODULE_FORMAT_NATIVE` value of `ze_module_format_t`: device-native binary.
 pub const ZE_MODULE_FORMAT_NATIVE: u32 = 1;
 
+/// `ze_module_handle_t`.
 pub type ZeModuleHandle = *mut c_void;
+/// `ze_kernel_handle_t`.
 pub type ZeKernelHandle = *mut c_void;
 
+/// Mirrors `ze_device_mem_alloc_desc_t`.
 #[repr(C)]
 pub struct ZeDeviceMemAllocDesc {
+    /// `ze_device_mem_alloc_desc_t::stype`.
     pub stype: u32,
+    /// `ze_device_mem_alloc_desc_t::pNext`.
     pub p_next: *const c_void,
+    /// `ze_device_mem_alloc_desc_t::flags`.
     pub flags: u32,
+    /// `ze_device_mem_alloc_desc_t::ordinal`: device memory ordinal to allocate from.
     pub ordinal: u32,
 }
 
+/// Mirrors `ze_host_mem_alloc_desc_t`.
 #[repr(C)]
 pub struct ZeHostMemAllocDesc {
+    /// `ze_host_mem_alloc_desc_t::stype`.
     pub stype: u32,
+    /// `ze_host_mem_alloc_desc_t::pNext`.
     pub p_next: *const c_void,
+    /// `ze_host_mem_alloc_desc_t::flags`.
     pub flags: u32,
 }
 
+/// Mirrors `ze_module_desc_t`.
 #[repr(C)]
 pub struct ZeModuleDesc {
+    /// `ze_module_desc_t::stype`.
     pub stype: u32,
+    /// `ze_module_desc_t::pNext`.
     pub p_next: *const c_void,
+    /// `ze_module_desc_t::format`, one of the `ZE_MODULE_FORMAT_*` values.
     pub format: u32,
+    /// `ze_module_desc_t::inputSize`, in bytes.
     pub input_size: usize,
+    /// `ze_module_desc_t::pInputModule`.
     pub p_input_module: *const u8,
+    /// `ze_module_desc_t::pBuildFlags`.
     pub p_build_flags: *const core::ffi::c_char,
+    /// `ze_module_desc_t::pConstants`.
     pub p_constants: *const c_void,
 }
 
+/// Mirrors `ze_kernel_desc_t`.
 #[repr(C)]
 pub struct ZeKernelDesc {
+    /// `ze_kernel_desc_t::stype`.
     pub stype: u32,
+    /// `ze_kernel_desc_t::pNext`.
     pub p_next: *const c_void,
+    /// `ze_kernel_desc_t::flags`.
     pub flags: u32,
+    /// `ze_kernel_desc_t::pKernelName`.
     pub p_kernel_name: *const core::ffi::c_char,
 }
 
+/// Mirrors `ze_group_count_t`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct ZeGroupCount {
+    /// `ze_group_count_t::groupCountX`.
     pub group_count_x: u32,
+    /// `ze_group_count_t::groupCountY`.
     pub group_count_y: u32,
+    /// `ze_group_count_t::groupCountZ`.
     pub group_count_z: u32,
 }
 
+/// `ZE_COMMAND_QUEUE_MODE_DEFAULT` value for `ze_command_queue_desc_t::mode`.
 pub const ZE_COMMAND_QUEUE_MODE_DEFAULT: u32 = 0;
+/// `ZE_COMMAND_QUEUE_PRIORITY_NORMAL` value for `ze_command_queue_desc_t::priority`.
 pub const ZE_COMMAND_QUEUE_PRIORITY_NORMAL: u32 = 0;
 
+/// Mirrors `ze_context_desc_t`.
 #[repr(C)]
 pub struct ZeContextDesc {
+    /// `ze_context_desc_t::stype`.
     pub stype: u32,
+    /// `ze_context_desc_t::pNext`.
     pub p_next: *const c_void,
+    /// `ze_context_desc_t::flags`.
     pub flags: u32,
 }
 
+/// Mirrors `ze_command_queue_desc_t`.
 #[repr(C)]
 pub struct ZeCommandQueueDesc {
+    /// `ze_command_queue_desc_t::stype`.
     pub stype: u32,
+    /// `ze_command_queue_desc_t::pNext`.
     pub p_next: *const c_void,
+    /// `ze_command_queue_desc_t::ordinal`: command queue group ordinal.
     pub ordinal: u32,
+    /// `ze_command_queue_desc_t::index`: queue index within the group.
     pub index: u32,
+    /// `ze_command_queue_desc_t::flags`.
     pub flags: u32,
+    /// `ze_command_queue_desc_t::mode`.
     pub mode: u32,
+    /// `ze_command_queue_desc_t::priority`.
     pub priority: u32,
 }
 
+/// Mirrors `ze_command_list_desc_t`.
 #[repr(C)]
 pub struct ZeCommandListDesc {
+    /// `ze_command_list_desc_t::stype`.
     pub stype: u32,
+    /// `ze_command_list_desc_t::pNext`.
     pub p_next: *const c_void,
+    /// `ze_command_list_desc_t::commandQueueGroupOrdinal`.
     pub command_queue_group_ordinal: u32,
+    /// `ze_command_list_desc_t::flags`.
     pub flags: u32,
 }
 
 type ZeInitFn = unsafe extern "C" fn(flags: u32) -> ZeResult;
+/// Function-pointer type of `zeContextCreate`.
 pub type ZeContextCreateFn = unsafe extern "C" fn(
     h_driver: ZeDriverHandle,
     desc: *const ZeContextDesc,
     ph_context: *mut ZeContextHandle,
 ) -> ZeResult;
+/// Function-pointer type of `zeContextDestroy`.
 pub type ZeContextDestroyFn = unsafe extern "C" fn(h_context: ZeContextHandle) -> ZeResult;
+/// Function-pointer type of `zeCommandQueueCreate`.
 pub type ZeCommandQueueCreateFn = unsafe extern "C" fn(
     h_context: ZeContextHandle,
     h_device: ZeDeviceHandle,
     desc: *const ZeCommandQueueDesc,
     ph_queue: *mut ZeCommandQueueHandle,
 ) -> ZeResult;
+/// Function-pointer type of `zeCommandQueueDestroy`.
 pub type ZeCommandQueueDestroyFn = unsafe extern "C" fn(h_queue: ZeCommandQueueHandle) -> ZeResult;
+/// Function-pointer type of `zeCommandListCreate`.
 pub type ZeCommandListCreateFn = unsafe extern "C" fn(
     h_context: ZeContextHandle,
     h_device: ZeDeviceHandle,
     desc: *const ZeCommandListDesc,
     ph_list: *mut ZeCommandListHandle,
 ) -> ZeResult;
+/// Function-pointer type of `zeCommandListDestroy`.
 pub type ZeCommandListDestroyFn = unsafe extern "C" fn(h_list: ZeCommandListHandle) -> ZeResult;
 type ZeDriverGetFn =
     unsafe extern "C" fn(p_count: *mut u32, ph_drivers: *mut ZeDriverHandle) -> ZeResult;
@@ -187,6 +286,7 @@ type ZeDeviceGetPropertiesFn = unsafe extern "C" fn(
     p_properties: *mut ZeDeviceProperties,
 ) -> ZeResult;
 
+/// Function-pointer type of `zeMemAllocDevice`.
 pub type ZeMemAllocDeviceFn = unsafe extern "C" fn(
     h_context: ZeContextHandle,
     device_desc: *const ZeDeviceMemAllocDesc,
@@ -195,6 +295,7 @@ pub type ZeMemAllocDeviceFn = unsafe extern "C" fn(
     h_device: ZeDeviceHandle,
     pptr: *mut *mut c_void,
 ) -> ZeResult;
+/// Function-pointer type of `zeMemAllocShared`.
 pub type ZeMemAllocSharedFn = unsafe extern "C" fn(
     h_context: ZeContextHandle,
     device_desc: *const ZeDeviceMemAllocDesc,
@@ -204,8 +305,10 @@ pub type ZeMemAllocSharedFn = unsafe extern "C" fn(
     h_device: ZeDeviceHandle,
     pptr: *mut *mut c_void,
 ) -> ZeResult;
+/// Function-pointer type of `zeMemFree`.
 pub type ZeMemFreeFn =
     unsafe extern "C" fn(h_context: ZeContextHandle, ptr: *mut c_void) -> ZeResult;
+/// Function-pointer type of `zeModuleCreate`.
 pub type ZeModuleCreateFn = unsafe extern "C" fn(
     h_context: ZeContextHandle,
     h_device: ZeDeviceHandle,
@@ -213,21 +316,27 @@ pub type ZeModuleCreateFn = unsafe extern "C" fn(
     ph_module: *mut ZeModuleHandle,
     ph_build_log: *mut *mut c_void,
 ) -> ZeResult;
+/// Function-pointer type of `zeModuleDestroy`.
 pub type ZeModuleDestroyFn = unsafe extern "C" fn(h_module: ZeModuleHandle) -> ZeResult;
+/// Function-pointer type of `zeKernelCreate`.
 pub type ZeKernelCreateFn = unsafe extern "C" fn(
     h_module: ZeModuleHandle,
     desc: *const ZeKernelDesc,
     ph_kernel: *mut ZeKernelHandle,
 ) -> ZeResult;
+/// Function-pointer type of `zeKernelDestroy`.
 pub type ZeKernelDestroyFn = unsafe extern "C" fn(h_kernel: ZeKernelHandle) -> ZeResult;
+/// Function-pointer type of `zeKernelSetGroupSize`.
 pub type ZeKernelSetGroupSizeFn =
     unsafe extern "C" fn(h_kernel: ZeKernelHandle, gx: u32, gy: u32, gz: u32) -> ZeResult;
+/// Function-pointer type of `zeKernelSetArgumentValue`.
 pub type ZeKernelSetArgumentValueFn = unsafe extern "C" fn(
     h_kernel: ZeKernelHandle,
     arg_index: u32,
     arg_size: usize,
     p_arg_value: *const c_void,
 ) -> ZeResult;
+/// Function-pointer type of `zeCommandListAppendLaunchKernel`.
 pub type ZeCommandListAppendLaunchKernelFn = unsafe extern "C" fn(
     h_list: ZeCommandListHandle,
     h_kernel: ZeKernelHandle,
@@ -236,6 +345,7 @@ pub type ZeCommandListAppendLaunchKernelFn = unsafe extern "C" fn(
     num_wait_events: u32,
     ph_wait_events: *mut *mut c_void,
 ) -> ZeResult;
+/// Function-pointer type of `zeCommandListAppendMemoryCopy`.
 pub type ZeCommandListAppendMemoryCopyFn = unsafe extern "C" fn(
     h_list: ZeCommandListHandle,
     dstptr: *mut c_void,
@@ -245,14 +355,18 @@ pub type ZeCommandListAppendMemoryCopyFn = unsafe extern "C" fn(
     num_wait_events: u32,
     ph_wait_events: *mut *mut c_void,
 ) -> ZeResult;
+/// Function-pointer type of `zeCommandListClose`.
 pub type ZeCommandListCloseFn = unsafe extern "C" fn(h_list: ZeCommandListHandle) -> ZeResult;
+/// Function-pointer type of `zeCommandListReset`.
 pub type ZeCommandListResetFn = unsafe extern "C" fn(h_list: ZeCommandListHandle) -> ZeResult;
+/// Function-pointer type of `zeCommandQueueExecuteCommandLists`.
 pub type ZeCommandQueueExecuteCommandListsFn = unsafe extern "C" fn(
     h_queue: ZeCommandQueueHandle,
     num_lists: u32,
     ph_lists: *const ZeCommandListHandle,
     h_fence: *mut c_void,
 ) -> ZeResult;
+/// Function-pointer type of `zeCommandQueueSynchronize`.
 pub type ZeCommandQueueSynchronizeFn =
     unsafe extern "C" fn(h_queue: ZeCommandQueueHandle, timeout: u64) -> ZeResult;
 
@@ -260,31 +374,56 @@ pub type ZeCommandQueueSynchronizeFn =
 
 static LIB: OnceCell<Option<Loaded>> = OnceCell::new();
 
+/// Level Zero entry points resolved from `ze_loader`, kept alive for the process lifetime.
 pub struct Loaded {
     _lib: Library,
+    /// `zeDriverGet`.
     pub ze_driver_get: ZeDriverGetFn,
+    /// `zeDeviceGet`.
     pub ze_device_get: ZeDeviceGetFn,
+    /// `zeDeviceGetProperties`.
     pub ze_device_get_properties: ZeDeviceGetPropertiesFn,
+    /// `zeContextCreate`.
     pub ze_context_create: ZeContextCreateFn,
+    /// `zeContextDestroy`.
     pub ze_context_destroy: ZeContextDestroyFn,
+    /// `zeCommandQueueCreate`.
     pub ze_command_queue_create: ZeCommandQueueCreateFn,
+    /// `zeCommandQueueDestroy`.
     pub ze_command_queue_destroy: ZeCommandQueueDestroyFn,
+    /// `zeCommandListCreate`.
     pub ze_command_list_create: ZeCommandListCreateFn,
+    /// `zeCommandListDestroy`.
     pub ze_command_list_destroy: ZeCommandListDestroyFn,
+    /// `zeMemAllocDevice`.
     pub ze_mem_alloc_device: ZeMemAllocDeviceFn,
+    /// `zeMemAllocShared`.
     pub ze_mem_alloc_shared: ZeMemAllocSharedFn,
+    /// `zeMemFree`.
     pub ze_mem_free: ZeMemFreeFn,
+    /// `zeModuleCreate`.
     pub ze_module_create: ZeModuleCreateFn,
+    /// `zeModuleDestroy`.
     pub ze_module_destroy: ZeModuleDestroyFn,
+    /// `zeKernelCreate`.
     pub ze_kernel_create: ZeKernelCreateFn,
+    /// `zeKernelDestroy`.
     pub ze_kernel_destroy: ZeKernelDestroyFn,
+    /// `zeKernelSetGroupSize`.
     pub ze_kernel_set_group_size: ZeKernelSetGroupSizeFn,
+    /// `zeKernelSetArgumentValue`.
     pub ze_kernel_set_argument_value: ZeKernelSetArgumentValueFn,
+    /// `zeCommandListAppendLaunchKernel`.
     pub ze_command_list_append_launch_kernel: ZeCommandListAppendLaunchKernelFn,
+    /// `zeCommandListAppendMemoryCopy`.
     pub ze_command_list_append_memory_copy: ZeCommandListAppendMemoryCopyFn,
+    /// `zeCommandListClose`.
     pub ze_command_list_close: ZeCommandListCloseFn,
+    /// `zeCommandListReset`.
     pub ze_command_list_reset: ZeCommandListResetFn,
+    /// `zeCommandQueueExecuteCommandLists`.
     pub ze_command_queue_execute_command_lists: ZeCommandQueueExecuteCommandListsFn,
+    /// `zeCommandQueueSynchronize`.
     pub ze_command_queue_synchronize: ZeCommandQueueSynchronizeFn,
 }
 
@@ -449,24 +588,37 @@ fn load() -> Option<Loaded> {
 
 // ── Enumeration ────────────────────────────────────────────────────────────
 
+/// Device record flattened from `ze_device_properties_t` by [`enumerate`].
 #[derive(Debug, Clone)]
 pub struct EnumeratedDevice {
+    /// Global device ordinal across all drivers, in enumeration order.
     pub ordinal: u32,
+    /// `ze_device_type_t` of the device.
     pub type_: u32,
+    /// PCI vendor ID.
     pub vendor_id: u32,
+    /// PCI device ID.
     pub device_id: u32,
+    /// Device name, decoded from `ze_device_properties_t::name`.
     pub name: String,
+    /// Core clock in kHz, converted from `coreClockRate` (MHz).
     pub core_clock_khz: u32,
+    /// Largest single allocation in bytes.
     pub max_mem_alloc_size: u64,
+    /// Number of slices.
     pub num_slices: u32,
+    /// Number of subslices per slice.
     pub num_subslices_per_slice: u32,
+    /// Number of execution units per subslice.
     pub num_eus_per_subslice: u32,
 }
 
+/// Whether `ze_loader` loaded and `zeInit` succeeded.
 pub fn is_available() -> bool {
     loaded().is_some()
 }
 
+/// Lists every device across all Level Zero drivers, in driver walk order.
 pub fn enumerate() -> Vec<EnumeratedDevice> {
     let Some(l) = loaded() else { return Vec::new() };
     let mut out = Vec::new();

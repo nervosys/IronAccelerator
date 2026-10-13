@@ -8,7 +8,9 @@ use ironaccelerator_core::{
 
 use crate::drv::{EnumeratedDevice, ZE_DEVICE_TYPE_GPU, ZE_DEVICE_TYPE_VPU};
 
+/// Level Zero backend. Stateless: device state is queried through [`crate::drv`] on each call.
 pub struct LevelZeroBackend;
+/// Process-wide singleton, registered with the backend registry.
 pub static LEVELZERO_BACKEND: LevelZeroBackend = LevelZeroBackend;
 
 impl Backend for LevelZeroBackend {

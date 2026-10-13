@@ -17,6 +17,7 @@
 //! (`pool`), and a hipBLASLt matmul surface (`blas`). Device paths compile
 //! but are not yet validated on AMD hardware.
 
+#![warn(missing_docs)]
 #![allow(
     clippy::missing_safety_doc,
     clippy::too_many_arguments,
@@ -31,6 +32,7 @@ pub mod pool;
 
 pub use backend::{RocmBackend, ROCM_BACKEND};
 
+/// Registers the ROCm backend with `reg`.
 pub fn register(reg: &mut ironaccelerator_core::BackendRegistry) {
     // Force the Lazy and hand the registry the inner `'static` reference.
     let b: &'static backend::RocmBackend = &ROCM_BACKEND;

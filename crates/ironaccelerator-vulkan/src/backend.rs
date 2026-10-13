@@ -6,7 +6,9 @@ use ironaccelerator_core::{
     Result, Vendor,
 };
 
+/// Vulkan backend handle; zero-sized.
 pub struct VulkanBackend;
+/// Process-wide Vulkan backend instance.
 pub static VULKAN_BACKEND: VulkanBackend = VulkanBackend;
 
 impl Backend for VulkanBackend {

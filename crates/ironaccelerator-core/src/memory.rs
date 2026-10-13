@@ -8,6 +8,7 @@ use core::ptr::NonNull;
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
 
+/// Memory space an allocation or pool serves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
@@ -29,7 +30,9 @@ pub enum MemoryKind {
 /// A handle to backend-allocated memory. Concrete backends provide a
 /// non-trait struct that derefs to a typed slice for the hot path.
 pub trait Allocation: Send + Sync {
+    /// Memory space the allocation lives in.
     fn kind(&self) -> MemoryKind;
+    /// Allocation size in bytes.
     fn len_bytes(&self) -> usize;
     /// Raw device pointer. Backends that virtualise pointers (Metal, QNN)
     /// return their handle cast to `*mut u8`.
@@ -40,6 +43,7 @@ pub trait Allocation: Send + Sync {
 /// device (e.g. CUDA stream-ordered async allocator) plus optional pools for
 /// pinned / unified memory.
 pub trait MemoryPool: Send + Sync {
+    /// Memory space the pool serves.
     fn kind(&self) -> MemoryKind;
     /// Allocate `bytes` aligned to `align`. Speed-over-safety: the returned
     /// allocation is *uninitialised*.

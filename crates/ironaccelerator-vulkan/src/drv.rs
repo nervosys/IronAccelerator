@@ -35,21 +35,35 @@ fn instance() -> Option<&'static Instance> {
 /// Minimal info about one physical device, pulled once at enumeration time.
 #[derive(Debug, Clone)]
 pub struct PhysicalDevice {
+    /// Index in `vkEnumeratePhysicalDevices` order.
     pub ordinal: u32,
+    /// Device name from `VkPhysicalDeviceProperties::deviceName`.
     pub name: String,
+    /// PCI vendor ID from `VkPhysicalDeviceProperties`.
     pub vendor_id: u32,
+    /// `VkPhysicalDeviceType` reported by the driver.
     pub device_type: vk::PhysicalDeviceType,
+    /// Supported Vulkan API version, packed as `VkVersion`.
     pub api_version: u32,
+    /// Driver version, in the vendor's encoding.
     pub driver_version: u32,
+    /// Largest `DEVICE_LOCAL` heap size in bytes.
     pub heap_size_bytes: u64,
+    /// First queue family with `COMPUTE`; `None` if there is none.
     pub compute_queue_family: Option<u32>,
+    /// `subgroupSize` from `VkPhysicalDeviceSubgroupProperties`.
     pub subgroup_size: u32,
+    /// `shaderInt8` from `VkPhysicalDeviceShaderFloat16Int8Features`.
     pub shader_int8: bool,
+    /// `shaderInt16` from `VkPhysicalDeviceFeatures`.
     pub shader_int16: bool,
+    /// `shaderFloat16` from `VkPhysicalDeviceShaderFloat16Int8Features`.
     pub shader_float16: bool,
+    /// True when `VK_KHR_cooperative_matrix` is advertised.
     pub cooperative_matrix: bool,
 }
 
+/// Enumerates physical devices on the shared instance; empty if Vulkan is unavailable.
 pub fn enumerate() -> Vec<PhysicalDevice> {
     let Some(inst) = instance() else {
         return Vec::new();

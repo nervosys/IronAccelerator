@@ -14,6 +14,7 @@
 //! v0.1 scaffold: backend trait wired up. Apple-only FFI bindings (objc2 /
 //! metal-rs) gated behind `cfg(target_vendor = "apple")` will land next.
 
+#![warn(missing_docs)]
 #![allow(clippy::missing_safety_doc)]
 
 pub mod backend;
@@ -27,6 +28,7 @@ pub use backend::{MetalBackend, METAL_BACKEND};
 #[cfg(target_vendor = "apple")]
 pub use compute::Context;
 
+/// Registers the Metal backend with `reg`.
 pub fn register(reg: &mut ironaccelerator_core::BackendRegistry) {
     reg.register(&METAL_BACKEND);
 }

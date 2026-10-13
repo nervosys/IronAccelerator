@@ -5,7 +5,9 @@ use ironaccelerator_core::{Backend, BackendKind, CapabilityFlags, DeviceDescript
 #[cfg(target_vendor = "apple")]
 use ironaccelerator_core::{Capability, ComputeTier, DeviceId, Vendor};
 
+/// Metal backend handle; zero-sized.
 pub struct MetalBackend;
+/// Process-wide Metal backend instance.
 pub static METAL_BACKEND: MetalBackend = MetalBackend;
 
 impl Backend for MetalBackend {

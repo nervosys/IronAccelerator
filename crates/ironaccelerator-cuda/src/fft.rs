@@ -33,6 +33,7 @@ fn check(_op: &'static str, s: sys::CufftResult) -> Result<()> {
 
 // ─── Plan ───────────────────────────────────────────────────────────────────
 
+/// RAII cuFFT plan (`cufftHandle`) bound to a stream; destroyed on drop.
 pub struct FftPlan {
     handle: sys::CufftHandle,
     ty: FftType,
@@ -43,6 +44,7 @@ unsafe impl Send for FftPlan {}
 unsafe impl Sync for FftPlan {}
 
 impl FftPlan {
+    /// Creates a 1D plan of `nx` points with `batch` transforms (`cufftPlan1d`) and binds `stream`.
     pub fn plan_1d(stream: Arc<Stream>, nx: i32, ty: FftType, batch: i32) -> Result<Self> {
         let f = fns()?;
         let mut h = sys::CufftHandle::default();
@@ -57,6 +59,7 @@ impl FftPlan {
         })
     }
 
+    /// Creates a plan for `rank`-dimensional transforms over `dims` with `batch` transforms (`cufftPlanMany`, contiguous layout) and binds `stream`.
     pub fn plan_many(
         stream: Arc<Stream>,
         rank: i32,
@@ -92,17 +95,21 @@ impl FftPlan {
         })
     }
 
+    /// Creates a 2D plan of `nx` by `ny` points, via `plan_many`.
     pub fn plan_2d(stream: Arc<Stream>, nx: i32, ny: i32, ty: FftType) -> Result<Self> {
         Self::plan_many(stream, 2, &[nx, ny], ty, 1)
     }
+    /// Creates a 3D plan of `nx` by `ny` by `nz` points, via `plan_many`.
     pub fn plan_3d(stream: Arc<Stream>, nx: i32, ny: i32, nz: i32, ty: FftType) -> Result<Self> {
         Self::plan_many(stream, 3, &[nx, ny, nz], ty, 1)
     }
 
+    /// Returns the transform type this plan was created with.
     #[inline]
     pub fn ty(&self) -> FftType {
         self.ty
     }
+    /// Returns the underlying `cufftHandle`.
     #[inline]
     pub fn raw(&self) -> sys::CufftHandle {
         self.handle
@@ -136,6 +143,7 @@ impl FftPlan {
         }
     }
 
+    /// Execute R2C (`cufftExecR2C`). Errors if the plan is not R2C.
     pub fn exec_r2c<T: Repr, U: Repr>(
         &self,
         input: &DeviceBuf<T>,
@@ -153,6 +161,7 @@ impl FftPlan {
         }
     }
 
+    /// Execute C2R (`cufftExecC2R`). Errors if the plan is not C2R.
     pub fn exec_c2r<T: Repr, U: Repr>(
         &self,
         input: &DeviceBuf<T>,
@@ -183,15 +192,22 @@ impl Drop for FftPlan {
 
 // ─── Plan cache ─────────────────────────────────────────────────────────────
 
+/// Cache key identifying a cuFFT plan by shape, transform type, batch count and stream.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PlanKey {
+    /// Extents per dimension; unused trailing entries are zero.
     pub dims: [i32; 3],
+    /// Number of transform dimensions (1 to 3).
     pub rank: u8,
+    /// Transform type, as the raw `cufftType` value.
     pub ty: u32,
+    /// Number of batched transforms.
     pub batch: i32,
+    /// Raw stream handle value, used as an identity key.
     pub stream: usize,
 }
 
+/// Process-wide cache of cuFFT plans keyed by [`PlanKey`].
 pub struct FftPlanCache {
     plans: RwLock<HashMap<PlanKey, Arc<FftPlan>>>,
 }
@@ -205,15 +221,19 @@ impl Default for FftPlanCache {
 }
 
 impl FftPlanCache {
+    /// Creates an empty cache.
     pub fn new() -> Self {
         Self::default()
     }
+    /// Returns the number of cached plans.
     pub fn len(&self) -> usize {
         self.plans.read().len()
     }
+    /// Returns `true` if no plans are cached.
     pub fn is_empty(&self) -> bool {
         self.plans.read().is_empty()
     }
+    /// Drops all cached plans.
     pub fn clear(&self) {
         self.plans.write().clear();
     }
@@ -230,6 +250,7 @@ impl FftPlanCache {
         Ok(plan)
     }
 
+    /// Returns the cached 1D plan for these parameters, creating it on a miss.
     pub fn plan_1d(
         &self,
         stream: Arc<Stream>,
@@ -247,6 +268,7 @@ impl FftPlanCache {
         self.get_or_insert(key, || FftPlan::plan_1d(stream, nx, ty, batch))
     }
 
+    /// Returns the cached 2D plan for these parameters, creating it on a miss.
     pub fn plan_2d(
         &self,
         stream: Arc<Stream>,
@@ -264,6 +286,7 @@ impl FftPlanCache {
         self.get_or_insert(key, || FftPlan::plan_2d(stream, nx, ny, ty))
     }
 
+    /// Returns the cached 3D plan for these parameters, creating it on a miss.
     pub fn plan_3d(
         &self,
         stream: Arc<Stream>,

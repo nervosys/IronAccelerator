@@ -11,23 +11,34 @@ use std::sync::{Arc, OnceLock};
 // ── error helpers ──────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
+/// Errors from the safe HIP driver layer.
 pub enum Error {
+    /// The HIP runtime library could not be loaded.
     NotAvailable {
+        /// Name of the library that failed to load.
         lib: &'static str,
+        /// Loader error text.
         detail: String,
     },
+    /// A HIP call returned a non-success code.
     Driver {
+        /// Name of the HIP call that failed.
         op: &'static str,
+        /// Raw `hipError_t` returned by the call.
         code: sys::HipResult,
     },
+    /// A caller-side precondition was violated before any HIP call.
     Precondition {
+        /// Name of the operation that was rejected.
         op: &'static str,
+        /// Human-readable reason.
         msg: String,
     },
 }
 
 impl Error {
     #[inline]
+    /// Name of the operation that produced this error.
     pub fn op(&self) -> &'static str {
         match self {
             Self::NotAvailable { .. } => "load",
@@ -36,6 +47,7 @@ impl Error {
         }
     }
     #[inline]
+    /// Numeric code: -1 unavailable, -2 precondition, otherwise the `hipError_t` value.
     pub fn numeric(&self) -> i64 {
         match self {
             Self::NotAvailable { .. } => -1,
@@ -66,6 +78,7 @@ impl From<&LoadError> for Error {
     }
 }
 
+/// Result alias for HIP driver operations.
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[inline(always)]
@@ -117,6 +130,7 @@ fn ensure_init() -> Result<()> {
 
 // ── Device ─────────────────────────────────────────────────────────────────
 
+/// An opened HIP device. Device-scoped calls rely on [`Device::bind`].
 pub struct Device {
     ordinal: i32,
     device: HipDevice,
@@ -126,6 +140,7 @@ pub struct Device {
 }
 
 impl Device {
+    /// Initialises HIP and opens the device at `ordinal` via `hipDeviceGet`.
     pub fn open(ordinal: u32) -> Result<Arc<Self>> {
         ensure_init()?;
         let f = hip()?;
@@ -143,6 +158,7 @@ impl Device {
         }))
     }
 
+    /// Returns the number of HIP devices via `hipGetDeviceCount`.
     pub fn count() -> Result<u32> {
         ensure_init()?;
         let f = hip()?;
@@ -154,19 +170,23 @@ impl Device {
     }
 
     #[inline]
+    /// Returns the device ordinal.
     pub fn ordinal(&self) -> u32 {
         self.ordinal as u32
     }
     #[inline]
+    /// Returns the raw `hipDevice_t` handle.
     pub fn raw(&self) -> HipDevice {
         self.device
     }
 
     #[inline]
+    /// Makes this device current on the calling thread via `hipSetDevice`.
     pub fn bind(&self) -> Result<()> {
         unsafe { check("hipSetDevice", (self.drv.hipSetDevice)(self.ordinal)) }
     }
 
+    /// Returns the device name via `hipDeviceGetName`.
     pub fn name(&self) -> Result<String> {
         let mut buf = vec![0 as c_char; 256];
         unsafe {
@@ -181,6 +201,7 @@ impl Device {
     }
 
     #[inline]
+    /// Queries a device attribute via `hipDeviceGetAttribute`.
     pub fn attribute(&self, attr: sys::HipDeviceAttribute) -> Result<i32> {
         let mut v: i32 = 0;
         unsafe {
@@ -192,6 +213,7 @@ impl Device {
         Ok(v)
     }
 
+    /// Returns total device memory in bytes via `hipDeviceTotalMem`.
     pub fn total_mem(&self) -> Result<usize> {
         let mut b: usize = 0;
         unsafe {
@@ -203,12 +225,14 @@ impl Device {
         Ok(b)
     }
 
+    /// Returns the `(major, minor)` compute capability from the two `ComputeCapability` attributes.
     pub fn compute_capability(&self) -> Result<(u32, u32)> {
         let maj = self.attribute(sys::HipDeviceAttribute::ComputeCapabilityMajor)? as u32;
         let min = self.attribute(sys::HipDeviceAttribute::ComputeCapabilityMinor)? as u32;
         Ok((maj, min))
     }
 
+    /// Returns whether this device can access `other` directly via `hipDeviceCanAccessPeer`.
     pub fn can_access_peer(&self, other: &Device) -> Result<bool> {
         let mut v: i32 = 0;
         unsafe {
@@ -226,6 +250,7 @@ unsafe impl Sync for Device {}
 
 // ── Stream ─────────────────────────────────────────────────────────────────
 
+/// A non-blocking HIP stream (`hipStreamCreateWithPriority`) bound to a device.
 pub struct Stream {
     device: Arc<Device>,
     handle: HipStream,
@@ -233,6 +258,7 @@ pub struct Stream {
 }
 
 impl Stream {
+    /// Creates a non-blocking stream on `device`.
     pub fn new(device: Arc<Device>) -> Result<Arc<Self>> {
         device.bind()?;
         let f = device.drv;
@@ -251,15 +277,18 @@ impl Stream {
     }
 
     #[inline]
+    /// Returns the device this stream runs on.
     pub fn device(&self) -> &Arc<Device> {
         &self.device
     }
     #[inline]
+    /// Returns the raw `hipStream_t` handle.
     pub fn raw(&self) -> HipStream {
         self.handle
     }
 
     #[inline]
+    /// Blocks until queued work on this stream completes via `hipStreamSynchronize`.
     pub fn synchronize(&self) -> Result<()> {
         unsafe {
             check(
@@ -270,6 +299,7 @@ impl Stream {
     }
 
     #[inline]
+    /// Makes subsequent work on this stream wait for `event` via `hipStreamWaitEvent`.
     pub fn wait_for(&self, event: &Event) -> Result<()> {
         unsafe {
             check(
@@ -294,6 +324,7 @@ impl Drop for Stream {
 
 // ── Event ──────────────────────────────────────────────────────────────────
 
+/// A HIP event (`hipEventCreateWithFlags`) bound to a device.
 pub struct Event {
     _device: Arc<Device>,
     handle: HipEvent,
@@ -302,10 +333,12 @@ pub struct Event {
 }
 
 impl Event {
+    /// Creates an event with timing disabled.
     pub fn new(device: Arc<Device>) -> Result<Self> {
         Self::new_flags(device, sys::HIP_EVENT_DISABLE_TIMING, false)
     }
 
+    /// Creates an event with timing enabled, for use with [`Event::elapsed_ms`].
     pub fn new_timing(device: Arc<Device>) -> Result<Self> {
         Self::new_flags(device, 0, true)
     }
@@ -329,6 +362,7 @@ impl Event {
     }
 
     #[inline]
+    /// Records this event on `stream` via `hipEventRecord`.
     pub fn record(&self, stream: &Stream) -> Result<()> {
         unsafe {
             check(
@@ -339,6 +373,7 @@ impl Event {
     }
 
     #[inline]
+    /// Blocks until this event completes via `hipEventSynchronize`.
     pub fn synchronize(&self) -> Result<()> {
         unsafe {
             check(
@@ -348,6 +383,7 @@ impl Event {
         }
     }
 
+    /// Returns the milliseconds between two timing events via `hipEventElapsedTime`. Errors if either lacks timing.
     pub fn elapsed_ms(start: &Event, end: &Event) -> Result<f32> {
         if !start.timing || !end.timing {
             return Err(Error::Precondition {
@@ -380,6 +416,7 @@ unsafe impl Sync for Event {}
 
 // ── DeviceBuf ──────────────────────────────────────────────────────────────
 
+/// Marker for plain element types that may live in device memory.
 pub trait Repr: Copy + Send + Sync + 'static {}
 impl Repr for u8 {}
 impl Repr for u16 {}
@@ -392,6 +429,7 @@ impl Repr for i64 {}
 impl Repr for f32 {}
 impl Repr for f64 {}
 
+/// Typed device allocation backed by `hipMallocAsync` on a stream.
 pub struct DeviceBuf<T: Repr> {
     stream: Arc<Stream>,
     ptr: HipDeviceptr,
@@ -401,6 +439,7 @@ pub struct DeviceBuf<T: Repr> {
 
 impl<T: Repr> DeviceBuf<T> {
     #[inline]
+    /// Allocates `len` elements via `hipMallocAsync`. A zero length allocates nothing.
     pub fn alloc(stream: Arc<Stream>, len: usize) -> Result<Self> {
         if len == 0 {
             return Ok(Self {
@@ -430,6 +469,7 @@ impl<T: Repr> DeviceBuf<T> {
     }
 
     #[inline]
+    /// Copies `src` to the device via `hipMemcpyHtoDAsync`. `src.len()` must equal the buffer length.
     pub fn copy_from_host(&mut self, src: &[T]) -> Result<()> {
         if src.len() != self.len {
             return Err(Error::Precondition {
@@ -455,6 +495,7 @@ impl<T: Repr> DeviceBuf<T> {
     }
 
     #[inline]
+    /// Copies the device buffer into `dst` via `hipMemcpyDtoHAsync`. `dst.len()` must equal the buffer length.
     pub fn copy_to_host(&self, dst: &mut [T]) -> Result<()> {
         if dst.len() != self.len {
             return Err(Error::Precondition {
@@ -480,22 +521,27 @@ impl<T: Repr> DeviceBuf<T> {
     }
 
     #[inline]
+    /// Returns the element count.
     pub fn len(&self) -> usize {
         self.len
     }
     #[inline]
+    /// Returns `true` if the buffer holds no elements.
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
     #[inline]
+    /// Returns the size in bytes.
     pub fn byte_len(&self) -> usize {
         self.len * std::mem::size_of::<T>()
     }
     #[inline]
+    /// Returns the raw device pointer.
     pub fn device_ptr(&self) -> HipDeviceptr {
         self.ptr
     }
     #[inline]
+    /// Returns the stream this buffer is allocated on.
     pub fn stream(&self) -> &Arc<Stream> {
         &self.stream
     }
@@ -518,6 +564,7 @@ unsafe impl<T: Repr> Sync for DeviceBuf<T> {}
 
 // ── Module + kernel launch ─────────────────────────────────────────────────
 
+/// A loaded HIP module (`hipModuleLoadData`). Unloaded on drop.
 pub struct Module {
     _device: Arc<Device>,
     handle: HipModule,
@@ -525,6 +572,7 @@ pub struct Module {
 }
 
 impl Module {
+    /// Loads a code object from `image` via `hipModuleLoadData`.
     pub fn load(device: Arc<Device>, image: &[u8]) -> Result<Arc<Self>> {
         device.bind()?;
         let f = device.drv;
@@ -542,6 +590,7 @@ impl Module {
         }))
     }
 
+    /// Looks up the kernel `name` via `hipModuleGetFunction`.
     pub fn function(self: &Arc<Self>, name: &str) -> Result<Function> {
         let cname = CString::new(name).map_err(|_| Error::Precondition {
             op: "Module::function",
@@ -574,18 +623,24 @@ impl Drop for Module {
 unsafe impl Send for Module {}
 unsafe impl Sync for Module {}
 
+/// A kernel handle from a [`Module`], launchable via `hipModuleLaunchKernel`.
 pub struct Function {
     _module: Arc<Module>,
     handle: HipFunction,
     drv: &'static sys::HipFns,
 }
 
+/// Grid, block and dynamic shared-memory configuration for a launch.
 pub struct LaunchCfg {
+    /// Grid dimensions in blocks (x, y, z).
     pub grid: (u32, u32, u32),
+    /// Block dimensions in threads (x, y, z).
     pub block: (u32, u32, u32),
+    /// Dynamic shared memory per block, in bytes.
     pub shared_mem: u32,
 }
 impl LaunchCfg {
+    /// Builds a 1-D launch with `grid` blocks of `block` threads and no shared memory.
     pub fn linear(grid: u32, block: u32) -> Self {
         Self {
             grid: (grid, 1, 1),
@@ -635,6 +690,7 @@ unsafe impl Sync for Function {}
 
 // ── availability probe ────────────────────────────────────────────────────
 
+/// Returns `true` if the HIP runtime library loads.
 pub fn is_available() -> bool {
     sys::is_available()
 }

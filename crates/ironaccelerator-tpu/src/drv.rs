@@ -67,6 +67,7 @@ fn load_plugin() -> Option<Plugin> {
     None
 }
 
+/// Host-visible TPU topology, read from the Cloud TPU VM environment.
 #[derive(Debug, Clone)]
 pub struct TpuTopology {
     /// Raw `TPU_ACCELERATOR_TYPE` string — e.g. `"v5litepod-8"`, `"v6e-16"`.
@@ -78,10 +79,12 @@ pub struct TpuTopology {
     pub chips_per_host: u32,
 }
 
+/// True when a PJRT plugin (`libtpu` or the TPU plugin) loads and exports `GetPjrtApi`.
 pub fn is_plugin_available() -> bool {
     plugin().is_some()
 }
 
+/// Reads the topology from `TPU_*` environment variables; `None` when `TPU_ACCELERATOR_TYPE` is unset.
 pub fn topology() -> Option<TpuTopology> {
     let accel = std::env::var("TPU_ACCELERATOR_TYPE").ok()?;
     let num_devices = std::env::var("TPU_NUM_DEVICES")

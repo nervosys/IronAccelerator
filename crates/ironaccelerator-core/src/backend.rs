@@ -48,6 +48,7 @@ pub enum BackendKind {
 }
 
 impl BackendKind {
+    /// Every `BackendKind` variant, in declaration order.
     pub const ALL: &'static [BackendKind] = &[
         BackendKind::Cuda,
         BackendKind::Rocm,
@@ -64,6 +65,7 @@ impl BackendKind {
         BackendKind::Fpga,
     ];
 
+    /// Stable lowercase identifier for the backend (e.g. `cuda`, `level-zero`).
     pub const fn name(self) -> &'static str {
         match self {
             BackendKind::Cuda => "cuda",
@@ -113,26 +115,31 @@ pub struct BackendRegistry {
 }
 
 impl BackendRegistry {
+    /// Creates an empty registry.
     pub fn new() -> Self {
         Self {
             entries: Vec::new(),
         }
     }
 
+    /// Adds `backend` unless a backend of the same kind is already registered.
     pub fn register(&mut self, backend: &'static dyn Backend) {
         if !self.entries.iter().any(|b| b.kind() == backend.kind()) {
             self.entries.push(backend);
         }
     }
 
+    /// Returns the registered backend of the given kind, if any.
     pub fn get(&self, kind: BackendKind) -> Option<&'static dyn Backend> {
         self.entries.iter().copied().find(|b| b.kind() == kind)
     }
 
+    /// Iterates over every registered backend, available or not.
     pub fn iter(&self) -> impl Iterator<Item = &'static dyn Backend> + '_ {
         self.entries.iter().copied()
     }
 
+    /// Iterates over registered backends whose `is_available` returns true.
     pub fn available(&self) -> impl Iterator<Item = &'static dyn Backend> + '_ {
         self.iter().filter(|b| b.is_available())
     }

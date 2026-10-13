@@ -7,7 +7,9 @@ use ironaccelerator_core::{
 
 use crate::drv::AdapterInfo;
 
+/// WebGPU backend handle; zero-sized, see [`WEBGPU_BACKEND`].
 pub struct WebGpuBackend;
+/// Process-wide WebGPU backend instance.
 pub static WEBGPU_BACKEND: WebGpuBackend = WebGpuBackend;
 
 impl Backend for WebGpuBackend {

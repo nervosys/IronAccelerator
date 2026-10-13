@@ -32,6 +32,7 @@
 //!
 //! [`Backend::is_available`]: ironaccelerator_core::Backend::is_available
 
+#![warn(missing_docs)]
 pub mod backend;
 pub mod compute;
 pub mod drv;

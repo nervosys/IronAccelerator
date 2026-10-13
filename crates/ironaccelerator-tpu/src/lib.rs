@@ -16,6 +16,7 @@
 //! Cloud TPU VM or a `libtpu`-provisioned GKE pod — get an unavailable
 //! backend and an empty device list.
 
+#![warn(missing_docs)]
 #![allow(clippy::missing_safety_doc)]
 
 pub mod backend;
@@ -23,6 +24,7 @@ pub mod drv;
 
 pub use backend::{TpuBackend, TPU_BACKEND};
 
+/// Registers the TPU backend with `reg`.
 pub fn register(reg: &mut ironaccelerator_core::BackendRegistry) {
     reg.register(&TPU_BACKEND);
 }

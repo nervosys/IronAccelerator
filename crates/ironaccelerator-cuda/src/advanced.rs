@@ -103,10 +103,12 @@ impl PhysicalAlloc {
         })
     }
 
+    /// Raw `CUmemGenericAllocationHandle`.
     #[inline]
     pub fn raw(&self) -> sys::CUmemGenericAllocationHandle {
         self.handle
     }
+    /// Size of the allocation in bytes, rounded up to the allocation granularity.
     #[inline]
     pub fn byte_len(&self) -> usize {
         self.bytes
@@ -175,10 +177,12 @@ impl VirtualRange {
         })
     }
 
+    /// Device pointer to the start of the mapped range.
     #[inline]
     pub fn device_ptr(&self) -> sys::CUdeviceptr {
         self.ptr
     }
+    /// Size of the mapped range in bytes.
     #[inline]
     pub fn byte_len(&self) -> usize {
         self.bytes
@@ -221,6 +225,7 @@ unsafe impl Send for MulticastTeam {}
 unsafe impl Sync for MulticastTeam {}
 
 impl MulticastTeam {
+    /// `true` if the loaded driver exports the multicast API.
     pub fn is_supported() -> bool {
         driver()
             .map(|d| d.cuMulticastCreate.is_some())
@@ -262,6 +267,7 @@ impl MulticastTeam {
         })
     }
 
+    /// Add `device` as a participant in the team. Wraps `cuMulticastAddDevice`.
     pub fn add_device(&self, device: &drv::Device) -> Result<()> {
         let d = driver()?;
         let add = need_sym("cuMulticastAddDevice", d.cuMulticastAddDevice)?;
@@ -273,6 +279,7 @@ impl MulticastTeam {
         }
     }
 
+    /// Bind `physical` (from `phys_offset`) into the team at `offset`. Wraps `cuMulticastBindMem`.
     pub fn bind_mem(
         &self,
         offset: usize,
@@ -296,10 +303,12 @@ impl MulticastTeam {
         }
     }
 
+    /// Size of each rank's region in bytes, rounded up to the multicast granularity.
     #[inline]
     pub fn byte_len(&self) -> usize {
         self.bytes
     }
+    /// Raw `CUmemcastObjectHandle`.
     #[inline]
     pub fn raw(&self) -> sys::CUmemcastObjectHandle {
         self.handle
@@ -322,6 +331,7 @@ unsafe impl Send for GreenContext {}
 unsafe impl Sync for GreenContext {}
 
 impl GreenContext {
+    /// `true` if the loaded driver exports the green-context API.
     pub fn is_supported() -> bool {
         driver()
             .map(|d| d.cuGreenCtxCreate.is_some())
@@ -385,6 +395,7 @@ impl GreenContext {
         Ok(s)
     }
 
+    /// Raw `CUgreenCtx`.
     #[inline]
     pub fn raw(&self) -> sys::CUgreenCtx {
         self.handle
@@ -415,6 +426,7 @@ pub struct ConditionalHandle {
 }
 
 impl ConditionalHandle {
+    /// `true` if the loaded driver exports `cuGraphConditionalHandleCreate`.
     pub fn is_supported() -> bool {
         driver()
             .map(|d| d.cuGraphConditionalHandleCreate.is_some())
@@ -446,6 +458,7 @@ impl ConditionalHandle {
         Ok(Self { raw: h })
     }
 
+    /// Raw `CUgraphConditionalHandle`.
     #[inline]
     pub fn raw(&self) -> sys::CUgraphConditionalHandle {
         self.raw

@@ -36,6 +36,7 @@ fn check(_op: &'static str, s: CusparseStatus) -> Result<()> {
     }
 }
 
+/// Owned cuSPARSE handle (`cusparseHandle_t`) bound to one device; destroyed on drop.
 pub struct CusparseHandle {
     handle: sys::CusparseHandle,
     _device: Arc<drv::Device>,
@@ -45,6 +46,7 @@ unsafe impl Send for CusparseHandle {}
 unsafe impl Sync for CusparseHandle {}
 
 impl CusparseHandle {
+    /// Creates a cuSPARSE handle on `device` (`cusparseCreate`). Binds the device first.
     pub fn new(device: Arc<drv::Device>) -> Result<Arc<Self>> {
         device.bind()?;
         let f = fns()?;
@@ -58,6 +60,7 @@ impl CusparseHandle {
         }))
     }
 
+    /// Binds `stream` to this handle (`cusparseSetStream`).
     pub fn set_stream(&self, stream: &Stream) -> Result<()> {
         unsafe {
             check(
@@ -67,6 +70,7 @@ impl CusparseHandle {
         }
     }
 
+    /// Returns the cuSPARSE library version (`cusparseGetVersion`).
     pub fn version(&self) -> Result<i32> {
         let mut v: c_int = 0;
         unsafe {
@@ -78,6 +82,7 @@ impl CusparseHandle {
         Ok(v as i32)
     }
 
+    /// Returns the underlying `cusparseHandle_t`.
     #[inline]
     pub fn raw(&self) -> sys::CusparseHandle {
         self.handle
@@ -97,6 +102,7 @@ impl Drop for CusparseHandle {
 static HANDLES: once_cell::sync::Lazy<Mutex<HashMap<u32, Arc<CusparseHandle>>>> =
     once_cell::sync::Lazy::new(|| Mutex::new(HashMap::new()));
 
+/// Returns the cached per-device cuSPARSE handle for `stream`'s device, creating it on first use, and binds `stream` to it.
 pub fn handle_for(stream: &Arc<Stream>) -> Result<Arc<CusparseHandle>> {
     let device = stream.device();
     let ord = device.ordinal();
@@ -117,6 +123,7 @@ pub fn handle_for(stream: &Arc<Stream>) -> Result<Arc<CusparseHandle>> {
     Ok(h)
 }
 
+/// Returns `true` if the cuSPARSE library loads at runtime.
 pub fn is_available() -> bool {
     sys::is_available()
 }
@@ -145,6 +152,7 @@ fn dtype_of<T: Repr>() -> Result<CudaDataType> {
 
 // ─── Dense matrix descriptor ────────────────────────────────────────────────
 
+/// Dense matrix descriptor (`cusparseDnMatDescr_t`); destroyed on drop.
 pub struct DnMat {
     raw: sys::CusparseDnMatDescr,
 }
@@ -153,6 +161,7 @@ unsafe impl Send for DnMat {}
 unsafe impl Sync for DnMat {}
 
 impl DnMat {
+    /// Creates a dense matrix descriptor over device memory at `ptr` (`cusparseCreateDnMat`). `ld` is the leading dimension, in elements.
     pub fn new<T: Repr>(
         rows: i64,
         cols: i64,
@@ -179,6 +188,7 @@ impl DnMat {
         Ok(Self { raw })
     }
 
+    /// Returns the underlying `cusparseDnMatDescr_t`.
     #[inline]
     pub fn raw(&self) -> sys::CusparseDnMatDescr {
         self.raw
@@ -197,6 +207,7 @@ impl Drop for DnMat {
 
 // ─── Sparse CSR matrix descriptor ───────────────────────────────────────────
 
+/// CSR sparse matrix descriptor (`cusparseSpMatDescr_t`); destroyed on drop.
 pub struct SpMatCsr {
     raw: sys::CusparseSpMatDescr,
 }
@@ -205,6 +216,7 @@ unsafe impl Send for SpMatCsr {}
 unsafe impl Sync for SpMatCsr {}
 
 impl SpMatCsr {
+    /// Creates a CSR matrix descriptor over device pointers (`cusparseCreateCsr`). `idx_ty` is used for both offsets and column indices.
     pub fn new<T: Repr>(
         rows: i64,
         cols: i64,
@@ -238,6 +250,7 @@ impl SpMatCsr {
         Ok(Self { raw })
     }
 
+    /// Returns the underlying `cusparseSpMatDescr_t`.
     #[inline]
     pub fn raw(&self) -> sys::CusparseSpMatDescr {
         self.raw
@@ -329,6 +342,7 @@ pub fn spmm<T: Repr>(
     }
 }
 
+/// Query workspace bytes for SDDMM, `C = alpha · op(A) · op(B)` sampled at the nonzeros of sparse `C`, plus `beta · C` (`cusparseSDDMM_bufferSize`).
 pub fn sddmm_buffer_size<T: Repr>(
     h: &CusparseHandle,
     op_a: Op,
@@ -365,6 +379,7 @@ pub fn sddmm_buffer_size<T: Repr>(
     Ok(bytes)
 }
 
+/// Execute SDDMM using the caller-supplied workspace (see [`sddmm_buffer_size`]) (`cusparseSDDMM`).
 pub fn sddmm<T: Repr>(
     h: &CusparseHandle,
     op_a: Op,

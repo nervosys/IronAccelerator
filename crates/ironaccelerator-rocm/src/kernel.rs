@@ -38,7 +38,9 @@ pub struct CompileOptions {
 
 /// A compiled kernel: the owning module plus a launchable function handle.
 pub struct CompiledKernel {
+    /// The module that owns `function`; keeps the code object alive.
     pub module: Arc<Module>,
+    /// Launchable handle to the compiled entry point.
     pub function: Function,
 }
 

@@ -12,7 +12,9 @@ use glow::HasContext;
 
 /// Upload + bind a shader-storage buffer object at `binding`.
 pub struct Ssbo {
+    /// Buffer name from `glGenBuffers`, as returned by `glow`.
     pub id: <glow::Context as HasContext>::Buffer,
+    /// Buffer size in bytes.
     pub size: u64,
 }
 
@@ -43,6 +45,7 @@ impl Ssbo {
         }
     }
 
+    /// Binds this buffer to shader-storage `binding` via `glBindBufferBase`.
     pub fn bind(&self, gl: &glow::Context, binding: u32) {
         unsafe {
             gl.bind_buffer_base(glow::SHADER_STORAGE_BUFFER, binding, Some(self.id));
@@ -76,6 +79,7 @@ impl Ssbo {
         }
     }
 
+    /// Deletes the buffer via `glDeleteBuffers`.
     pub fn destroy(self, gl: &glow::Context) {
         unsafe { gl.delete_buffer(self.id) };
     }
@@ -83,6 +87,7 @@ impl Ssbo {
 
 /// Compiled + linked compute program.
 pub struct Program {
+    /// Program name from `glCreateProgram`, as returned by `glow`.
     pub id: <glow::Context as HasContext>::Program,
 }
 
@@ -114,6 +119,7 @@ impl Program {
         }
     }
 
+    /// Deletes the program via `glDeleteProgram`.
     pub fn destroy(self, gl: &glow::Context) {
         unsafe { gl.delete_program(self.id) };
     }
@@ -149,6 +155,7 @@ pub fn gl() -> Option<&'static glow::Context> {
 pub struct GlDevice;
 
 impl GlDevice {
+    /// Returns a device token. Touches no GL state; see [`GlDevice`].
     pub fn new() -> Self {
         GlDevice
     }

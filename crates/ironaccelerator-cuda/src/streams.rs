@@ -11,6 +11,7 @@ use ironaccelerator_core::Result;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
+/// Fixed-size pool of streams on one device, dispatched round-robin.
 pub struct StreamPool {
     device: Arc<Device>,
     streams: Vec<Arc<Stream>>,
@@ -18,7 +19,7 @@ pub struct StreamPool {
 }
 
 impl StreamPool {
-    /// Create a pool of `n` default-priority streams on `device`.
+    /// Create a pool of `n` default-priority streams on `device`. Panics if `n` is 0.
     pub fn new(device: Arc<Device>, n: usize) -> Result<Self> {
         assert!(n > 0, "stream pool size must be > 0");
         let mut streams = Vec::with_capacity(n);
@@ -50,14 +51,17 @@ impl StreamPool {
         })
     }
 
+    /// Number of streams in the pool.
     #[inline]
     pub fn len(&self) -> usize {
         self.streams.len()
     }
+    /// `true` if the pool holds no streams.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.streams.is_empty()
     }
+    /// Device the pool's streams belong to.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
         &self.device
@@ -84,6 +88,7 @@ impl StreamPool {
         Ok(())
     }
 
+    /// All streams in the pool, in index order.
     pub fn streams(&self) -> &[Arc<Stream>] {
         &self.streams
     }

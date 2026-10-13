@@ -18,12 +18,18 @@ use crate::drv::{
     ZE_STRUCTURE_TYPE_MODULE_DESC,
 };
 
+/// Compute context bound to one Level Zero device: driver, device, context, command queue and command list.
 pub struct Context {
     l: &'static Loaded,
+    /// Driver handle (`ze_driver_handle_t`).
     pub driver: ZeDriverHandle,
+    /// Device handle (`ze_device_handle_t`).
     pub device: ZeDeviceHandle,
+    /// Context handle (`ze_context_handle_t`).
     pub context: ZeContextHandle,
+    /// Command queue handle (`ze_command_queue_handle_t`).
     pub queue: ZeCommandQueueHandle,
+    /// Command list handle (`ze_command_list_handle_t`).
     pub list: ZeCommandListHandle,
     /// Command-queue-group ordinal chosen for compute. Kept for later
     /// `zeCommandListAppendLaunchKernel` dispatches.
@@ -250,10 +256,13 @@ impl Drop for Context {
     }
 }
 
+/// Device or shared allocation from `zeMemAllocDevice` or `zeMemAllocShared`, freed with `zeMemFree` on drop.
 pub struct DeviceBuffer {
     l: &'static Loaded,
     context: ZeContextHandle,
+    /// Base pointer of the allocation.
     pub ptr: *mut c_void,
+    /// Allocation size in bytes.
     pub size: usize,
 }
 
@@ -265,8 +274,10 @@ impl Drop for DeviceBuffer {
     }
 }
 
+/// Module created with `zeModuleCreate`, destroyed on drop.
 pub struct Module {
     l: &'static Loaded,
+    /// Module handle (`ze_module_handle_t`).
     pub module: ZeModuleHandle,
 }
 
@@ -301,12 +312,15 @@ impl Drop for Module {
     }
 }
 
+/// Kernel created with `zeKernelCreate`, destroyed on drop.
 pub struct Kernel {
     l: &'static Loaded,
+    /// Kernel handle (`ze_kernel_handle_t`).
     pub kernel: ZeKernelHandle,
 }
 
 impl Kernel {
+    /// Sets the group size via `zeKernelSetGroupSize`.
     pub fn set_group_size(&self, gx: u32, gy: u32, gz: u32) -> Result<(), u32> {
         unsafe {
             match (self.l.ze_kernel_set_group_size)(self.kernel, gx, gy, gz) {

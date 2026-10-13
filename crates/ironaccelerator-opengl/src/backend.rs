@@ -6,7 +6,9 @@ use ironaccelerator_core::{
     Result, Vendor,
 };
 
+/// OpenGL backend handle; zero-sized.
 pub struct OpenGlBackend;
+/// Process-wide OpenGL backend instance.
 pub static OPENGL_BACKEND: OpenGlBackend = OpenGlBackend;
 
 impl Backend for OpenGlBackend {

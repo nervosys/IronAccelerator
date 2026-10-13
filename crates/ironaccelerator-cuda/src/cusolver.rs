@@ -31,6 +31,7 @@ fn check(_op: &'static str, s: CusolverStatus) -> Result<()> {
     }
 }
 
+/// Owned cuSOLVER Dense handle (`cusolverDnHandle_t`) bound to one device; destroyed on drop.
 pub struct CusolverDnHandle {
     handle: sys::CusolverDnHandle,
     _device: Arc<drv::Device>,
@@ -40,6 +41,7 @@ unsafe impl Send for CusolverDnHandle {}
 unsafe impl Sync for CusolverDnHandle {}
 
 impl CusolverDnHandle {
+    /// Creates a cuSOLVER Dense handle on `device` (`cusolverDnCreate`). Binds the device first.
     pub fn new(device: Arc<drv::Device>) -> Result<Arc<Self>> {
         device.bind()?;
         let f = fns()?;
@@ -53,6 +55,7 @@ impl CusolverDnHandle {
         }))
     }
 
+    /// Binds `stream` to this handle (`cusolverDnSetStream`).
     pub fn set_stream(&self, stream: &Stream) -> Result<()> {
         unsafe {
             check(
@@ -62,6 +65,7 @@ impl CusolverDnHandle {
         }
     }
 
+    /// Returns the underlying `cusolverDnHandle_t`.
     #[inline]
     pub fn raw(&self) -> sys::CusolverDnHandle {
         self.handle
@@ -161,6 +165,7 @@ impl CusolverDnHandle {
 
     // ─── Cholesky (Spotrf) ──────────────────────────────────────────────────
 
+    /// Workspace elements (f32) required for `potrf_f32` on `[n×n]`.
     pub fn potrf_f32_buffer_size(
         &self,
         fill: FillMode,
@@ -186,6 +191,7 @@ impl CusolverDnHandle {
         Ok(lwork as i32)
     }
 
+    /// Cholesky factorization, f32 (`cusolverDnSpotrf`). `a` is overwritten with the factor selected by `fill`; `info` receives the status.
     pub fn potrf_f32(
         &self,
         fill: FillMode,
@@ -215,6 +221,7 @@ impl CusolverDnHandle {
 
     // ─── QR (Sgeqrf) ────────────────────────────────────────────────────────
 
+    /// Workspace elements (f32) required for `geqrf_f32` on `[m×n]`.
     pub fn geqrf_f32_buffer_size(
         &self,
         m: i32,
@@ -273,6 +280,7 @@ impl CusolverDnHandle {
 
     // ─── f64 variants (D*) ──────────────────────────────────────────────────
 
+    /// Workspace elements (f64) required for `getrf_f64` on `[m×n]`.
     pub fn getrf_f64_buffer_size(
         &self,
         m: i32,
@@ -298,6 +306,7 @@ impl CusolverDnHandle {
         Ok(lwork as i32)
     }
 
+    /// LU factorization with partial pivoting, f64 (`cusolverDnDgetrf`). `ipiv` and `info` as for `getrf_f32`.
     pub fn getrf_f64(
         &self,
         m: i32,
@@ -326,6 +335,7 @@ impl CusolverDnHandle {
         }
     }
 
+    /// Solve `op(A) · X = B` after `getrf_f64` (`cusolverDnDgetrs`).
     pub fn getrs_f64(
         &self,
         op: Op,
@@ -359,6 +369,7 @@ impl CusolverDnHandle {
         }
     }
 
+    /// Workspace elements (f64) required for `potrf_f64` on `[n×n]`.
     pub fn potrf_f64_buffer_size(
         &self,
         fill: FillMode,
@@ -384,6 +395,7 @@ impl CusolverDnHandle {
         Ok(lwork as i32)
     }
 
+    /// Cholesky factorization, f64 (`cusolverDnDpotrf`).
     pub fn potrf_f64(
         &self,
         fill: FillMode,
@@ -411,6 +423,7 @@ impl CusolverDnHandle {
         }
     }
 
+    /// Workspace elements (f64) required for `geqrf_f64` on `[m×n]`.
     pub fn geqrf_f64_buffer_size(
         &self,
         m: i32,
@@ -436,6 +449,7 @@ impl CusolverDnHandle {
         Ok(lwork as i32)
     }
 
+    /// QR factorization, f64 (`cusolverDnDgeqrf`). `tau` and `a` as for `geqrf_f32`.
     pub fn geqrf_f64(
         &self,
         m: i32,
@@ -479,6 +493,7 @@ impl Drop for CusolverDnHandle {
 static HANDLES: once_cell::sync::Lazy<Mutex<HashMap<u32, Arc<CusolverDnHandle>>>> =
     once_cell::sync::Lazy::new(|| Mutex::new(HashMap::new()));
 
+/// Returns the cached per-device cuSOLVER handle for `stream`'s device, creating it on first use, and binds `stream` to it.
 pub fn handle_for(stream: &Arc<Stream>) -> Result<Arc<CusolverDnHandle>> {
     let device = stream.device();
     let ord = device.ordinal();
@@ -499,6 +514,7 @@ pub fn handle_for(stream: &Arc<Stream>) -> Result<Arc<CusolverDnHandle>> {
     Ok(h)
 }
 
+/// Returns `true` if the cuSOLVER library loads at runtime.
 pub fn is_available() -> bool {
     sys::is_available()
 }

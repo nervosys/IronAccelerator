@@ -5,7 +5,9 @@ use ironaccelerator_core::{
     Result, Vendor,
 };
 
+/// FPGA backend handle; zero-sized.
 pub struct FpgaBackend;
+/// Process-wide FPGA backend instance.
 pub static FPGA_BACKEND: FpgaBackend = FpgaBackend;
 
 impl Backend for FpgaBackend {

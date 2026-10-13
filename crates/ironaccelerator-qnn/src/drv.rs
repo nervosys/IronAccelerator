@@ -20,17 +20,27 @@ use std::sync::Arc;
 // ── Errors ──────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
+/// Errors from the safe QNN driver layer.
 pub enum Error {
+    /// The QNN library for the requested target could not be loaded.
     NotAvailable {
+        /// QNN target that failed to load.
         target: Target,
+        /// Loader error text.
         detail: String,
     },
+    /// A QNN SDK call returned a non-success error handle.
     Call {
+        /// Name of the QNN interface call that failed.
         op: &'static str,
+        /// Raw `Qnn_ErrorHandle_t` returned by the call.
         code: Qnn_ErrorHandle_t,
     },
+    /// A caller-side precondition was violated before any QNN call.
     Precondition {
+        /// Name of the operation that was rejected.
         op: &'static str,
+        /// Human-readable reason.
         msg: String,
     },
 }
@@ -49,6 +59,7 @@ impl std::fmt::Display for Error {
 impl std::error::Error for Error {}
 
 impl Error {
+    /// Numeric code: -1 unavailable, -2 precondition, otherwise the `Qnn_ErrorHandle_t` value.
     pub fn numeric(&self) -> i64 {
         match self {
             Self::NotAvailable { .. } => -1,
@@ -76,6 +87,7 @@ impl From<Error> for ironaccelerator_core::Error {
     }
 }
 
+/// Result alias for QNN driver operations.
 pub type Result<T> = std::result::Result<T, Error>;
 
 fn iface(target: Target) -> Result<&'static QnnInterfaceV2> {
@@ -109,6 +121,7 @@ unsafe impl Send for Backend {}
 unsafe impl Sync for Backend {}
 
 impl Backend {
+    /// Creates a backend for `target` via `QnnBackend_create`.
     pub fn new(target: Target) -> Result<Arc<Self>> {
         let i = iface(target)?;
         let mut h: Qnn_BackendHandle_t = std::ptr::null_mut();
@@ -122,14 +135,17 @@ impl Backend {
     }
 
     #[inline]
+    /// Returns the target this backend was created for.
     pub fn target(&self) -> Target {
         self.target
     }
     #[inline]
+    /// Returns the raw `Qnn_BackendHandle_t`.
     pub fn raw(&self) -> Qnn_BackendHandle_t {
         self.handle
     }
 
+    /// Queries the API version via `QnnBackend_getApiVersion`.
     pub fn api_version(&self) -> Result<sys::QnnApiVersion> {
         let i = iface(self.target)?;
         let mut v = sys::QnnApiVersion {
@@ -149,6 +165,7 @@ impl Backend {
         Ok(v)
     }
 
+    /// Returns the provider name reported by the loaded QNN library.
     pub fn provider_name(&self) -> Result<String> {
         Ok(sys::fns(self.target)
             .map_err(|e| Error::NotAvailable {
@@ -172,6 +189,7 @@ impl Drop for Backend {
 
 // ── Device ──────────────────────────────────────────────────────────────────
 
+/// A QNN device bound to a [`Backend`], created via `QnnDevice_create`.
 pub struct Device {
     backend: Arc<Backend>,
     handle: Qnn_DeviceHandle_t,
@@ -181,6 +199,7 @@ unsafe impl Send for Device {}
 unsafe impl Sync for Device {}
 
 impl Device {
+    /// Creates a device on `backend` via `QnnDevice_create`.
     pub fn new(backend: Arc<Backend>) -> Result<Arc<Self>> {
         let i = iface(backend.target)?;
         let mut h: Qnn_DeviceHandle_t = std::ptr::null_mut();
@@ -194,10 +213,12 @@ impl Device {
     }
 
     #[inline]
+    /// Returns the backend this device belongs to.
     pub fn backend(&self) -> &Arc<Backend> {
         &self.backend
     }
     #[inline]
+    /// Returns the raw `Qnn_DeviceHandle_t`.
     pub fn raw(&self) -> Qnn_DeviceHandle_t {
         self.handle
     }
@@ -215,6 +236,7 @@ impl Drop for Device {
 
 // ── Context ─────────────────────────────────────────────────────────────────
 
+/// A QNN context on a [`Device`], created via `QnnContext_create`.
 pub struct Context {
     device: Arc<Device>,
     handle: Qnn_ContextHandle_t,
@@ -224,6 +246,7 @@ unsafe impl Send for Context {}
 unsafe impl Sync for Context {}
 
 impl Context {
+    /// Creates an empty context on `device` via `QnnContext_create`.
     pub fn new(device: Arc<Device>) -> Result<Arc<Self>> {
         let i = iface(device.backend.target)?;
         let mut h: Qnn_ContextHandle_t = std::ptr::null_mut();
@@ -291,10 +314,12 @@ impl Context {
     }
 
     #[inline]
+    /// Returns the device this context was created on.
     pub fn device(&self) -> &Arc<Device> {
         &self.device
     }
     #[inline]
+    /// Returns the raw `Qnn_ContextHandle_t`.
     pub fn raw(&self) -> Qnn_ContextHandle_t {
         self.handle
     }
@@ -312,6 +337,7 @@ impl Drop for Context {
 
 // ── Graph ───────────────────────────────────────────────────────────────────
 
+/// A QNN graph built inside a [`Context`].
 pub struct Graph {
     context: Arc<Context>,
     handle: Qnn_GraphHandle_t,
@@ -322,6 +348,7 @@ unsafe impl Send for Graph {}
 unsafe impl Sync for Graph {}
 
 impl Graph {
+    /// Creates a named graph in `context` via `QnnGraph_create`.
     pub fn new(context: Arc<Context>, name: &str) -> Result<Self> {
         let i = iface(context.device.backend.target)?;
         let cname = CString::new(name).map_err(|_| Error::Precondition {
@@ -364,6 +391,7 @@ impl Graph {
         }
     }
 
+    /// Finalizes the graph via `QnnGraph_finalize`. No-op if already finalized.
     pub fn finalize(&mut self) -> Result<()> {
         if self.finalized {
             return Ok(());
@@ -416,14 +444,17 @@ impl Graph {
     }
 
     #[inline]
+    /// Returns the context that owns this graph.
     pub fn context(&self) -> &Arc<Context> {
         &self.context
     }
     #[inline]
+    /// Returns the raw `Qnn_GraphHandle_t`.
     pub fn raw(&self) -> Qnn_GraphHandle_t {
         self.handle
     }
     #[inline]
+    /// Returns `true` once [`Graph::finalize`] has succeeded.
     pub fn is_finalized(&self) -> bool {
         self.finalized
     }
@@ -431,6 +462,7 @@ impl Graph {
 
 // ── availability ────────────────────────────────────────────────────────────
 
+/// Returns `true` if the QNN library for `target` loads.
 pub fn is_available(target: Target) -> bool {
     sys::is_available(target)
 }

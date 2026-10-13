@@ -40,6 +40,7 @@ pub struct Operation {
     pub surface: &'static str,
     /// What it does, in one line.
     pub doc: &'static str,
+    /// What invoking the operation costs.
     pub effects: Effects,
 }
 

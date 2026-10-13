@@ -276,7 +276,9 @@ struct CommandQueueDesc {
 /// A failed D3D12 call, carrying the operation name and raw `HRESULT`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Error {
+    /// Name of the failed D3D12 call, for diagnostics.
     pub op: &'static str,
+    /// Raw `HRESULT` the call returned.
     pub hr: Hresult,
 }
 
@@ -288,6 +290,7 @@ impl core::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+/// Result alias over this module's [`Error`].
 pub type Result<T> = core::result::Result<T, Error>;
 
 fn check(op: &'static str, hr: Hresult) -> Result<()> {
@@ -351,10 +354,12 @@ impl Drop for Buffer {
 }
 
 impl Buffer {
+    /// Raw `ID3D12Resource` pointer. Borrowed; the buffer keeps ownership.
     pub fn as_raw(&self) -> *mut c_void {
         self.raw
     }
 
+    /// Buffer size in bytes.
     pub fn len_bytes(&self) -> u64 {
         self.len_bytes
     }
@@ -520,10 +525,12 @@ impl Context {
         }
     }
 
+    /// The device this context was created on.
     pub fn device(&self) -> &Device {
         &self.device
     }
 
+    /// The COMPUTE command queue that work is submitted to.
     pub fn queue(&self) -> &CommandQueue {
         &self.queue
     }

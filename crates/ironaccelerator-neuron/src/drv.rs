@@ -12,13 +12,19 @@ use core::ffi::c_void;
 use libloading::{Library, Symbol};
 use once_cell::sync::OnceCell;
 
+/// `NRT_STATUS` return code from the Neuron runtime.
 pub type NrtStatus = u32;
+/// Success status (`NRT_SUCCESS`).
 pub const NRT_SUCCESS: NrtStatus = 0;
 
+/// Opaque `nrt_model_t` handle.
 pub type NrtModelHandle = *mut c_void;
+/// Opaque `nrt_tensor_set_t` handle.
 pub type NrtTensorSetHandle = *mut c_void;
+/// Opaque `nrt_tensor_t` handle.
 pub type NrtTensorHandle = *mut c_void;
 
+/// Signature of `nrt_load`.
 pub type NrtLoadFn = unsafe extern "C" fn(
     neff: *const u8,
     neff_size: usize,
@@ -26,14 +32,19 @@ pub type NrtLoadFn = unsafe extern "C" fn(
     nc_count: i32,
     model: *mut NrtModelHandle,
 ) -> NrtStatus;
+/// Signature of `nrt_unload`.
 pub type NrtUnloadFn = unsafe extern "C" fn(model: NrtModelHandle) -> NrtStatus;
+/// Signature of `nrt_execute`.
 pub type NrtExecuteFn = unsafe extern "C" fn(
     model: NrtModelHandle,
     input_set: NrtTensorSetHandle,
     output_set: NrtTensorSetHandle,
 ) -> NrtStatus;
+/// Signature of `nrt_allocate_tensor_set`.
 pub type NrtAllocTensorSetFn = unsafe extern "C" fn(out: *mut NrtTensorSetHandle) -> NrtStatus;
+/// Signature of `nrt_free_tensor_set`.
 pub type NrtFreeTensorSetFn = unsafe extern "C" fn(set: NrtTensorSetHandle) -> NrtStatus;
+/// Signature of `nrt_add_tensor_to_tensor_set`.
 pub type NrtAddTensorToSetFn = unsafe extern "C" fn(
     set: NrtTensorSetHandle,
     name: *const core::ffi::c_char,
@@ -47,15 +58,22 @@ type NrtGetVersionFn = unsafe extern "C" fn(out: *mut core::ffi::c_char, out_len
 
 static LIB: OnceCell<Option<Loaded>> = OnceCell::new();
 
+/// Resolved `libnrt` state: core count, version, and optional entry points.
 pub struct Loaded {
     _lib: Library,
     total_cores: u32,
     version: String,
+    /// `nrt_load` entry point, if the library exports it.
     pub nrt_load: Option<NrtLoadFn>,
+    /// `nrt_unload` entry point, if the library exports it.
     pub nrt_unload: Option<NrtUnloadFn>,
+    /// `nrt_execute` entry point, if the library exports it.
     pub nrt_execute: Option<NrtExecuteFn>,
+    /// `nrt_allocate_tensor_set` entry point, if the library exports it.
     pub nrt_alloc_tensor_set: Option<NrtAllocTensorSetFn>,
+    /// `nrt_free_tensor_set` entry point, if the library exports it.
     pub nrt_free_tensor_set: Option<NrtFreeTensorSetFn>,
+    /// `nrt_add_tensor_to_tensor_set` entry point, if the library exports it.
     pub nrt_add_tensor_to_set: Option<NrtAddTensorToSetFn>,
 }
 
@@ -159,6 +177,7 @@ unsafe fn read_version(f: NrtGetVersionFn) -> Option<String> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Neuron hardware generation, inferred from instance type or runtime version.
 pub enum NeuronGen {
     /// inf1 — first-gen Inferentia.
     Inf1,
@@ -166,17 +185,21 @@ pub enum NeuronGen {
     Trn1,
     /// trn2 — third-gen Trainium.
     Trn2,
+    /// Generation could not be determined.
     Unknown,
 }
 
+/// Returns `true` if `libnrt` loaded and initialised.
 pub fn is_available() -> bool {
     loaded().is_some()
 }
 
+/// Total NeuronCores from `nrt_get_total_nc_count`, or `0` if `libnrt` is unavailable.
 pub fn total_cores() -> u32 {
     loaded().map(|l| l.total_cores).unwrap_or(0)
 }
 
+/// Runtime version string from `nrt_get_version`, if available.
 pub fn version() -> Option<&'static str> {
     loaded().map(|l| l.version.as_str())
 }

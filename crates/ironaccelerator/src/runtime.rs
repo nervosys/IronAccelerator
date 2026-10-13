@@ -9,11 +9,13 @@ use ironaccelerator_core::{
     BackendKind, BackendRegistry, CapabilityFlags, DeviceDescriptor, Result,
 };
 
+/// Process-wide registry of the compiled-in backends plus device discovery across them.
 pub struct Runtime {
     registry: BackendRegistry,
 }
 
 impl Runtime {
+    /// Builds a runtime with every backend enabled by the crate's features registered.
     pub fn new() -> Self {
         let mut registry = BackendRegistry::new();
 
@@ -47,6 +49,7 @@ impl Runtime {
         Self { registry }
     }
 
+    /// The backend registry this runtime was built with.
     pub fn registry(&self) -> &BackendRegistry {
         &self.registry
     }

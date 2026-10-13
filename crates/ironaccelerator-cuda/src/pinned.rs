@@ -10,6 +10,7 @@ const MIN_BUCKET_LOG2: u32 = 12;
 const MAX_BUCKET_LOG2: u32 = 34;
 const NUM_BUCKETS: usize = (MAX_BUCKET_LOG2 - MIN_BUCKET_LOG2 + 1) as usize;
 
+/// Size-bucketed pool of pinned host allocations, one bucket per power of two.
 pub struct PinnedPool {
     device: Arc<Device>,
     buckets: Vec<Mutex<Vec<PinnedBuf<u8>>>>,
@@ -18,6 +19,7 @@ pub struct PinnedPool {
 }
 
 impl PinnedPool {
+    /// Create an empty pool that allocates pinned memory on `device`.
     pub fn new(device: Arc<Device>) -> Self {
         let buckets = (0..NUM_BUCKETS).map(|_| Mutex::new(Vec::new())).collect();
         Self {
@@ -28,13 +30,18 @@ impl PinnedPool {
         }
     }
 
+    /// Cumulative bytes this pool has allocated from the driver. Never decremented.
     pub fn allocated_bytes(&self) -> u64 {
         self.allocated_bytes.load(Ordering::Relaxed)
     }
+    /// Number of slabs this pool has allocated from the driver. Never decremented.
     pub fn live_slabs(&self) -> u64 {
         self.live_slabs.load(Ordering::Relaxed)
     }
 
+    /// Take a slab with capacity for at least `bytes`, reusing a pooled slab
+    /// when one is available. Returns the driver error if a new pinned
+    /// allocation fails. The slab returns to the pool when dropped.
     pub fn acquire(self: &Arc<Self>, bytes: usize) -> Result<PinnedSlab> {
         let (bucket_idx, cap) = bucket_of(bytes);
         let slab = self.buckets[bucket_idx].lock().pop();
@@ -57,6 +64,7 @@ impl PinnedPool {
     }
 }
 
+/// Pinned host buffer checked out of a [`PinnedPool`]. Returned to the pool on drop.
 pub struct PinnedSlab {
     pool: Option<Arc<PinnedPool>>,
     bucket: usize,
@@ -65,18 +73,22 @@ pub struct PinnedSlab {
 }
 
 impl PinnedSlab {
+    /// Size in bytes originally requested from [`PinnedPool::acquire`].
     #[inline]
     pub fn requested(&self) -> usize {
         self.requested
     }
+    /// Allocated capacity in bytes (the rounded bucket size).
     #[inline]
     pub fn capacity(&self) -> usize {
         self.slab.as_ref().map(|s| s.len()).unwrap_or(0)
     }
+    /// View the slab's bytes. Panics if the slab was already released.
     #[inline]
     pub fn as_slice(&self) -> &[u8] {
         self.slab.as_ref().expect("slab not released").as_slice()
     }
+    /// Mutable view of the slab's bytes. Panics if the slab was already released.
     #[inline]
     pub fn as_mut_slice(&mut self) -> &mut [u8] {
         self.slab

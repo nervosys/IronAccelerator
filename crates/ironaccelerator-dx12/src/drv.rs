@@ -273,10 +273,15 @@ const D3D12_FEATURE_ARCHITECTURE1: u32 = 16;
 const D3D12_FEATURE_D3D12_OPTIONS4: u32 = 23;
 
 // D3D_FEATURE_LEVEL values, ascending.
+/// `D3D_FEATURE_LEVEL_11_0` (`0xb000`).
 pub const D3D_FEATURE_LEVEL_11_0: u32 = 0xb000;
+/// `D3D_FEATURE_LEVEL_11_1` (`0xb100`).
 pub const D3D_FEATURE_LEVEL_11_1: u32 = 0xb100;
+/// `D3D_FEATURE_LEVEL_12_0` (`0xc000`).
 pub const D3D_FEATURE_LEVEL_12_0: u32 = 0xc000;
+/// `D3D_FEATURE_LEVEL_12_1` (`0xc100`).
 pub const D3D_FEATURE_LEVEL_12_1: u32 = 0xc100;
+/// `D3D_FEATURE_LEVEL_12_2` (`0xc200`).
 pub const D3D_FEATURE_LEVEL_12_2: u32 = 0xc200;
 
 const REQUESTED_LEVELS: [u32; 5] = [
@@ -477,11 +482,17 @@ impl Loaded {
 /// One D3D12-capable adapter, described at enumeration time.
 #[derive(Debug, Clone)]
 pub struct EnumeratedAdapter {
+    /// Adapter index in DXGI enumeration order.
     pub ordinal: u32,
+    /// Adapter description from `DXGI_ADAPTER_DESC1::Description`.
     pub name: String,
+    /// PCI vendor ID from `DXGI_ADAPTER_DESC1`.
     pub vendor_id: u32,
+    /// PCI device ID from `DXGI_ADAPTER_DESC1`.
     pub device_id: u32,
+    /// `DedicatedVideoMemory` in bytes.
     pub dedicated_video_memory: u64,
+    /// `SharedSystemMemory` in bytes.
     pub shared_system_memory: u64,
     /// Highest `D3D_FEATURE_LEVEL` the device reports.
     pub feature_level: u32,
@@ -489,18 +500,23 @@ pub struct EnumeratedAdapter {
     pub uma: bool,
     /// SM 6.0 wave intrinsics.
     pub wave_ops: bool,
+    /// Minimum wave lane count from `D3D12_FEATURE_DATA_D3D12_OPTIONS1`; 0 if unqueried.
     pub wave_lane_count_min: u32,
+    /// Maximum wave lane count from `D3D12_FEATURE_DATA_D3D12_OPTIONS1`; 0 if unqueried.
     pub wave_lane_count_max: u32,
+    /// Total lane count from `D3D12_FEATURE_DATA_D3D12_OPTIONS1`; 0 if unqueried.
     pub total_lane_count: u32,
     /// Native 16-bit shader ops (true FP16, not min-precision emulation).
     pub native_16bit_ops: bool,
     /// 16-bit min-precision support — FP16 storage without native math.
     pub min_precision_16bit: bool,
+    /// `Int64ShaderOps` from `D3D12_FEATURE_DATA_D3D12_OPTIONS1`.
     pub int64_shader_ops: bool,
     /// Double-precision shader ops.
     pub fp64: bool,
 }
 
+/// True when D3D12 loads and at least one hardware adapter enumerates.
 pub fn is_available() -> bool {
     loaded().is_some() && !enumerate().is_empty()
 }
@@ -662,7 +678,9 @@ fn utf16_to_string(raw: &[u16]) -> String {
 /// handing over a context.
 pub struct Device {
     raw: *mut c_void,
+    /// Adapter index the device was opened on.
     pub ordinal: u32,
+    /// Feature level the device was created at, as a `D3D_FEATURE_LEVEL` value.
     pub feature_level: u32,
 }
 

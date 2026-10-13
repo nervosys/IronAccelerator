@@ -168,3 +168,30 @@ fn copy_from_peer_async_round_trips_when_two_devices_exist() {
     stream_b.synchronize().unwrap();
     assert_eq!(host_out, host_in);
 }
+
+#[test]
+fn graph_capture_honours_every_mode() {
+    use ironaccelerator_cuda::graph::{capture, CaptureMode};
+    if !have_cuda() {
+        return;
+    }
+    let dev = Device::open(0).unwrap();
+    let stream = Stream::new(dev.clone()).unwrap();
+    let buf = DeviceBuf::<u8>::alloc(stream.clone(), 256).unwrap();
+    stream.synchronize().unwrap();
+    for (mode, value) in [
+        (CaptureMode::Global, 0x11u8),
+        (CaptureMode::ThreadLocal, 0x22),
+        (CaptureMode::Relaxed, 0x33),
+    ] {
+        let exec = capture(&stream, dev.clone(), mode, |s| {
+            Ok(s.memset_d8_async(buf.device_ptr(), value, 256)?)
+        })
+        .unwrap_or_else(|e| panic!("capture in {mode:?} failed: {e}"));
+        exec.launch(&stream).unwrap();
+        stream.synchronize().unwrap();
+        let mut host = [0u8; 256];
+        buf.copy_to_host_sync(&mut host).unwrap();
+        assert!(host.iter().all(|&b| b == value), "{mode:?} replay wrong");
+    }
+}

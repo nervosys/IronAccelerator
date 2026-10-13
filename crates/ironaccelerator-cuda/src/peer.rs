@@ -14,6 +14,7 @@ pub fn enable(src: &Arc<Device>, peer: &Arc<Device>) -> Result<()> {
     src.enable_peer_access(peer).map_err(Into::into)
 }
 
+/// Enable P2P access in both directions between `a` and `b`.
 pub fn enable_bidirectional(a: &Arc<Device>, b: &Arc<Device>) -> Result<()> {
     enable(a, b)?;
     enable(b, a)

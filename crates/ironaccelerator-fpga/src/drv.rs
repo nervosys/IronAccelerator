@@ -25,6 +25,7 @@ type XclProbeFn = unsafe extern "C" fn() -> core::ffi::c_uint;
 
 static LIB: OnceCell<Option<Loaded>> = OnceCell::new();
 
+/// A loaded `libxrt_core` handle and the device count reported by `xclProbe`.
 pub struct Loaded {
     _lib: Library,
     device_count: u32,

@@ -78,6 +78,7 @@
 //! — it ships only driver wrappers. Use the CUDA crate directly when you want
 //! fine-grained driver control or the cudarc-shaped API.
 
+#![warn(missing_docs)]
 pub use ironaccelerator_core as core;
 
 #[cfg(feature = "cuda")]
@@ -105,6 +106,7 @@ pub use ironaccelerator_vulkan as vulkan;
 #[cfg(feature = "webgpu")]
 pub use ironaccelerator_webgpu as webgpu;
 
+/// Common imports: core traits, device types and error types.
 pub mod prelude {
     pub use ironaccelerator_core::{
         Backend, BackendKind, Capability, CapabilityFlags, ComputeDevice, ComputeTier, DType,

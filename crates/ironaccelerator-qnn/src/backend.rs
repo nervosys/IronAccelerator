@@ -9,12 +9,14 @@ use ironaccelerator_core::{
 };
 use once_cell::sync::Lazy;
 
+/// Qualcomm QNN backend. Reports the targets whose libraries loaded at probe time.
 pub struct QnnBackend {
     /// Bitmask of available targets at discovery time. Cached; library state
     /// doesn't change across a single process invocation.
     available: u8,
 }
 
+/// Process-wide QNN backend, probed on first access.
 pub static QNN_BACKEND: Lazy<QnnBackend> = Lazy::new(|| QnnBackend {
     available: probe_all(),
 });

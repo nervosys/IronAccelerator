@@ -34,6 +34,7 @@
 //! ssbo.read_bytes(gl, &mut out);
 //! ```
 
+#![warn(missing_docs)]
 #![allow(clippy::missing_safety_doc)]
 
 pub mod backend;

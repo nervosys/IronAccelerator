@@ -7,6 +7,7 @@
 use core::marker::PhantomData;
 use core::ptr::NonNull;
 
+/// Opaque, backend-tagged handle to a vendor SDK object.
 #[repr(transparent)]
 pub struct Handle<Tag> {
     raw: NonNull<()>,
@@ -24,6 +25,7 @@ impl<Tag> Handle<Tag> {
         }
     }
 
+    /// Returns the raw pointer. Does not transfer ownership.
     #[inline(always)]
     pub const fn as_ptr(&self) -> NonNull<()> {
         self.raw

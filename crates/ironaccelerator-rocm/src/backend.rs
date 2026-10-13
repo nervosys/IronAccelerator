@@ -11,15 +11,18 @@ use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+/// ROCm backend. Enumerates HIP devices and caches opened devices by ordinal.
 pub struct RocmBackend {
     devices: RwLock<HashMap<u32, Arc<Device>>>,
 }
 
+/// Process-wide ROCm backend instance.
 pub static ROCM_BACKEND: Lazy<RocmBackend> = Lazy::new(|| RocmBackend {
     devices: RwLock::new(HashMap::new()),
 });
 
 impl RocmBackend {
+    /// Returns the opened device for `ordinal`, opening and caching it on first use.
     pub fn device(&self, ordinal: u32) -> DrvResult<Arc<Device>> {
         if let Some(d) = self.devices.read().get(&ordinal) {
             return Ok(d.clone());
@@ -29,6 +32,7 @@ impl RocmBackend {
         Ok(d)
     }
 
+    /// Returns the capability descriptor for the device at `ordinal`.
     pub fn capability(&self, ordinal: u32) -> Result<Capability> {
         let d = self.device(ordinal)?;
         let (maj, min) = d.compute_capability()?;

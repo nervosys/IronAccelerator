@@ -212,6 +212,7 @@ impl<T: Repr> PooledBuf<T> {
     }
 
     #[inline]
+    /// Returns `true` if `len` is zero.
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }

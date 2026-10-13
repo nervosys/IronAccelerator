@@ -11,6 +11,7 @@
 //! `DeviceDescriptor`. `ze_device_type_t` distinguishes `GPU` and `VPU`
 //! (NPU) so a single backend instance can surface both.
 
+#![warn(missing_docs)]
 #![allow(clippy::missing_safety_doc)]
 
 pub mod backend;
@@ -20,6 +21,7 @@ pub mod drv;
 pub use backend::{LevelZeroBackend, LEVELZERO_BACKEND};
 pub use compute::{Context, DeviceBuffer, Kernel, Module, Pipeline};
 
+/// Registers the Level Zero backend with `reg`.
 pub fn register(reg: &mut ironaccelerator_core::BackendRegistry) {
     reg.register(&LEVELZERO_BACKEND);
 }

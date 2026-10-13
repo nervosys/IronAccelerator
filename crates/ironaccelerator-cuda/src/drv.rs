@@ -37,14 +37,30 @@ use std::sync::OnceLock;
 #[derive(Debug, Clone)]
 pub enum Error {
     /// Driver/runtime library was not loaded (missing .so / .dll).
-    NotAvailable { lib: &'static str, detail: String },
+    NotAvailable {
+        /// Name of the library that failed to load, e.g. `"cuda-driver"`.
+        lib: &'static str,
+        /// Loader error message.
+        detail: String,
+    },
     /// A driver API call returned a non-Success status.
-    Driver { op: &'static str, code: CUresult },
+    Driver {
+        /// Name of the driver call that failed, e.g. `"cuMemAllocAsync"`.
+        op: &'static str,
+        /// Status code returned by the driver.
+        code: CUresult,
+    },
     /// A host-side precondition was violated (wrong length, bad UTF-8, …).
-    Precondition { op: &'static str, msg: String },
+    Precondition {
+        /// Operation whose precondition was violated.
+        op: &'static str,
+        /// Description of the violated precondition.
+        msg: String,
+    },
 }
 
 impl Error {
+    /// Operation name for this error; `"load"` for library-load failures.
     #[inline]
     pub fn op(&self) -> &'static str {
         match self {
@@ -85,6 +101,7 @@ impl From<&LoadError> for Error {
     }
 }
 
+/// Result alias for this module's [`Error`].
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[inline(always)]
@@ -222,6 +239,7 @@ impl Device {
         }))
     }
 
+    /// Number of CUDA devices visible to the driver. Wraps `cuDeviceGetCount`.
     pub fn count() -> Result<u32> {
         ensure_init()?;
         let d = driver()?;
@@ -232,14 +250,17 @@ impl Device {
         Ok(n.max(0) as u32)
     }
 
+    /// Ordinal this device was opened with.
     #[inline]
     pub fn ordinal(&self) -> u32 {
         self.ordinal as u32
     }
+    /// Raw primary `CUcontext` retained by this device.
     #[inline]
     pub fn raw_ctx(&self) -> CUcontext {
         self.ctx
     }
+    /// Raw `CUdevice` handle.
     #[inline]
     pub fn raw_device(&self) -> CUdevice {
         self.device
@@ -258,6 +279,7 @@ impl Device {
         unsafe { check("cuCtxSetCurrent", (self.drv.cuCtxSetCurrent)(self.ctx)) }
     }
 
+    /// Device name. Wraps `cuDeviceGetName`.
     pub fn name(&self) -> Result<String> {
         let mut buf = vec![0i8; 256];
         unsafe {
@@ -271,6 +293,7 @@ impl Device {
         Ok(String::from_utf8_lossy(&bytes).into_owned())
     }
 
+    /// Query one device attribute. Wraps `cuDeviceGetAttribute`.
     #[inline]
     pub fn attribute(&self, attr: sys::CUdevice_attribute) -> Result<i32> {
         let mut v: i32 = 0;
@@ -283,6 +306,7 @@ impl Device {
         Ok(v)
     }
 
+    /// Total device memory in bytes. Wraps `cuDeviceTotalMem_v2`.
     pub fn total_mem(&self) -> Result<usize> {
         let mut bytes: usize = 0;
         unsafe {
@@ -294,6 +318,7 @@ impl Device {
         Ok(bytes)
     }
 
+    /// Compute capability as `(major, minor)`.
     pub fn compute_capability(&self) -> Result<(u32, u32)> {
         let maj = self.attribute(sys::CUdevice_attribute::ComputeCapabilityMajor)? as u32;
         let min = self.attribute(sys::CUdevice_attribute::ComputeCapabilityMinor)? as u32;
@@ -314,6 +339,7 @@ impl Device {
         Ok(u)
     }
 
+    /// `true` if this device can directly access `other`'s memory. Wraps `cuDeviceCanAccessPeer`.
     pub fn can_access_peer(&self, other: &Device) -> Result<bool> {
         let mut v: i32 = 0;
         unsafe {
@@ -325,6 +351,7 @@ impl Device {
         Ok(v != 0)
     }
 
+    /// Enable peer access from this device's context to `other`. An already-enabled pair is not an error. Wraps `cuCtxEnablePeerAccess`.
     pub fn enable_peer_access(&self, other: &Device) -> Result<()> {
         self.bind()?;
         let code = unsafe { (self.drv.cuCtxEnablePeerAccess)(other.ctx, 0) };
@@ -359,6 +386,7 @@ impl Drop for Device {
 /// Priority hint for stream creation. Mapped to the driver's priority range.
 #[derive(Copy, Clone, Debug)]
 pub enum Priority {
+    /// Driver default priority (0).
     Default,
     /// Most-negative priority (highest). Useful for latency-sensitive work.
     High,
@@ -604,6 +632,8 @@ struct StageRing {
 // ring, and every access goes through the owning `Mutex`.
 unsafe impl Send for StageRing {}
 
+/// CUDA stream on a device. Drop drains any staged copy in flight, then
+/// destroys the stream and its staging ring.
 pub struct Stream {
     device: Arc<Device>,
     handle: CUstream,
@@ -622,6 +652,7 @@ pub struct Stream {
 }
 
 impl Stream {
+    /// Create a non-blocking stream with default priority.
     pub fn new(device: Arc<Device>) -> Result<Arc<Self>> {
         Self::with_priority(device, Priority::Default)
     }
@@ -646,6 +677,7 @@ impl Stream {
         Self::build(device, Priority::Default, sys::CU_STREAM_DEFAULT)
     }
 
+    /// Create a non-blocking stream with the given priority. Wraps `cuStreamCreateWithPriority`.
     pub fn with_priority(device: Arc<Device>, pri: Priority) -> Result<Arc<Self>> {
         Self::build(device, pri, sys::CU_STREAM_NON_BLOCKING)
     }
@@ -730,19 +762,23 @@ impl Stream {
         })
     }
 
+    /// Device this stream belongs to.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
         &self.device
     }
+    /// Raw `CUstream` handle.
     #[inline]
     pub fn raw(&self) -> CUstream {
         self.handle
     }
+    /// Driver priority value this stream was created with.
     #[inline]
     pub fn priority(&self) -> i32 {
         self.priority
     }
 
+    /// Block until all work on this stream completes. Wraps `cuStreamSynchronize`.
     #[inline]
     pub fn synchronize(&self) -> Result<()> {
         unsafe {
@@ -847,6 +883,7 @@ pub struct Event {
 }
 
 impl Event {
+    /// Create a timing-disabled event for stream-ordered fences. Wraps `cuEventCreate`.
     pub fn new(device: Arc<Device>) -> Result<Self> {
         Self::new_impl(device, CUevent_flags::DisableTiming, false)
     }
@@ -870,6 +907,7 @@ impl Event {
         })
     }
 
+    /// Record this event on `stream`. Wraps `cuEventRecord`.
     #[inline]
     pub fn record(&self, stream: &Stream) -> Result<()> {
         unsafe {
@@ -880,6 +918,7 @@ impl Event {
         }
     }
 
+    /// Block until this event completes. Wraps `cuEventSynchronize`.
     #[inline]
     pub fn synchronize(&self) -> Result<()> {
         unsafe {
@@ -890,10 +929,12 @@ impl Event {
         }
     }
 
+    /// Raw `CUevent` handle.
     #[inline]
     pub fn raw(&self) -> CUevent {
         self.handle
     }
+    /// `true` if this event was created with timing enabled.
     #[inline]
     pub fn supports_timing(&self) -> bool {
         self.timing
@@ -917,17 +958,21 @@ impl Drop for Event {
 pub struct TimingEvent(Event);
 
 impl TimingEvent {
+    /// Create a timing-enabled event. Wraps `cuEventCreate`.
     pub fn new(device: Arc<Device>) -> Result<Self> {
         Event::new_impl(device, CUevent_flags::Default, true).map(Self)
     }
+    /// Record this event on `stream`. Wraps `cuEventRecord`.
     #[inline]
     pub fn record(&self, stream: &Stream) -> Result<()> {
         self.0.record(stream)
     }
+    /// Block until this event completes. Wraps `cuEventSynchronize`.
     #[inline]
     pub fn synchronize(&self) -> Result<()> {
         self.0.synchronize()
     }
+    /// Borrow the underlying [`Event`].
     #[inline]
     pub fn as_event(&self) -> &Event {
         &self.0
@@ -1025,6 +1070,7 @@ impl<T: Repr> DeviceBuf<T> {
         })
     }
 
+    /// Allocate `len` zeroed elements. Zeroing is stream-ordered via `cuMemsetD8Async`.
     #[inline]
     pub fn alloc_zeros(stream: Arc<Stream>, len: usize) -> Result<Self>
     where
@@ -1051,6 +1097,7 @@ impl<T: Repr> DeviceBuf<T> {
         Ok(buf)
     }
 
+    /// Copy `src` into this buffer; errors if the lengths differ. Stream-ordered; large pageable sources are staged.
     #[inline]
     pub fn copy_from_host(&mut self, src: &[T]) -> Result<()> {
         if src.len() != self.len {
@@ -1258,6 +1305,7 @@ impl<T: Repr> DeviceBuf<T> {
         self.copy_to_host_blocking(dst)
     }
 
+    /// Async device-to-host copy into `dst` on this buffer's stream. Errors if the lengths differ. Wraps `cuMemcpyDtoHAsync_v2`.
     #[inline]
     pub fn copy_to_host(&self, dst: &mut [T]) -> Result<()> {
         if dst.len() != self.len {
@@ -1344,14 +1392,17 @@ impl<T: Repr> DeviceBuf<T> {
         Ok(())
     }
 
+    /// Number of elements in the buffer.
     #[inline]
     pub fn len(&self) -> usize {
         self.len
     }
+    /// `true` if the buffer holds no elements.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
+    /// Size of the buffer in bytes.
     #[inline]
     pub fn byte_len(&self) -> usize {
         self.len * std::mem::size_of::<T>()
@@ -1361,10 +1412,12 @@ impl<T: Repr> DeviceBuf<T> {
     pub fn num_bytes(&self) -> usize {
         self.byte_len()
     }
+    /// Raw `CUdeviceptr` to the start of the buffer.
     #[inline]
     pub fn device_ptr(&self) -> CUdeviceptr {
         self.ptr
     }
+    /// Stream this buffer was allocated on.
     #[inline]
     pub fn stream(&self) -> &Arc<Stream> {
         &self.stream
@@ -1376,9 +1429,6 @@ impl<T: Repr> DeviceBuf<T> {
         self.stream.device().ordinal()
     }
 
-    /// Allocate a sibling buffer on the same stream and enqueue a
-    /// device-to-device copy. The clone is independent — drop it whenever.
-    /// Matches `cudarc::driver::CudaSlice::try_clone`.
     /// cudarc-compatible: `slice.slice(range)` produces a `DeviceView`
     /// over `[range.start, range.end)`. Used by code ported from cudarc.
     pub fn slice(&self, range: std::ops::Range<usize>) -> DeviceView<'_, T> {
@@ -1387,6 +1437,9 @@ impl<T: Repr> DeviceBuf<T> {
         self.view().slice(start, end - start)
     }
 
+    /// Allocate a sibling buffer on the same stream and enqueue a
+    /// device-to-device copy. The clone is independent — drop it whenever.
+    /// Matches `cudarc::driver::CudaSlice::try_clone`.
     pub fn try_clone(&self) -> Result<Self> {
         let mut out = Self::alloc(self.stream.clone(), self.len)?;
         out.copy_from_device(self)?;
@@ -1468,6 +1521,7 @@ impl<T: Repr> DeviceBuf<T> {
         p
     }
 
+    /// Immutable view of the whole buffer.
     pub fn view(&self) -> DeviceView<'_, T> {
         DeviceView {
             ptr: self.ptr,
@@ -1475,6 +1529,7 @@ impl<T: Repr> DeviceBuf<T> {
             _marker: PhantomData,
         }
     }
+    /// Mutable view of the whole buffer.
     pub fn view_mut(&mut self) -> DeviceViewMut<'_, T> {
         DeviceViewMut {
             ptr: self.ptr,
@@ -1533,18 +1588,22 @@ pub struct DeviceView<'a, T: Repr> {
 }
 
 impl<'a, T: Repr> DeviceView<'a, T> {
+    /// Raw `CUdeviceptr` to the start of the view.
     #[inline]
     pub fn device_ptr(&self) -> CUdeviceptr {
         self.ptr
     }
+    /// Number of elements in the view.
     #[inline]
     pub fn len(&self) -> usize {
         self.len
     }
+    /// `true` if the view holds no elements.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
+    /// Size of the view in bytes.
     #[inline]
     pub fn byte_len(&self) -> usize {
         self.len * std::mem::size_of::<T>()
@@ -1572,22 +1631,27 @@ pub struct DeviceViewMut<'a, T: Repr> {
 }
 
 impl<'a, T: Repr> DeviceViewMut<'a, T> {
+    /// Raw `CUdeviceptr` to the start of the view.
     #[inline]
     pub fn device_ptr(&self) -> CUdeviceptr {
         self.ptr
     }
+    /// Number of elements in the view.
     #[inline]
     pub fn len(&self) -> usize {
         self.len
     }
+    /// `true` if the view holds no elements.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
+    /// Size of the view in bytes.
     #[inline]
     pub fn byte_len(&self) -> usize {
         self.len * std::mem::size_of::<T>()
     }
+    /// Reborrow as an immutable [`DeviceView`].
     #[inline]
     pub fn as_view(&self) -> DeviceView<'_, T> {
         DeviceView {
@@ -1610,6 +1674,7 @@ pub struct PinnedBuf<T: Repr> {
 }
 
 impl<T: Repr> PinnedBuf<T> {
+    /// Allocate `len` elements of page-locked host memory. Wraps `cuMemHostAlloc`. Errors on byte-size overflow or driver failure.
     pub fn alloc(device: Arc<Device>, len: usize) -> Result<Self> {
         device.bind()?;
         let Some(bytes) = len.checked_mul(std::mem::size_of::<T>()) else {
@@ -1632,18 +1697,22 @@ impl<T: Repr> PinnedBuf<T> {
             _keep: device,
         })
     }
+    /// Number of elements in the buffer.
     #[inline]
     pub fn len(&self) -> usize {
         self.len
     }
+    /// `true` if the buffer holds no elements.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
+    /// View the buffer as a slice.
     #[inline]
     pub fn as_slice(&self) -> &[T] {
         unsafe { std::slice::from_raw_parts(self.ptr, self.len) }
     }
+    /// View the buffer as a mutable slice.
     #[inline]
     pub fn as_mut_slice(&mut self) -> &mut [T] {
         unsafe { std::slice::from_raw_parts_mut(self.ptr, self.len) }
@@ -1667,6 +1736,7 @@ unsafe impl<T: Repr> Send for PinnedBuf<T> {}
 // Modules and functions
 // ════════════════════════════════════════════════════════════════════════════
 
+/// Loaded CUDA module (`CUmodule`). Unloaded on drop.
 pub struct Module {
     device: Arc<Device>,
     handle: CUmodule,
@@ -1694,6 +1764,7 @@ impl Module {
         }))
     }
 
+    /// Look up a kernel by name. Wraps `cuModuleGetFunction`. Errors if `name` contains a NUL byte or the symbol is missing.
     pub fn function(self: &Arc<Self>, name: &str) -> Result<Function> {
         let cname = CString::new(name).map_err(|_| Error::Precondition {
             op: "Module::function",
@@ -1714,6 +1785,7 @@ impl Module {
         })
     }
 
+    /// Device this module was loaded on.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
         &self.device
@@ -1751,6 +1823,7 @@ impl Drop for Module {
     }
 }
 
+/// Kernel handle resolved from a [`Module`]. Holds the owning module alive.
 #[derive(Clone)]
 pub struct Function {
     module: Arc<Module>,
@@ -1760,10 +1833,12 @@ pub struct Function {
 }
 
 impl Function {
+    /// Module that owns this function.
     #[inline]
     pub fn module(&self) -> &Arc<Module> {
         &self.module
     }
+    /// Raw `CUfunction` handle.
     #[inline]
     pub fn raw(&self) -> CUfunction {
         self.handle
@@ -1892,12 +1967,16 @@ unsafe impl Sync for Function {}
 /// Launch geometry.
 #[derive(Copy, Clone, Debug)]
 pub struct LaunchCfg {
+    /// Grid dimensions in blocks, `(x, y, z)`.
     pub grid: (u32, u32, u32),
+    /// Block dimensions in threads, `(x, y, z)`.
     pub block: (u32, u32, u32),
+    /// Dynamic shared memory per block, in bytes.
     pub shared_bytes: u32,
 }
 
 impl LaunchCfg {
+    /// One-dimensional launch of `grid` blocks of `block` threads, with no dynamic shared memory.
     pub fn linear(grid: u32, block: u32) -> Self {
         Self {
             grid: (grid, 1, 1),
@@ -1905,6 +1984,7 @@ impl LaunchCfg {
             shared_bytes: 0,
         }
     }
+    /// One-dimensional launch covering `n` elements with `block` threads per block. Rounds the block count up and launches at least one block.
     pub fn for_elements(n: u32, block: u32) -> Self {
         let grid = (n + block - 1) / block.max(1);
         Self::linear(grid.max(1), block)
@@ -1923,10 +2003,15 @@ impl LaunchCfg {
 /// in caller-owned storage (rather than pointing into the moved-in tuple)
 /// means correctness does not depend on `pack` being inlined.
 pub trait LaunchArgs {
+    /// Fixed-size `u64` slot storage, one slot per argument.
     type Storage: AsMut<[u64]>;
+    /// Fixed-size array of argument pointers, one per argument.
     type Ptrs: AsMut<[*const c_void]>;
+    /// Allocate zeroed argument storage.
     fn storage() -> Self::Storage;
+    /// Allocate the argument pointer array, initialised to null.
     fn ptrs_init() -> Self::Ptrs;
+    /// Write each argument into `storage` and point `ptrs` at its slot.
     fn pack(self, storage: &mut Self::Storage, ptrs: &mut Self::Ptrs);
 }
 
@@ -2043,11 +2128,13 @@ launch_args_tuple!(18; 0=>A,1=>B,2=>C,3=>D,4=>E,5=>F,6=>G,7=>H,8=>I,9=>J,10=>K,1
 // Graph capture/replay
 // ════════════════════════════════════════════════════════════════════════════
 
+/// Graph produced by stream capture, not yet instantiated. Destroyed on drop.
 pub struct CapturedGraph {
     handle: CUgraph,
     drv: &'static sys::DriverFns,
 }
 
+/// Instantiated, launchable graph (`CUgraphExec`). Destroyed on drop.
 pub struct GraphExec {
     handle: CUgraphExec,
     _device: Arc<Device>,
@@ -2104,6 +2191,7 @@ impl Drop for CapturedGraph {
 }
 
 impl GraphExec {
+    /// Instantiate `graph` on `device`. Wraps `cuGraphInstantiateWithFlags`; the captured graph is destroyed afterward.
     pub fn new(graph: CapturedGraph, device: Arc<Device>) -> Result<Self> {
         device.bind()?;
         let d = device.drv;
@@ -2127,6 +2215,7 @@ impl GraphExec {
     }
 
     #[inline]
+    /// Launch the graph on `stream`. Wraps `cuGraphLaunch`.
     pub fn launch(&self, stream: &Stream) -> Result<()> {
         unsafe {
             check(

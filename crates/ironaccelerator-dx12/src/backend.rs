@@ -10,7 +10,9 @@ use crate::drv::{
     EnumeratedAdapter, D3D_FEATURE_LEVEL_12_0, D3D_FEATURE_LEVEL_12_1, D3D_FEATURE_LEVEL_12_2,
 };
 
+/// Direct3D 12 backend handle; zero-sized.
 pub struct Dx12Backend;
+/// Process-wide Direct3D 12 backend instance.
 pub static DX12_BACKEND: Dx12Backend = Dx12Backend;
 
 impl Backend for Dx12Backend {

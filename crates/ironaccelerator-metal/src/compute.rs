@@ -51,10 +51,12 @@ impl Context {
         Some(Self { device, queue })
     }
 
+    /// The device this context runs on.
     pub fn device(&self) -> &Arc<Device> {
         &self.device
     }
 
+    /// The command queue that dispatches are submitted to.
     pub fn queue(&self) -> &Arc<Queue> {
         &self.queue
     }

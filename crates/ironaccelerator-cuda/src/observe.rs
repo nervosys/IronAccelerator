@@ -48,6 +48,7 @@ pub fn mark<S: AsRef<str>>(msg: S) {
     }
 }
 
+/// Builder for an NVTX range; call [`EventBuilder::open`] to start it.
 pub struct EventBuilder {
     msg: String,
     argb: Option<u32>,
@@ -55,11 +56,13 @@ pub struct EventBuilder {
 }
 
 impl EventBuilder {
+    /// Sets the ARGB colour for the range. Stored but not yet applied; see [`EventBuilder::open`].
     #[inline(always)]
     pub fn argb(mut self, c: u32) -> Self {
         self.argb = Some(c);
         self
     }
+    /// Sets the NVTX category. Stored but not yet applied; see [`EventBuilder::open`].
     #[inline(always)]
     pub fn category(mut self, c: u32) -> Self {
         self.category = Some(c);
@@ -102,46 +105,65 @@ impl Drop for Range {
 /// dashboards, not a synchronisation primitive.
 #[derive(Debug, Default)]
 pub struct Metrics {
+    /// Total bytes allocated through tensor factories.
     pub alloc_bytes: AtomicU64,
+    /// Number of allocation calls.
     pub alloc_calls: AtomicU64,
+    /// Total bytes released.
     pub free_bytes: AtomicU64,
+    /// Total host-to-device bytes copied.
     pub htod_bytes: AtomicU64,
+    /// Total device-to-host bytes copied.
     pub dtoh_bytes: AtomicU64,
+    /// Number of kernel launches.
     pub kernels_launched: AtomicU64,
+    /// Number of cuBLASLt calls.
     pub blas_calls: AtomicU64,
+    /// NVRTC compile-cache hits.
     pub nvrtc_hits: AtomicU64,
+    /// NVRTC compile-cache misses.
     pub nvrtc_misses: AtomicU64,
+    /// cuFFT plan-cache hits.
     pub fft_hits: AtomicU64,
+    /// cuFFT plan-cache misses.
     pub fft_misses: AtomicU64,
+    /// Number of NCCL collectives invoked.
     pub collectives: AtomicU64,
 }
 
 impl Metrics {
+    /// Records one allocation of `bytes`.
     #[inline(always)]
     pub fn record_alloc(&self, bytes: u64) {
         self.alloc_calls.fetch_add(1, Ordering::Relaxed);
         self.alloc_bytes.fetch_add(bytes, Ordering::Relaxed);
     }
+    /// Records release of `bytes`.
     #[inline(always)]
     pub fn record_free(&self, bytes: u64) {
         self.free_bytes.fetch_add(bytes, Ordering::Relaxed);
     }
+    /// Records a host-to-device copy of `bytes`.
     #[inline(always)]
     pub fn record_htod(&self, bytes: u64) {
         self.htod_bytes.fetch_add(bytes, Ordering::Relaxed);
     }
+    /// Records a device-to-host copy of `bytes`.
     #[inline(always)]
     pub fn record_dtoh(&self, bytes: u64) {
         self.dtoh_bytes.fetch_add(bytes, Ordering::Relaxed);
     }
+    /// Records one kernel launch.
     #[inline(always)]
     pub fn record_launch(&self) {
         self.kernels_launched.fetch_add(1, Ordering::Relaxed);
     }
+    /// Records one cuBLASLt call.
     #[inline(always)]
     pub fn record_blas(&self) {
         self.blas_calls.fetch_add(1, Ordering::Relaxed);
     }
+    /// Records an NVRTC cache lookup; `hit` selects the hit or miss counter.
     #[inline(always)]
     pub fn record_nvrtc(&self, hit: bool) {
         if hit {
@@ -150,6 +172,7 @@ impl Metrics {
             self.nvrtc_misses.fetch_add(1, Ordering::Relaxed);
         }
     }
+    /// Records a cuFFT plan lookup; `hit` selects the hit or miss counter.
     #[inline(always)]
     pub fn record_fft(&self, hit: bool) {
         if hit {
@@ -158,6 +181,7 @@ impl Metrics {
             self.fft_misses.fetch_add(1, Ordering::Relaxed);
         }
     }
+    /// Records one NCCL collective.
     #[inline(always)]
     pub fn record_collective(&self) {
         self.collectives.fetch_add(1, Ordering::Relaxed);
@@ -182,19 +206,32 @@ impl Metrics {
     }
 }
 
+/// Plain-value copy of [`Metrics`] taken by [`Metrics::snapshot`].
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MetricsSnapshot {
+    /// Total bytes allocated through tensor factories.
     pub alloc_bytes: u64,
+    /// Number of allocation calls.
     pub alloc_calls: u64,
+    /// Total bytes released.
     pub free_bytes: u64,
+    /// Total host-to-device bytes copied.
     pub htod_bytes: u64,
+    /// Total device-to-host bytes copied.
     pub dtoh_bytes: u64,
+    /// Number of kernel launches.
     pub kernels_launched: u64,
+    /// Number of cuBLASLt calls.
     pub blas_calls: u64,
+    /// NVRTC compile-cache hits.
     pub nvrtc_hits: u64,
+    /// NVRTC compile-cache misses.
     pub nvrtc_misses: u64,
+    /// cuFFT plan-cache hits.
     pub fft_hits: u64,
+    /// cuFFT plan-cache misses.
     pub fft_misses: u64,
+    /// Number of NCCL collectives invoked.
     pub collectives: u64,
 }
 

@@ -12,6 +12,7 @@
 //! avoids wrapping every Vulkan object in a safe RAII type — the same
 //! "throughput over guard-rails" stance the rest of IronAccelerator takes.
 
+#![warn(missing_docs)]
 #![allow(clippy::missing_safety_doc)]
 
 pub mod backend;

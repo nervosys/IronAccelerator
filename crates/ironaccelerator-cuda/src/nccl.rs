@@ -58,12 +58,18 @@ fn dtype_of<T: Repr>() -> Result<sys::NcclDataType> {
     })
 }
 
+/// Reduction operator for NCCL collectives, mirroring `ncclRedOp_t`.
 #[derive(Copy, Clone, Debug)]
 pub enum ReduceOp {
+    /// Mirrors `ncclSum`.
     Sum,
+    /// Mirrors `ncclProd`.
     Prod,
+    /// Mirrors `ncclMax`.
     Max,
+    /// Mirrors `ncclMin`.
     Min,
+    /// Mirrors `ncclAvg`.
     Avg,
 }
 
@@ -98,6 +104,7 @@ impl Drop for RankComm {
     }
 }
 
+/// Per-rank NCCL communicators owned by this process.
 pub struct CommGroup {
     comms: Vec<RankComm>,
 }
@@ -165,6 +172,7 @@ impl CommGroup {
         })
     }
 
+    /// Number of ranks held by this group.
     #[inline]
     pub fn ranks(&self) -> usize {
         self.comms.len()
@@ -176,6 +184,7 @@ impl CommGroup {
             .ok_or(Error::Other("nccl: rank out of range"))
     }
 
+    /// Out-of-place all-reduce of `send` into `recv` on `rank`'s device (`ncclAllReduce`).
     pub fn all_reduce<T: Repr>(
         &self,
         rank: usize,
@@ -203,6 +212,7 @@ impl CommGroup {
         }
     }
 
+    /// In-place all-reduce on `buf` for `rank` (`ncclAllReduce` with identical send and recv buffers).
     pub fn all_reduce_in_place<T: Repr>(
         &self,
         rank: usize,
@@ -229,6 +239,7 @@ impl CommGroup {
         }
     }
 
+    /// All-gather: each rank's `send` is concatenated into `recv` (`ncclAllGather`).
     pub fn all_gather<T: Repr>(
         &self,
         rank: usize,
@@ -254,6 +265,7 @@ impl CommGroup {
         }
     }
 
+    /// Broadcasts `send` from rank `root` into `recv` on every rank (`ncclBroadcast`).
     pub fn broadcast<T: Repr>(
         &self,
         rank: usize,
@@ -281,6 +293,7 @@ impl CommGroup {
         }
     }
 
+    /// Reduce-scatter: reduces `send` across ranks and leaves each rank its `recv`-sized chunk (`ncclReduceScatter`).
     pub fn reduce_scatter<T: Repr>(
         &self,
         rank: usize,
@@ -323,6 +336,7 @@ impl CommGroup {
     }
 }
 
+/// Opens every visible CUDA device and builds a single-process communicator group over all of them.
 pub fn world_from_all_devices() -> Result<(Vec<Arc<Device>>, CommGroup)> {
     let n = Device::count()?;
     let devices: Vec<Arc<Device>> = (0..n)

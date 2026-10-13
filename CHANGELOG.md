@@ -6,6 +6,27 @@ All notable changes to **IronAccelerator** are documented here. Format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **cuda:** `cudnn::AttrType` numbered every tag after `PADDING_MODE` wrong.
+  `cudnnBackendAttributeType_t` declares `INT32, CHAR, SIGNAL_MODE, FRACTION`
+  before `NORM_MODE`, so `NormMode` / `NormFwdPhase` / `RngDistribution` are
+  27 / 28 / 29, not 24 / 25 / 26 — setting one of those attributes sent cuDNN
+  the wrong type tag. Renumbered, the three missing variants (`Char`,
+  `SignalMode`, `Fraction`) added, `IntArray` documented as `CUDNN_TYPE_INT32`,
+  and the tail pinned by a unit test.
+- **cuda:** `graph::Capture::begin` (and `graph::capture`) ignored its
+  `CaptureMode` argument and always captured in `ThreadLocal` mode. The mode is
+  now passed to `cuStreamBeginCapture_v2`; a live test replays a captured
+  memset in all three modes.
+
+### Changed
+
+- Every public item in the safe crates is documented, and `#![warn(missing_docs)]`
+  is on in each, so CI's `clippy -D warnings` keeps it that way (~920 items).
+  The `-sys` crates mirror the vendor C headers one-to-one and say so in their
+  crate docs instead of paraphrasing each symbol. No `#[doc(hidden)]` anywhere.
+
 ## [2.3.1] - 2026-10-13
 
 ### Changed

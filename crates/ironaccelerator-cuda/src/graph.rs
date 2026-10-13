@@ -3,30 +3,50 @@
 //! stream, then replays them with a single `cuGraphLaunch`.
 
 use crate::drv::{CapturedGraph, Device, GraphExec, Stream};
+use crate::sys::driver::CUstreamCaptureMode;
 use ironaccelerator_core::Result;
 use std::sync::Arc;
 
+/// Stream-capture mode passed to [`Capture::begin`] and [`capture`].
 #[derive(Debug, Clone, Copy)]
 pub enum CaptureMode {
+    /// Mirrors `CU_STREAM_CAPTURE_MODE_GLOBAL`.
     Global,
+    /// Mirrors `CU_STREAM_CAPTURE_MODE_THREAD_LOCAL`.
     ThreadLocal,
+    /// Mirrors `CU_STREAM_CAPTURE_MODE_RELAXED`.
     Relaxed,
 }
 
+impl From<CaptureMode> for CUstreamCaptureMode {
+    fn from(mode: CaptureMode) -> Self {
+        match mode {
+            CaptureMode::Global => CUstreamCaptureMode::Global,
+            CaptureMode::ThreadLocal => CUstreamCaptureMode::ThreadLocal,
+            CaptureMode::Relaxed => CUstreamCaptureMode::Relaxed,
+        }
+    }
+}
+
+/// RAII guard for an in-progress stream capture. Capture is ended on drop if
+/// [`Capture::end`] was not called.
 pub struct Capture<'a> {
     stream: &'a Arc<Stream>,
     active: bool,
 }
 
 impl<'a> Capture<'a> {
-    pub fn begin(stream: &'a Arc<Stream>, _mode: CaptureMode) -> Result<Self> {
-        stream.begin_capture()?;
+    /// Begin capturing work enqueued on `stream` in `mode`. Wraps
+    /// `cuStreamBeginCapture_v2`.
+    pub fn begin(stream: &'a Arc<Stream>, mode: CaptureMode) -> Result<Self> {
+        stream.begin_capture_mode(mode.into())?;
         Ok(Self {
             stream,
             active: true,
         })
     }
 
+    /// End capture and return the captured graph. Wraps `cuStreamEndCapture`.
     pub fn end(mut self) -> Result<Graph> {
         let cap = self.stream.end_capture()?;
         self.active = false;
@@ -42,11 +62,13 @@ impl<'a> Drop for Capture<'a> {
     }
 }
 
+/// A captured CUDA graph that has not been instantiated yet.
 pub struct Graph {
     inner: Option<CapturedGraph>,
 }
 
 impl Graph {
+    /// Instantiate into an executable graph on `device`. Consumes `self`.
     pub fn instantiate(mut self, device: Arc<Device>) -> Result<ExecGraph> {
         let cap = self.inner.take().expect("graph consumed");
         let exec = GraphExec::new(cap, device)?;
@@ -54,11 +76,13 @@ impl Graph {
     }
 }
 
+/// An instantiated, launchable CUDA graph.
 pub struct ExecGraph {
     inner: GraphExec,
 }
 
 impl ExecGraph {
+    /// Launch the graph on `stream`. Wraps `cuGraphLaunch`.
     #[inline]
     pub fn launch(&self, stream: &Stream) -> Result<()> {
         self.inner.launch(stream)?;

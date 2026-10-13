@@ -38,6 +38,7 @@ fn check(_op: &'static str, s: sys::HipblasStatus) -> Result<()> {
 
 // ─── Handle ─────────────────────────────────────────────────────────────────
 
+/// Owned hipBLASLt handle (`hipblasLtCreate`), bound to a device.
 pub struct BlasLt {
     handle: sys::HipblasLtHandle,
     _device: Arc<drv::Device>,
@@ -47,6 +48,7 @@ unsafe impl Send for BlasLt {}
 unsafe impl Sync for BlasLt {}
 
 impl BlasLt {
+    /// Creates a hipBLASLt handle on `device` via `hipblasLtCreate`.
     pub fn new(device: Arc<drv::Device>) -> Result<Arc<Self>> {
         device.bind()?;
         let f = fns()?;
@@ -61,6 +63,7 @@ impl BlasLt {
     }
 
     #[inline]
+    /// Returns the raw `hipblasLtHandle_t`.
     pub fn raw(&self) -> sys::HipblasLtHandle {
         self.handle
     }
@@ -81,6 +84,7 @@ impl Drop for BlasLt {
 static HANDLES: once_cell::sync::Lazy<Mutex<HashMap<u32, Arc<BlasLt>>>> =
     once_cell::sync::Lazy::new(|| Mutex::new(HashMap::new()));
 
+/// Returns the process-wide hipBLASLt handle for the stream's device, creating it on first use.
 pub fn handle_for(stream: &Arc<Stream>) -> Result<Arc<BlasLt>> {
     let device = stream.device();
     let ord = device.ordinal();
@@ -97,6 +101,7 @@ pub fn handle_for(stream: &Arc<Stream>) -> Result<Arc<BlasLt>> {
 
 // ─── Matmul descriptor ──────────────────────────────────────────────────────
 
+/// Wraps `hipblasLtMatmulDesc_t`, holding the compute and scale types.
 pub struct MatmulDesc {
     raw: sys::HipblasLtMatmulDesc,
 }
@@ -104,6 +109,7 @@ unsafe impl Send for MatmulDesc {}
 unsafe impl Sync for MatmulDesc {}
 
 impl MatmulDesc {
+    /// Creates a matmul descriptor via `hipblasLtMatmulDescCreate`.
     pub fn new(compute: ComputeType, scale: DType) -> Result<Self> {
         let f = fns()?;
         let mut raw = sys::HipblasLtMatmulDesc::default();
@@ -116,6 +122,7 @@ impl MatmulDesc {
         Ok(Self { raw })
     }
 
+    /// Sets the A and B transpose ops via `hipblasLtMatmulDescSetAttribute`.
     pub fn set_transpose(&mut self, trans_a: Op, trans_b: Op) -> Result<()> {
         let f = fns()?;
         let ta = trans_a as u32;
@@ -143,6 +150,7 @@ impl MatmulDesc {
         Ok(())
     }
 
+    /// Sets the epilogue via `hipblasLtMatmulDescSetAttribute`.
     pub fn set_epilogue(&mut self, epi: Epilogue) -> Result<()> {
         let f = fns()?;
         let v = epi as u32;
@@ -159,6 +167,7 @@ impl MatmulDesc {
         }
     }
 
+    /// Sets the bias vector device pointer via `hipblasLtMatmulDescSetAttribute`.
     pub fn set_bias_pointer(&mut self, ptr: HipDeviceptr) -> Result<()> {
         let f = fns()?;
         unsafe {
@@ -174,6 +183,7 @@ impl MatmulDesc {
         }
     }
 
+    /// Sets the device pointer for the scale tensor selected by `which`.
     pub fn set_scale_pointer(&mut self, which: ScaleTensor, ptr: HipDeviceptr) -> Result<()> {
         let f = fns()?;
         let attr = match which {
@@ -196,6 +206,7 @@ impl MatmulDesc {
     }
 
     #[inline]
+    /// Returns the raw `hipblasLtMatmulDesc_t`.
     pub fn raw(&self) -> sys::HipblasLtMatmulDesc {
         self.raw
     }
@@ -212,15 +223,21 @@ impl Drop for MatmulDesc {
 }
 
 #[derive(Copy, Clone, Debug)]
+/// Matmul operand that a scale pointer applies to.
 pub enum ScaleTensor {
+    /// Scale for operand A.
     A,
+    /// Scale for operand B.
     B,
+    /// Scale for operand C.
     C,
+    /// Scale for operand D.
     D,
 }
 
 // ─── Matrix layout ──────────────────────────────────────────────────────────
 
+/// Wraps `hipblasLtMatrixLayout_t`, describing one matrix operand.
 pub struct MatrixLayout {
     raw: sys::HipblasLtMatrixLayout,
 }
@@ -228,6 +245,7 @@ unsafe impl Send for MatrixLayout {}
 unsafe impl Sync for MatrixLayout {}
 
 impl MatrixLayout {
+    /// Creates a layout via `hipblasLtMatrixLayoutCreate` for a `rows` x `cols` matrix with leading dimension `ld`.
     pub fn new(dtype: DType, rows: u64, cols: u64, ld: i64) -> Result<Self> {
         let f = fns()?;
         let mut raw = sys::HipblasLtMatrixLayout::default();
@@ -240,6 +258,7 @@ impl MatrixLayout {
         Ok(Self { raw })
     }
 
+    /// Sets the strided-batch count and batch stride (in elements) via `hipblasLtMatrixLayoutSetAttribute`.
     pub fn set_batch(&mut self, count: i32, stride: i64) -> Result<()> {
         let f = fns()?;
         unsafe {
@@ -266,6 +285,7 @@ impl MatrixLayout {
     }
 
     #[inline]
+    /// Returns the raw `hipblasLtMatrixLayout_t`.
     pub fn raw(&self) -> sys::HipblasLtMatrixLayout {
         self.raw
     }
@@ -283,6 +303,7 @@ impl Drop for MatrixLayout {
 
 // ─── Preference ─────────────────────────────────────────────────────────────
 
+/// Wraps `hipblasLtMatmulPreference_t`, holding algorithm-search constraints.
 pub struct Preference {
     raw: sys::HipblasLtMatmulPreference,
 }
@@ -290,6 +311,7 @@ unsafe impl Send for Preference {}
 unsafe impl Sync for Preference {}
 
 impl Preference {
+    /// Creates a preference object via `hipblasLtMatmulPreferenceCreate`.
     pub fn new() -> Result<Self> {
         let f = fns()?;
         let mut raw = sys::HipblasLtMatmulPreference::default();
@@ -302,6 +324,7 @@ impl Preference {
         Ok(Self { raw })
     }
 
+    /// Sets the maximum workspace size in bytes via `hipblasLtMatmulPreferenceSetAttribute`.
     pub fn set_max_workspace(&mut self, bytes: usize) -> Result<()> {
         let f = fns()?;
         unsafe {
@@ -318,6 +341,7 @@ impl Preference {
     }
 
     #[inline]
+    /// Returns the raw `hipblasLtMatmulPreference_t`.
     pub fn raw(&self) -> sys::HipblasLtMatmulPreference {
         self.raw
     }
@@ -335,6 +359,7 @@ impl Drop for Preference {
 
 // ─── Heuristic + launch ─────────────────────────────────────────────────────
 
+/// Queries the best-ranked algorithm via `hipblasLtMatmulAlgoGetHeuristic`. Errors if none is returned.
 pub fn heuristic(
     blaslt: &BlasLt,
     desc: &MatmulDesc,

@@ -32,11 +32,17 @@ use crate::drv;
 /// its pool.
 pub struct Context {
     instance: &'static Instance,
+    /// The `VkPhysicalDevice` this context was created on.
     pub physical: vk::PhysicalDevice,
+    /// Logical device created on `physical`.
     pub device: Device,
+    /// Compute queue retrieved from `queue_family`.
     pub queue: vk::Queue,
+    /// Index of the queue family `queue` belongs to.
     pub queue_family: u32,
+    /// `VkCommandPool` used for transfer and dispatch command buffers.
     pub command_pool: vk::CommandPool,
+    /// Memory properties of `physical`, cached at creation.
     pub mem_props: vk::PhysicalDeviceMemoryProperties,
 }
 
@@ -203,6 +209,7 @@ impl Context {
         })
     }
 
+    /// The process-wide instance this context was created from.
     pub fn instance(&self) -> &Instance {
         self.instance
     }
@@ -219,15 +226,20 @@ impl Drop for Context {
 
 // ── Buffers ───────────────────────────────────────────────────────────────
 
+/// A `VkBuffer` bound to its own `VkDeviceMemory`. Both are freed on drop.
 pub struct Buffer {
+    /// `VkBuffer` handle.
     pub buffer: vk::Buffer,
+    /// `VkDeviceMemory` backing `buffer`.
     pub memory: vk::DeviceMemory,
+    /// Allocation size in bytes.
     pub size: u64,
     host_visible: bool,
     device: Device,
 }
 
 impl Buffer {
+    /// Allocates `DEVICE_LOCAL` storage-buffer memory. Not CPU-mappable.
     pub fn device_local(ctx: &Context, size: u64) -> Result<Self, vk::Result> {
         Self::alloc(
             ctx,
@@ -239,6 +251,7 @@ impl Buffer {
         )
     }
 
+    /// Allocates `HOST_VISIBLE | HOST_COHERENT` storage-buffer memory.
     pub fn host_visible(ctx: &Context, size: u64) -> Result<Self, vk::Result> {
         Self::alloc(
             ctx,
@@ -297,6 +310,7 @@ impl Buffer {
             .map_memory(self.memory, 0, self.size, vk::MemoryMapFlags::empty())
     }
 
+    /// Unmaps memory mapped by [`Self::map`].
     pub unsafe fn unmap(&self) {
         self.device.unmap_memory(self.memory);
     }
@@ -346,12 +360,19 @@ impl Drop for Buffer {
 
 // ── Compute pipeline ──────────────────────────────────────────────────────
 
+/// A compute pipeline with its layout, descriptor set layout and pool, and one descriptor set.
 pub struct ComputePipeline {
+    /// `VkPipeline` for the compute stage.
     pub pipeline: vk::Pipeline,
+    /// `VkPipelineLayout` built from `dsl`.
     pub layout: vk::PipelineLayout,
+    /// `VkDescriptorSetLayout` for the storage-buffer bindings.
     pub dsl: vk::DescriptorSetLayout,
+    /// `VkDescriptorPool` that `descriptor_set` is allocated from.
     pub pool: vk::DescriptorPool,
+    /// The descriptor set bound at dispatch.
     pub descriptor_set: vk::DescriptorSet,
+    /// `VkShaderModule` created from the SPIR-V.
     pub module: vk::ShaderModule,
     device: Device,
 }

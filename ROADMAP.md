@@ -239,8 +239,9 @@ cut. Tracked in IronWorks from here on — see the CHANGELOG's
       features, and a `wasm32-unknown-unknown` job for the WebGPU
       backend. Both configurations had rotted undetected before 2.0.0
       because nothing in CI built them.
-- [ ] Public-API review: no `#[doc(hidden)]` leaks, every `pub`
-      item documented.
+- [x] Public-API review: no `#[doc(hidden)]` anywhere; every `pub` item in
+      the safe crates documented and `#![warn(missing_docs)]` enforced via
+      CI clippy. `-sys` crates mirror vendor headers 1:1 and defer to them.
 - [x] `docs/backends/CI-HARDWARE.md` — the three tiers of hardware path
       (free on hosted / self-hosted / no path GitHub can offer) and how
       to register a runner for each lane.

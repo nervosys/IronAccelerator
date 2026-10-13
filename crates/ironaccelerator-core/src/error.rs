@@ -3,6 +3,7 @@
 
 use core::fmt;
 
+/// Error returned by IronAccelerator operations.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Error {
@@ -13,13 +14,18 @@ pub enum Error {
     /// Out of device or pinned host memory.
     OutOfMemory,
     /// Kernel launch failed; opaque driver code stored verbatim.
-    LaunchFailure { code: i32 },
+    LaunchFailure {
+        /// Opaque driver status code, stored verbatim.
+        code: i32,
+    },
     /// Misuse: violated an `_unchecked` precondition.
     InvalidArgument(&'static str),
     /// Backend-specific error wrapped as a code so we don't allocate on hot
     /// paths. Backends keep their own decode tables.
     Backend {
+        /// Backend that produced the error.
         backend: crate::BackendKind,
+        /// Backend-specific error code.
         code: i64,
     },
     /// Anything else.
@@ -43,4 +49,5 @@ impl fmt::Display for Error {
 #[cfg(feature = "std")]
 impl std::error::Error for Error {}
 
+/// Crate-wide result type, defaulting to [`Error`].
 pub type Result<T, E = Error> = core::result::Result<T, E>;

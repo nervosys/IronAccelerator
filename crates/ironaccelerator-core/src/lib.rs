@@ -18,6 +18,7 @@
 //! synchronous teardown, we expose a `_unchecked` fast path and let the agent
 //! (or library author) opt back into safety.
 
+#![warn(missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(clippy::missing_safety_doc)]
 

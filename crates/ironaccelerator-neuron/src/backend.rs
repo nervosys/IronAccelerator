@@ -7,7 +7,9 @@ use ironaccelerator_core::{
 
 use crate::drv::NeuronGen;
 
+/// AWS Neuron backend. Reports one device per NeuronCore.
 pub struct NeuronBackend;
+/// Process-wide Neuron backend instance.
 pub static NEURON_BACKEND: NeuronBackend = NeuronBackend;
 
 impl Backend for NeuronBackend {

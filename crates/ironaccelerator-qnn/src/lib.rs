@@ -17,6 +17,7 @@
 //! v0.1 scaffold. Library probe via libloading; FFI bindings for `QnnApi.h`,
 //! `QnnContext.h`, `QnnGraph.h`, `QnnHtp.h` are tracked next.
 
+#![warn(missing_docs)]
 #![allow(clippy::missing_safety_doc)]
 
 pub mod backend;
@@ -25,6 +26,7 @@ pub mod drv;
 pub use backend::{QnnBackend, QNN_BACKEND};
 pub use iron_qnn_sys as sys;
 
+/// Registers the QNN backend with `reg`.
 pub fn register(reg: &mut ironaccelerator_core::BackendRegistry) {
     let b: &'static backend::QnnBackend = &QNN_BACKEND;
     reg.register(b);

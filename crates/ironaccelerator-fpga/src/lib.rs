@@ -19,6 +19,7 @@
 //!
 //! [`Backend`]: ironaccelerator_core::Backend
 
+#![warn(missing_docs)]
 #![allow(clippy::missing_safety_doc)]
 
 pub mod backend;
@@ -26,6 +27,7 @@ pub mod drv;
 
 pub use backend::{FpgaBackend, FPGA_BACKEND};
 
+/// Registers the FPGA backend with `reg`.
 pub fn register(reg: &mut ironaccelerator_core::BackendRegistry) {
     reg.register(&FPGA_BACKEND);
 }

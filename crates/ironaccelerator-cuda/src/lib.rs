@@ -44,6 +44,7 @@
 //! wrapped op costs one struct-field load + one FFI entry. See the workspace
 //! README for benchmarks against `cudarc` 0.19; alloc/free is **~2× faster**.
 
+#![warn(missing_docs)]
 #![allow(
     clippy::missing_safety_doc,
     clippy::too_many_arguments,    // intrinsic to FFI wrappers (cublasLtMatmul &c.)
