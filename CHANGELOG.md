@@ -6,6 +6,31 @@ All notable changes to **IronAccelerator** are documented here. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- **cuda:** `drv::AsyncMemPool` — explicit stream-ordered memory pools
+  (`cuMemPoolCreate`) with an optional `max_size` cap, `set_release_threshold`,
+  `trim_to`, and reserved/used current and high-water accounting.
+  `DeviceBuf::alloc_from_pool` allocates from one (`cuMemAllocFromPoolAsync`);
+  the buffer frees back to that pool on drop, and a pool/stream device mismatch
+  is rejected before reaching the driver. New pools retain freed memory, like
+  the default pool. **cuda-sys:** `CUmemPoolProps` (88-byte layout pinned by a
+  test) and `cuMemPoolCreate` / `cuMemPoolDestroy` / `cuMemAllocFromPoolAsync`
+  / `cuMemPoolTrimTo`.
+
+### Fixed
+
+- **cuda-sys / cuda: retain-on-free on the default memory pool never took
+  effect.** `CUmemPool_attribute` was shifted by three against the header
+  (`ReleaseThreshold = 1` is really `REUSE_FOLLOW_EVENT_DEPENDENCIES`), so
+  `Device::open`'s `RELEASE_THRESHOLD = u64::MAX` silently set an `int`
+  boolean that defaults to on, and the default pool kept releasing freed
+  memory to the OS at every synchronise. Renumbered to the header (1–3 the
+  `Reuse*` flags, 4 the release threshold, 5–8 reserved/used counters) and
+  pinned by a unit test plus a live test that reads the threshold back after
+  `Device::open`. Measured on an RTX 3090 Ti: a 16-buffer
+  free→synchronise→allocate cycle drops from ~6–10 ms to ~20 µs.
+
 ## [2.4.0] - 2026-10-13
 
 ### Fixed

@@ -1029,6 +1029,140 @@ unsafe impl ZeroBits for half::f16 {}
 #[cfg(feature = "f16")]
 unsafe impl ZeroBits for half::bf16 {}
 
+/// An explicit stream-ordered memory pool (`cuMemPoolCreate`), separate from
+/// the device's default pool.
+///
+/// Allocate from it with [`DeviceBuf::alloc_from_pool`]; those buffers free
+/// with `cuMemFreeAsync` like any other, so they return to this pool. Use one
+/// to isolate a workload's memory (its own release threshold, its own
+/// high-water mark, `trim_to` without disturbing other allocations) or to
+/// cap it with `max_size`.
+///
+/// Like the default pool after [`Device::open`], a new pool retains freed
+/// memory (release threshold `u64::MAX`); lower it with
+/// [`set_release_threshold`](Self::set_release_threshold). Dropping the pool
+/// calls `cuMemPoolDestroy`, which is safe with allocations still
+/// outstanding: the driver releases the pool once the last one is freed.
+pub struct AsyncMemPool {
+    device: Arc<Device>,
+    pool: sys::CUmemPool,
+    drv: &'static sys::DriverFns,
+}
+
+impl AsyncMemPool {
+    /// Create a pool of pinned device memory on `device`. `max_size` caps the
+    /// pool's total reservation in bytes; `None` leaves it unbounded. Wraps
+    /// `cuMemPoolCreate`.
+    pub fn new(device: Arc<Device>, max_size: Option<usize>) -> Result<Self> {
+        let drv = device.drv;
+        let props = sys::CUmemPoolProps {
+            alloc_type: sys::CUmemAllocationType::Pinned,
+            handle_types: sys::CUmemAllocationHandleType::None,
+            location: sys::CUmemLocation {
+                kind: sys::CUmemLocationType::Device,
+                id: device.ordinal,
+            },
+            win32_security_attributes: ptr::null_mut(),
+            max_size: max_size.unwrap_or(0),
+            usage: 0,
+            reserved: [0; 54],
+        };
+        let mut pool = sys::CUmemPool::default();
+        unsafe {
+            check("cuMemPoolCreate", (drv.cuMemPoolCreate)(&mut pool, &props))?;
+        }
+        let pool = Self { device, pool, drv };
+        pool.set_release_threshold(u64::MAX)?;
+        Ok(pool)
+    }
+
+    /// The device this pool allocates on.
+    #[inline]
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+
+    /// The raw `CUmemoryPool` handle.
+    #[inline]
+    pub fn raw(&self) -> sys::CUmemPool {
+        self.pool
+    }
+
+    /// Bytes of freed memory the pool may hold before returning the excess to
+    /// the OS at the next synchronisation. Sets
+    /// `CU_MEMPOOL_ATTR_RELEASE_THRESHOLD`.
+    pub fn set_release_threshold(&self, bytes: u64) -> Result<()> {
+        let mut v = bytes;
+        unsafe {
+            check(
+                "cuMemPoolSetAttribute",
+                (self.drv.cuMemPoolSetAttribute)(
+                    self.pool,
+                    sys::CUmemPool_attribute::ReleaseThreshold,
+                    &mut v as *mut u64 as *mut c_void,
+                ),
+            )
+        }
+    }
+
+    /// Release unused memory back to the OS, keeping at least `min_bytes`
+    /// reserved. Wraps `cuMemPoolTrimTo`.
+    pub fn trim_to(&self, min_bytes: usize) -> Result<()> {
+        unsafe {
+            check(
+                "cuMemPoolTrimTo",
+                (self.drv.cuMemPoolTrimTo)(self.pool, min_bytes),
+            )
+        }
+    }
+
+    fn attr_u64(&self, attr: sys::CUmemPool_attribute) -> Result<u64> {
+        let mut v: u64 = 0;
+        unsafe {
+            check(
+                "cuMemPoolGetAttribute",
+                (self.drv.cuMemPoolGetAttribute)(
+                    self.pool,
+                    attr,
+                    &mut v as *mut u64 as *mut c_void,
+                ),
+            )?;
+        }
+        Ok(v)
+    }
+
+    /// Bytes currently reserved from the OS (`CU_MEMPOOL_ATTR_RESERVED_MEM_CURRENT`).
+    pub fn reserved_bytes(&self) -> Result<u64> {
+        self.attr_u64(sys::CUmemPool_attribute::ReservedMemCurrent)
+    }
+
+    /// High-water mark of reserved bytes (`CU_MEMPOOL_ATTR_RESERVED_MEM_HIGH`).
+    pub fn reserved_high_bytes(&self) -> Result<u64> {
+        self.attr_u64(sys::CUmemPool_attribute::ReservedMemHigh)
+    }
+
+    /// Bytes currently handed out to live allocations (`CU_MEMPOOL_ATTR_USED_MEM_CURRENT`).
+    pub fn used_bytes(&self) -> Result<u64> {
+        self.attr_u64(sys::CUmemPool_attribute::UsedMemCurrent)
+    }
+
+    /// High-water mark of used bytes (`CU_MEMPOOL_ATTR_USED_MEM_HIGH`).
+    pub fn used_high_bytes(&self) -> Result<u64> {
+        self.attr_u64(sys::CUmemPool_attribute::UsedMemHigh)
+    }
+}
+
+impl Drop for AsyncMemPool {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = (self.drv.cuMemPoolDestroy)(self.pool);
+        }
+    }
+}
+
+unsafe impl Send for AsyncMemPool {}
+unsafe impl Sync for AsyncMemPool {}
+
 /// Owned device buffer. Allocated on a stream's async-alloc pool; freed on the
 /// same stream when dropped.
 pub struct DeviceBuf<T: Repr> {
@@ -1060,6 +1194,46 @@ impl<T: Repr> DeviceBuf<T> {
             check(
                 "cuMemAllocAsync",
                 (stream.drv.cuMemAllocAsync)(&mut ptr, bytes, stream.handle),
+            )?;
+        }
+        Ok(Self {
+            stream,
+            ptr,
+            len,
+            _marker: PhantomData,
+        })
+    }
+
+    /// Allocate `len` elements from an explicit [`AsyncMemPool`], leaving the
+    /// memory uninitialised. The pool and `stream` must be on the same device.
+    /// The buffer frees back to `pool` on drop. Wraps `cuMemAllocFromPoolAsync`.
+    #[inline]
+    pub fn alloc_from_pool(stream: Arc<Stream>, pool: &AsyncMemPool, len: usize) -> Result<Self> {
+        if pool.device.ordinal != stream.device.ordinal {
+            return Err(Error::Precondition {
+                op: "DeviceBuf::alloc_from_pool",
+                msg: format!(
+                    "pool is on device {} but stream is on device {}",
+                    pool.device.ordinal, stream.device.ordinal
+                ),
+            });
+        }
+        if len == 0 {
+            return Ok(Self {
+                stream,
+                ptr: 0,
+                len: 0,
+                _marker: PhantomData,
+            });
+        }
+        let Some(bytes) = len.checked_mul(std::mem::size_of::<T>()) else {
+            return Err(alloc_overflow());
+        };
+        let mut ptr: CUdeviceptr = 0;
+        unsafe {
+            check(
+                "cuMemAllocFromPoolAsync",
+                (stream.drv.cuMemAllocFromPoolAsync)(&mut ptr, bytes, pool.pool, stream.handle),
             )?;
         }
         Ok(Self {

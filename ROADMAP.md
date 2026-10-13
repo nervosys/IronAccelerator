@@ -74,6 +74,9 @@ longer a release gate.
       else. **Needs an NVIDIA runner registered to actually run.**
 - [x] CI's docs job enforces `RUSTDOCFLAGS=-D warnings` (see *Docs + release
       engineering*).
+- [x] Explicit stream-ordered pools: `drv::AsyncMemPool` +
+      `DeviceBuf::alloc_from_pool`, live-tested. Default-pool retain-on-free
+      now actually applied (the attribute enum was shifted until 2.5.0).
 
 ### ROCm
 
@@ -265,7 +268,6 @@ Known-useful driver-level work that isn't blocking the next minor:
 - rocFFT / rocRAND / rocSOLVER / rocSPARSE safe wrappers.
 - HIPRTC *disk* cache, matching the CUDA NVRTC shape (the runtime
   compile and in-memory cache shipped in the unreleased work).
-- Per-stream custom `cuMemPool` wrappers (default-pool retention shipped).
 - NVLink / xGMI / NVSwitch topology *reporting* (planning is a consumer
   concern).
 - WASM compute benchmarks vs. native Vulkan + Metal.

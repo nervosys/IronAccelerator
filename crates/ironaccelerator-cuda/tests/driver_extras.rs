@@ -195,3 +195,89 @@ fn graph_capture_honours_every_mode() {
         assert!(host.iter().all(|&b| b == value), "{mode:?} replay wrong");
     }
 }
+
+#[test]
+fn explicit_mem_pool_accounting_cap_and_trim() {
+    use ironaccelerator_cuda::drv::AsyncMemPool;
+    if !have_cuda() {
+        return;
+    }
+    const MIB: usize = 1 << 20;
+    let dev = Device::open(0).unwrap();
+    let stream = Stream::new(dev.clone()).unwrap();
+    let pool = AsyncMemPool::new(dev.clone(), None).unwrap();
+
+    // Round-trip data through a pool-backed buffer.
+    let src: Vec<u32> = (0..MIB as u32 / 4).collect();
+    let mut buf = DeviceBuf::<u32>::alloc_from_pool(stream.clone(), &pool, src.len()).unwrap();
+    buf.copy_from_host(&src).unwrap();
+    let mut back = vec![0u32; src.len()];
+    buf.copy_to_host_sync(&mut back).unwrap();
+    assert_eq!(src, back);
+    assert!(
+        pool.used_bytes().unwrap() >= MIB as u64,
+        "pool must account the buffer"
+    );
+
+    // Freed memory returns to *this* pool and, with the default MAX
+    // threshold, stays reserved until trimmed.
+    drop(buf);
+    stream.synchronize().unwrap();
+    assert_eq!(pool.used_bytes().unwrap(), 0);
+    assert!(pool.reserved_bytes().unwrap() > 0);
+    assert!(pool.used_high_bytes().unwrap() >= MIB as u64);
+    pool.trim_to(0).unwrap();
+    assert_eq!(
+        pool.reserved_bytes().unwrap(),
+        0,
+        "trim_to(0) releases everything"
+    );
+
+    // max_size caps the reservation.
+    let capped = AsyncMemPool::new(dev.clone(), Some(32 * MIB)).unwrap();
+    let err = DeviceBuf::<u8>::alloc_from_pool(stream.clone(), &capped, 64 * MIB);
+    assert!(err.is_err(), "allocation beyond max_size must fail");
+    stream.synchronize().unwrap();
+
+    // A pool on another device is rejected before reaching the driver.
+    if Device::count().unwrap() > 1 {
+        let other = AsyncMemPool::new(Device::open(1).unwrap(), None).unwrap();
+        let e = DeviceBuf::<u8>::alloc_from_pool(stream.clone(), &other, 16).err();
+        assert!(matches!(
+            e,
+            Some(ironaccelerator_cuda::drv::Error::Precondition { .. })
+        ));
+    }
+}
+
+#[test]
+fn device_open_sets_default_pool_retain_on_free() {
+    if !have_cuda() {
+        return;
+    }
+    let dev = Device::open(0).unwrap();
+    dev.bind().unwrap();
+    let d = sys::driver::fns().unwrap();
+    let mut pool = sys::driver::CUmemPool::default();
+    let mut cu_dev = 0;
+    let mut threshold: u64 = 0;
+    unsafe {
+        assert_eq!(
+            (d.cuDeviceGet)(&mut cu_dev, 0),
+            sys::driver::CUresult::Success
+        );
+        assert_eq!(
+            (d.cuDeviceGetDefaultMemPool)(&mut pool, cu_dev),
+            sys::driver::CUresult::Success
+        );
+        assert_eq!(
+            (d.cuMemPoolGetAttribute)(
+                pool,
+                sys::driver::CUmemPool_attribute::ReleaseThreshold,
+                &mut threshold as *mut u64 as *mut std::ffi::c_void,
+            ),
+            sys::driver::CUresult::Success
+        );
+    }
+    assert_eq!(threshold, u64::MAX, "default pool must retain freed memory");
+}

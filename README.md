@@ -374,7 +374,7 @@ Driver-substrate work only — kernels, planners, and workload abstractions belo
       `ironaccelerator-ontology` crate moved to
       [IronWorks](https://github.com/nervosys/ironworks). `Backend` is now a
       discovery-only trait and the facade `Runtime` is a device survey.
-- [x] `cuMemPool` direct wrappers + default-pool retention (`Device::open` sets `ReleaseThreshold = u64::MAX` on the default pool — retains memory across free/alloc, matching PyTorch/cudarc behaviour). Per-stream custom pools still TODO.
+- [x] `cuMemPool` direct wrappers + default-pool retention (`Device::open` sets `ReleaseThreshold = u64::MAX` on the default pool — retains memory across free/alloc, matching PyTorch/cudarc behaviour) and explicit pools via `drv::AsyncMemPool` + `DeviceBuf::alloc_from_pool`.
 - [ ] Optional Rust-side small-buffer free list to skip `cuMemFreeAsync` round-trips at very high alloc churn.
 - [x] Unified `ComputeDevice` trait (`ironaccelerator-core`) implemented across
       Vulkan, D3D12, OpenGL, Metal, and Level Zero — one submission surface,

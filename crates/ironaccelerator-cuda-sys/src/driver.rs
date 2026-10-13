@@ -99,23 +99,24 @@ pub struct CUgraphExecUpdateResultInfo_st {
 #[derive(Copy, Clone, Debug, Default)]
 pub struct CUmemPool(pub *mut c_void);
 
-/// `CUmemPool_attribute_enum`. Subset matching CUDA 13. The release
-/// threshold is the key one for retain-on-free behaviour.
+/// `CUmemPool_attribute_enum`, in header order (the enum starts at 1). The
+/// release threshold is the key one for retain-on-free behaviour. The three
+/// `Reuse*` attributes are `int` booleans; the rest are `cuuint64_t`.
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(non_camel_case_types)]
 pub enum CUmemPool_attribute {
+    ReuseFollowEventDependencies = 1,
+    ReuseAllowOpportunistic = 2,
+    ReuseAllowInternalDependencies = 3,
     /// `cuuint64_t` — pool releases memory back to OS only when usage
     /// exceeds this many bytes. Set to `u64::MAX` to retain forever
     /// (CUDA caching-allocator pattern). Default is 0 (release every free).
-    ReleaseThreshold = 1,
-    ReservedMemCurrent = 2,
-    ReservedMemHigh = 3,
-    UsedMemCurrent = 4,
-    UsedMemHigh = 5,
-    ReuseFollowEventDependencies = 6,
-    ReuseAllowOpportunistic = 7,
-    ReuseAllowInternalDependencies = 8,
+    ReleaseThreshold = 4,
+    ReservedMemCurrent = 5,
+    ReservedMemHigh = 6,
+    UsedMemCurrent = 7,
+    UsedMemHigh = 8,
 }
 
 impl CUmemPool_attribute {
@@ -224,6 +225,21 @@ pub struct CUmemAllocationPropFlags {
     pub gpu_direct_rdma_capable: u8,
     pub usage: u16, // bitfield — OR of CU_MEM_CREATE_USAGE_* (encrypted, etc.)
     pub reserved: [u8; 4],
+}
+
+/// `CUmemPoolProps`: properties for `cuMemPoolCreate`. 88 bytes, matching
+/// the CUDA 12.2+ layout (`maxSize` and `usage` carved out of the original
+/// 64-byte reserved tail; zero for both means "driver default").
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct CUmemPoolProps {
+    pub alloc_type: CUmemAllocationType,
+    pub handle_types: CUmemAllocationHandleType,
+    pub location: CUmemLocation,
+    pub win32_security_attributes: *mut c_void,
+    pub max_size: usize,
+    pub usage: u16,
+    pub reserved: [u8; 54],
 }
 
 #[repr(C)]
@@ -743,6 +759,20 @@ pub struct DriverFns {
     pub cuMemPoolGetAttribute:
         unsafe extern "C" fn(CUmemPool, CUmemPool_attribute, *mut c_void) -> CUresult,
 
+    /// Create an explicit stream-ordered memory pool.
+    pub cuMemPoolCreate: unsafe extern "C" fn(*mut CUmemPool, *const CUmemPoolProps) -> CUresult,
+
+    /// Destroy a pool. Outstanding allocations keep its resources alive until
+    /// they are freed; the call itself returns immediately.
+    pub cuMemPoolDestroy: unsafe extern "C" fn(CUmemPool) -> CUresult,
+
+    /// Stream-ordered allocation drawn from an explicit pool.
+    pub cuMemAllocFromPoolAsync:
+        unsafe extern "C" fn(*mut CUdeviceptr, usize, CUmemPool, CUstream) -> CUresult,
+
+    /// Release unused pool memory back to the OS down to `minBytesToKeep`.
+    pub cuMemPoolTrimTo: unsafe extern "C" fn(CUmemPool, usize) -> CUresult,
+
     /// Returns the maximum number of active thread blocks per SM for the
     /// given function with the supplied block-size and dynamic shmem usage.
     /// Use with `MultiprocessorCount` device attribute for occupancy-based
@@ -962,6 +992,10 @@ fn load_fns(lib: &Library) -> LoaderResult<DriverFns> {
             cuDeviceGetDefaultMemPool: g!(cuDeviceGetDefaultMemPool),
             cuMemPoolSetAttribute: g!(cuMemPoolSetAttribute),
             cuMemPoolGetAttribute: g!(cuMemPoolGetAttribute),
+            cuMemPoolCreate: g!(cuMemPoolCreate),
+            cuMemPoolDestroy: g!(cuMemPoolDestroy),
+            cuMemAllocFromPoolAsync: g!(cuMemAllocFromPoolAsync),
+            cuMemPoolTrimTo: g!(cuMemPoolTrimTo),
             cuOccupancyMaxActiveBlocksPerMultiprocessor: g!(
                 cuOccupancyMaxActiveBlocksPerMultiprocessor
             ),
@@ -1098,5 +1132,33 @@ mod tests {
     fn result_ok_is_false_for_errors() {
         assert!(CUresult::Success.is_ok());
         assert!(!CUresult::OutOfMemory.is_ok());
+    }
+}
+
+#[cfg(test)]
+mod mem_pool_props_layout {
+    use super::CUmemPoolProps;
+
+    #[test]
+    fn matches_header_size() {
+        assert_eq!(std::mem::size_of::<CUmemPoolProps>(), 88);
+        assert_eq!(std::mem::offset_of!(CUmemPoolProps, max_size), 24);
+        assert_eq!(std::mem::offset_of!(CUmemPoolProps, usage), 32);
+    }
+
+    /// `CU_MEMPOOL_ATTR_*` values from the CUDA header. These were once
+    /// shifted by three, so `ReleaseThreshold` silently set
+    /// `REUSE_FOLLOW_EVENT_DEPENDENCIES` instead.
+    #[test]
+    fn pool_attribute_values_match_header() {
+        use super::CUmemPool_attribute as A;
+        assert_eq!(A::ReuseFollowEventDependencies as u32, 1);
+        assert_eq!(A::ReuseAllowOpportunistic as u32, 2);
+        assert_eq!(A::ReuseAllowInternalDependencies as u32, 3);
+        assert_eq!(A::ReleaseThreshold as u32, 4);
+        assert_eq!(A::ReservedMemCurrent as u32, 5);
+        assert_eq!(A::ReservedMemHigh as u32, 6);
+        assert_eq!(A::UsedMemCurrent as u32, 7);
+        assert_eq!(A::UsedMemHigh as u32, 8);
     }
 }
