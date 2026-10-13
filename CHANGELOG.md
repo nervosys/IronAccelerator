@@ -6,6 +6,8 @@ All notable changes to **IronAccelerator** are documented here. Format follows
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-10-13
+
 ### Fixed
 
 - **cuda:** `cudnn::AttrType` numbered every tag after `PADDING_MODE` wrong.

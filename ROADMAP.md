@@ -4,9 +4,9 @@ Live progress tracker. Each section is a milestone; each bullet is a
 deliverable with a status box. Move items to **Shipped** with the version
 they land in.
 
-Last updated: **2026-10-13** — workspace at **2.3.0** (FPGA backend, capability
+Last updated: **2026-10-13** — workspace at **2.4.0** (FPGA backend, capability
 ontology, ROCm depth, the CUDA/ROCm/Intel/FPGA hardware lanes). See the
-CHANGELOG's `[2.3.0]` section.
+CHANGELOG.
 
 > **Scope.** IronAccelerator is a driver substrate. Kernels, planners,
 > workload/strategy types, quantization schemes, CPU reference ops, and the
@@ -276,6 +276,12 @@ FlashAttention variants, Triton-style JIT, MLX kernels) belong to IronWorks.
 ---
 
 ## Shipped
+
+### 2.4.0 — 2026-10-13
+
+- Public-API review: every safe-crate `pub` item documented,
+  `missing_docs` enforced. cuDNN `AttrType` tags corrected; `graph::Capture`
+  honours `CaptureMode`.
 
 ### 2.3.0 — 2026-10-13
 
