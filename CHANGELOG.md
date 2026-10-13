@@ -6,6 +6,8 @@ All notable changes to **IronAccelerator** are documented here. Format follows
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-10-13
+
 ### Added
 
 - **cuda:** `drv::AsyncMemPool` — explicit stream-ordered memory pools

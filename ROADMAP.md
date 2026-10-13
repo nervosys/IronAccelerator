@@ -4,7 +4,7 @@ Live progress tracker. Each section is a milestone; each bullet is a
 deliverable with a status box. Move items to **Shipped** with the version
 they land in.
 
-Last updated: **2026-10-13** — workspace at **2.4.0** (FPGA backend, capability
+Last updated: **2026-10-13** — workspace at **2.5.0** (FPGA backend, capability
 ontology, ROCm depth, the CUDA/ROCm/Intel/FPGA hardware lanes). See the
 CHANGELOG.
 
@@ -278,6 +278,13 @@ FlashAttention variants, Triton-style JIT, MLX kernels) belong to IronWorks.
 ---
 
 ## Shipped
+
+### 2.5.0 — 2026-10-13
+
+- `drv::AsyncMemPool` explicit pools; default-pool retain-on-free actually
+  applied. `cuda-sys` FFI values audited against CUDA 13.3 / cuDNN 9.27 /
+  cuTENSOR 2.8 headers (cuDNN graph IDs, cuTENSOR compute descriptor,
+  `CUresult` 700/719, and more).
 
 ### 2.4.0 — 2026-10-13
 
