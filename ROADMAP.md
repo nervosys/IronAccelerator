@@ -4,9 +4,9 @@ Live progress tracker. Each section is a milestone; each bullet is a
 deliverable with a status box. Move items to **Shipped** with the version
 they land in.
 
-Last updated: **2026-09-09** — workspace at **2.2.0**, with unreleased work on
-`master` (FPGA backend, capability ontology, ROCm depth, the CUDA/ROCm/Intel/
-FPGA hardware lanes). See the CHANGELOG's `[Unreleased]` section.
+Last updated: **2026-10-13** — workspace at **2.3.0** (FPGA backend, capability
+ontology, ROCm depth, the CUDA/ROCm/Intel/FPGA hardware lanes). See the
+CHANGELOG's `[2.3.0]` section.
 
 > **Scope.** IronAccelerator is a driver substrate. Kernels, planners,
 > workload/strategy types, quantization schemes, CPU reference ops, and the
@@ -72,8 +72,8 @@ longer a release gate.
       no GPU, so it cannot pass green having skipped, and runs the
       `#[ignore]`-gated `cudarc_compat` round-trips that execute nowhere
       else. **Needs an NVIDIA runner registered to actually run.**
-- [ ] Re-enable `RUSTDOCFLAGS=-D warnings` once the 0.1-era sys-crate
-      doc links are cleaned (see *Docs + release engineering*).
+- [x] CI's docs job enforces `RUSTDOCFLAGS=-D warnings` (see *Docs + release
+      engineering*).
 
 ### ROCm
 
@@ -240,11 +240,7 @@ cut. Tracked in IronWorks from here on — see the CHANGELOG's
       backend. Both configurations had rotted undetected before 2.0.0
       because nothing in CI built them.
 - [ ] Public-API review: no `#[doc(hidden)]` leaks, every `pub`
-      item documented. Pre-existing broken intra-doc links in the
-      0.1-era CUDA sys / metal / cuda crates must be fixed before we
-      can re-enable `RUSTDOCFLAGS=-D warnings` in CI. (The FPGA/ROCm
-      links that failed `cargo doc -D warnings` were fixed in the
-      unreleased work; the 0.1-era ones remain.)
+      item documented.
 - [x] `docs/backends/CI-HARDWARE.md` — the three tiers of hardware path
       (free on hosted / self-hosted / no path GitHub can offer) and how
       to register a runner for each lane.
@@ -252,8 +248,8 @@ cut. Tracked in IronWorks from here on — see the CHANGELOG's
       status; this file points at it rather than duplicating it.
 - [x] `CHANGELOG.md` `[1.1.0]` entry cut; workspace version bumped
       to **1.1.0**. (Git tag is operator-driven — push when ready.)
-- [ ] Cut the next release from the `[Unreleased]` entry — FPGA backend
-      and capability ontology are additive, so **2.3.0**.
+- [x] Cut **2.3.0** from the `[Unreleased]` entry — FPGA backend and
+      capability ontology are additive. (crates.io publish is operator-driven.)
 
 ---
 
@@ -279,6 +275,13 @@ FlashAttention variants, Triton-style JIT, MLX kernels) belong to IronWorks.
 ---
 
 ## Shipped
+
+### 2.3.0 — 2026-10-13
+
+- FPGA backend (XRT probe/enumerate), capability/cost ontology +
+  `.well-known/ironstack.json`, ROCm HIPRTC + module cache + `MemPool`
+  shared tier, self-hosted CUDA/ROCm/Intel/FPGA hardware lanes, Metal live
+  on hosted CI, race-free CUDA caches. Full list in the CHANGELOG.
 
 ### 1.1.0 — 2026-04-18
 

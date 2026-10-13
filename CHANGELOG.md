@@ -6,6 +6,8 @@ All notable changes to **IronAccelerator** are documented here. Format follows
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-10-13
+
 ### Added
 
 - **FPGA backend** — new `ironaccelerator-fpga` crate and `BackendKind::Fpga`.
@@ -93,6 +95,25 @@ All notable changes to **IronAccelerator** are documented here. Format follows
   `workflow_dispatch`-only, so a fork PR cannot execute on registered hardware;
   and the ROCm `MemPool` use-after-free discipline plus the double-checked cache
   inserts documented under the data-race technique.
+- `.well-known/ironstack.json` now states what a driver substrate does *not*
+  guard (fast-path memory safety on the `_unchecked` variants; anything above
+  the driver line), as NS-ONTO-001 §2.5 requires.
+- Non-CUDA hardware integration tests print a greppable `SKIPPED <test>:
+  <reason>` line when they return early for a missing device, runtime, or
+  shader, so a green hosted-CI run no longer reads as hardware validation.
+- Docs synced with the code: CUDA test count (52 functions: 22 unit + 30
+  integration, 8 `#[ignore]`d live round-trips), ROCm's HIPRTC runtime compile
+  and Neuron's NEFF load/execute (real FFI, untested) described accurately, the
+  ROADMAP no longer lists `RUSTDOCFLAGS=-D warnings` as pending (CI's docs job
+  already enforces it), stale "scaffold" module docs in the ROCm and facade
+  crates rewritten, and `ironaccelerator-fpga` added to the `RELEASE.md`
+  publish order.
+
+### Deprecated
+
+- **metal:** the `mps`, `mpsgraph`, `mlx`, and `coreml` features are no-ops —
+  nothing in the crate reads them, and those paths are workload-level. Kept for
+  SemVer compatibility; scheduled for removal in 3.0.
 
 ## [2.2.0] - 2026-07-29
 
