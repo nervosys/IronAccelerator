@@ -14,7 +14,7 @@ use std::path::PathBuf;
 
 pub type LoaderResult<T> = Result<T, LoadError>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LoadError {
     /// No candidate filename successfully loaded.
     LibraryNotFound { tried: Vec<String>, last: String },

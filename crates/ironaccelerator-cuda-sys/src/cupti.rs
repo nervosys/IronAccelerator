@@ -27,19 +27,31 @@ pub enum CuptiResult {
     InvalidOperation = 7,
     OutOfMemory = 8,
     HardwareError = 9,
-    NotCompatible = 10,
-    NotInitialized = 11,
-    NotReady = 12,
-    NotSupported = 13,
+    NotReady = 13,
+    NotCompatible = 14,
+    NotInitialized = 15,
+    NotSupported = 27,
     Other = 0xFFFF_FFFF,
 }
 
 impl CuptiResult {
     pub fn from_raw(r: u32) -> Self {
-        if r <= 13 {
-            unsafe { std::mem::transmute(r) }
-        } else {
-            Self::Other
+        match r {
+            0 => Self::Success,
+            1 => Self::InvalidParameter,
+            2 => Self::InvalidDevice,
+            3 => Self::InvalidContext,
+            4 => Self::InvalidEventDomainId,
+            5 => Self::InvalidEventId,
+            6 => Self::InvalidEventName,
+            7 => Self::InvalidOperation,
+            8 => Self::OutOfMemory,
+            9 => Self::HardwareError,
+            13 => Self::NotReady,
+            14 => Self::NotCompatible,
+            15 => Self::NotInitialized,
+            27 => Self::NotSupported,
+            _ => Self::Other,
         }
     }
     pub fn ok(self) -> Result<(), Self> {

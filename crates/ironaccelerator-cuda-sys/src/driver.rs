@@ -359,11 +359,14 @@ pub enum CUresult {
     InvalidHandle = 400,
     NotFound = 500,
     NotReady = 600,
-    LaunchFailed = 700,
+    /// `CUDA_ERROR_ILLEGAL_ADDRESS` — a kernel touched an invalid address.
+    IllegalAddress = 700,
     LaunchOutOfResources = 701,
     LaunchTimeout = 702,
     PeerAccessAlreadyEnabled = 704,
     ContextIsDestroyed = 709,
+    /// `CUDA_ERROR_LAUNCH_FAILED` — an exception occurred on the device.
+    LaunchFailed = 719,
     StreamCaptureUnsupported = 900,
     Unknown = 999,
     /// Any code we don't model — hold on to the numeric value.
@@ -405,11 +408,12 @@ impl CUresult {
             400 => Self::InvalidHandle,
             500 => Self::NotFound,
             600 => Self::NotReady,
-            700 => Self::LaunchFailed,
+            700 => Self::IllegalAddress,
             701 => Self::LaunchOutOfResources,
             702 => Self::LaunchTimeout,
             704 => Self::PeerAccessAlreadyEnabled,
             709 => Self::ContextIsDestroyed,
+            719 => Self::LaunchFailed,
             900 => Self::StreamCaptureUnsupported,
             999 => Self::Unknown,
             _ => Self::Other,
@@ -1112,7 +1116,8 @@ mod tests {
     #[test]
     fn result_enum_roundtrips_known_codes() {
         assert_eq!(CUresult::from_raw(0), CUresult::Success);
-        assert_eq!(CUresult::from_raw(700), CUresult::LaunchFailed);
+        assert_eq!(CUresult::from_raw(700), CUresult::IllegalAddress);
+        assert_eq!(CUresult::from_raw(719), CUresult::LaunchFailed);
         assert_eq!(CUresult::from_raw(12345), CUresult::Other);
     }
 

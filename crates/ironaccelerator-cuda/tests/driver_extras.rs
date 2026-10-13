@@ -10,8 +10,19 @@ fn have_cuda() -> bool {
     matches!(Device::count(), Ok(n) if n > 0)
 }
 
+/// Serialises the tests in this file. `graph_capture_honours_every_mode`
+/// captures in `CU_STREAM_CAPTURE_MODE_GLOBAL`, which the driver invalidates
+/// if *any* thread makes an unsafe call (e.g. a synchronous allocation) during
+/// the capture — so it cannot share the process with concurrent GPU tests.
+static GPU: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn gpu_lock() -> std::sync::MutexGuard<'static, ()> {
+    GPU.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 #[test]
 fn device_uuid_is_stable_and_nonzero() {
+    let _gpu = gpu_lock();
     if !have_cuda() {
         return;
     }
@@ -32,6 +43,7 @@ void noop(float* x, unsigned int n) {
 
 #[test]
 fn function_attribute_round_trip() {
+    let _gpu = gpu_lock();
     if !have_cuda() {
         return;
     }
@@ -58,6 +70,7 @@ fn function_attribute_round_trip() {
 
 #[test]
 fn occupancy_query_returns_plausible_block_count() {
+    let _gpu = gpu_lock();
     if !have_cuda() {
         return;
     }
@@ -86,6 +99,7 @@ extern "C" __global__ void noop(){}
 
 #[test]
 fn module_global_lookup_returns_pointer_and_size() {
+    let _gpu = gpu_lock();
     if !have_cuda() {
         return;
     }
@@ -101,6 +115,7 @@ fn module_global_lookup_returns_pointer_and_size() {
 
 #[test]
 fn cooperative_launch_runs() {
+    let _gpu = gpu_lock();
     if !have_cuda() {
         return;
     }
@@ -135,6 +150,7 @@ fn cooperative_launch_runs() {
 
 #[test]
 fn copy_from_peer_async_round_trips_when_two_devices_exist() {
+    let _gpu = gpu_lock();
     if !have_cuda() {
         return;
     }
@@ -171,6 +187,7 @@ fn copy_from_peer_async_round_trips_when_two_devices_exist() {
 
 #[test]
 fn graph_capture_honours_every_mode() {
+    let _gpu = gpu_lock();
     use ironaccelerator_cuda::graph::{capture, CaptureMode};
     if !have_cuda() {
         return;
@@ -198,6 +215,7 @@ fn graph_capture_honours_every_mode() {
 
 #[test]
 fn explicit_mem_pool_accounting_cap_and_trim() {
+    let _gpu = gpu_lock();
     use ironaccelerator_cuda::drv::AsyncMemPool;
     if !have_cuda() {
         return;
@@ -252,6 +270,7 @@ fn explicit_mem_pool_accounting_cap_and_trim() {
 
 #[test]
 fn device_open_sets_default_pool_retain_on_free() {
+    let _gpu = gpu_lock();
     if !have_cuda() {
         return;
     }

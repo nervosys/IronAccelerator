@@ -4,7 +4,7 @@
 
 use crate::cublas_lt::CudaDataType;
 use crate::driver::CUstream;
-use crate::loader::{sym, try_load, LoadError};
+use crate::loader::{sym, try_load, LoadError, LoaderResult};
 use libloading::Library;
 use std::ffi::c_void;
 use std::sync::{LazyLock, OnceLock};
@@ -50,11 +50,16 @@ pub enum CutensorStatus {
     NotSupported = 15,
     LicenseError = 16,
     CublasError = 17,
+    /// `CUTENSOR_STATUS_CUDA_ERROR`.
     CudartError = 18,
-    CuSolverError = 19,
+    /// `CUTENSOR_STATUS_INSUFFICIENT_WORKSPACE`.
+    InsufficientWorkspace = 19,
     InsufficientDriver = 20,
     IoError = 21,
-    InsufficientWorkspace = 22,
+    /// Not a cuTENSOR 2 status; it was mis-numbered onto 19
+    /// (`INSUFFICIENT_WORKSPACE`) and is never returned.
+    #[deprecated(note = "cuTENSOR 2 has no cuSOLVER status; code 19 is InsufficientWorkspace")]
+    CuSolverError = 22,
     Other = 0xFFFF_FFFF,
 }
 
@@ -73,10 +78,9 @@ impl CutensorStatus {
             16 => Self::LicenseError,
             17 => Self::CublasError,
             18 => Self::CudartError,
-            19 => Self::CuSolverError,
+            19 => Self::InsufficientWorkspace,
             20 => Self::InsufficientDriver,
             21 => Self::IoError,
-            22 => Self::InsufficientWorkspace,
             _ => Self::Other,
         }
     }
@@ -92,6 +96,11 @@ impl CutensorStatus {
     }
 }
 
+/// Selects one of cuTENSOR 2's preset compute descriptors. The discriminants
+/// are the cuTENSOR 1.x `cutensorComputeType_t` tags and are never passed to
+/// the library: cuTENSOR 2 takes a `cutensorComputeDescriptor_t` *pointer*,
+/// exported as an `extern const` global per preset. Call
+/// [`resolve`](Self::resolve) to read it.
 #[repr(u32)]
 #[derive(Copy, Clone, Debug)]
 pub enum CutensorComputeDesc {
@@ -101,6 +110,41 @@ pub enum CutensorComputeDesc {
     Compute64F = 16,
     ComputeTF32 = 4096,
 }
+
+/// `cutensorComputeDescriptor_t`: pointer to an opaque descriptor struct.
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug)]
+pub struct CutensorComputeDescriptor(pub *const c_void);
+
+unsafe impl Send for CutensorComputeDescriptor {}
+unsafe impl Sync for CutensorComputeDescriptor {}
+
+impl CutensorComputeDesc {
+    /// Name of the exported global holding this preset's descriptor.
+    pub fn symbol(self) -> &'static str {
+        match self {
+            Self::Compute16F => "CUTENSOR_COMPUTE_DESC_16F",
+            Self::Compute16BF => "CUTENSOR_COMPUTE_DESC_16BF",
+            Self::Compute32F => "CUTENSOR_COMPUTE_DESC_32F",
+            Self::Compute64F => "CUTENSOR_COMPUTE_DESC_64F",
+            Self::ComputeTF32 => "CUTENSOR_COMPUTE_DESC_TF32",
+        }
+    }
+
+    /// Read the descriptor pointer from the loaded cuTENSOR library.
+    pub fn resolve(self) -> LoaderResult<CutensorComputeDescriptor> {
+        FNS.as_ref().map_err(Clone::clone)?;
+        let lib = LIB
+            .get()
+            .expect("cuTENSOR library is loaded once FNS is Ok");
+        // A data symbol: `sym` yields the global's address, which holds the
+        // descriptor pointer.
+        let slot: *const CutensorComputeDescriptor =
+            unsafe { sym(lib, "cutensor", self.symbol())? };
+        Ok(unsafe { *slot })
+    }
+}
+
 #[repr(u32)]
 #[derive(Copy, Clone, Debug)]
 pub enum CutensorOperator {
@@ -122,9 +166,12 @@ pub enum CutensorAlgo {
 #[repr(u32)]
 #[derive(Copy, Clone, Debug)]
 pub enum CutensorWorksizePref {
-    MinWorkspace = 0,
-    Recommended = 1,
-    Max = 2,
+    /// `CUTENSOR_WORKSPACE_MIN`.
+    MinWorkspace = 1,
+    /// `CUTENSOR_WORKSPACE_DEFAULT`.
+    Recommended = 2,
+    /// `CUTENSOR_WORKSPACE_MAX`.
+    Max = 3,
 }
 #[repr(u32)]
 #[derive(Copy, Clone, Debug)]
@@ -163,7 +210,7 @@ pub struct CutensorFns {
         CutensorOperator,
         CutensorTensorDescr,
         *const i32,
-        CutensorComputeDesc,
+        CutensorComputeDescriptor,
     ) -> CutensorStatus,
     pub cutensorDestroyOperationDescriptor:
         unsafe extern "C" fn(CutensorOperationDescr) -> CutensorStatus,

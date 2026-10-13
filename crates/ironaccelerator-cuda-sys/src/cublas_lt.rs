@@ -94,13 +94,18 @@ pub enum CudaDataType {
     R32U = 12,
     R8F_E4M3 = 28,
     R8F_E5M2 = 29,
+    // Block-scaled scale format used with MXFP8/MXFP4 recipes.
+    R8F_UE8M0 = 30,
     // CUDA 12.8+/13.x narrow float types. Values per `library_types.h`.
-    R6F_E2M3 = 33,
-    R6F_E3M2 = 34,
-    R4F_E2M1 = 35,
-    // Block-scaled companion scale formats used with MXFP8/MXFP4 recipes.
-    R8F_UE8M0 = 41,
-    R8F_UE4M3 = 42,
+    R6F_E2M3 = 31,
+    R6F_E3M2 = 32,
+    R4F_E2M1 = 33,
+}
+
+impl CudaDataType {
+    /// `CUDA_R_8F_UE4M3`, which `library_types.h` defines as an alias of
+    /// `CUDA_R_8F_E4M3` (28) — an unsigned interpretation of the same bits.
+    pub const R8F_UE4M3: Self = Self::R8F_E4M3;
 }
 
 /// `cublasComputeType_t` — what tensor-core path the GEMM uses.

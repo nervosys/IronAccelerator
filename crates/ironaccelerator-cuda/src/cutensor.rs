@@ -208,6 +208,11 @@ impl Contract {
         jit: JitMode,
     ) -> Result<Self> {
         let f = fns()?;
+        let compute = compute.resolve().map_err(|e| {
+            Error::Other(Box::leak(
+                format!("cutensor compute descriptor unavailable: {e}").into_boxed_str(),
+            ))
+        })?;
 
         let mut op_descr = sys::CutensorOperationDescr::default();
         unsafe {

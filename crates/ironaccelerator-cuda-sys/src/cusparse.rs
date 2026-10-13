@@ -68,8 +68,8 @@ impl CusparseStatus {
 #[repr(u32)]
 #[derive(Copy, Clone, Debug)]
 pub enum CusparseOrder {
-    Row = 0,
     Col = 1,
+    Row = 2,
 }
 #[repr(u32)]
 #[derive(Copy, Clone, Debug)]

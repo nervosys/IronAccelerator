@@ -30,6 +30,38 @@ All notable changes to **IronAccelerator** are documented here. Format follows
   pinned by a unit test plus a live test that reads the threshold back after
   `Device::open`. Measured on an RTX 3090 Ti: a 16-buffer
   free→synchronise→allocate cycle drops from ~6–10 ms to ~20 µs.
+- **cuda-sys: FFI values audited against the vendor headers** (CUDA 13.3,
+  cuDNN 9.27, cuTENSOR 2.8, NCCL), after the pool-attribute shift showed the
+  hand-written tables could drift. Corrected:
+  - `CUresult`: 700 is `IllegalAddress`, `LaunchFailed` is 719 — an
+    out-of-bounds kernel access was reported as a launch failure.
+  - `cudnn`: **37 of 67 constants were wrong**, including the
+    `OPERATIONGRAPH_HANDLE` / `EXECUTION_PLAN_HANDLE` attribute IDs (800 / 400,
+    not 797 / 305), every `TENSOR_*`, `VARIANT_PACK_*`, `MATMUL_*`,
+    `REDUCTION_*` and `OPERATION_POINTWISE_*` attribute, and six pointwise
+    modes. A backend graph built from them could not have finalised.
+  - `CudnnStatus` used cuDNN 8 numbering (1–14); cuDNN 9 is hierarchical
+    (1001, 2000, 3000, 4000, 5000 blocks). All 48 cuDNN 9 codes are now
+    variants. `AllocFailed` / `InvalidValue` / `MappingError` are deprecated:
+    cuDNN 9 never returns them.
+  - `cutensor`: `CutensorComputeDesc` was passed by value as a 1.x integer tag
+    where cuTENSOR 2 takes a `cutensorComputeDescriptor_t` pointer, so
+    `Contract::build` handed the library address `0x4`. The enum is now a
+    selector; `resolve()` reads the exported `CUTENSOR_COMPUTE_DESC_*` global.
+    `WorksizePref` was off by one (`MIN/DEFAULT/MAX` are 1/2/3), and
+    `INSUFFICIENT_WORKSPACE` is 19 (`CuSolverError`, not a cuTENSOR 2 status,
+    is deprecated).
+  - `CudaDataType`: `R8F_UE8M0`/`R6F_*`/`R4F_E2M1` are 30–33, and
+    `R8F_UE4M3` is an alias of `R8F_E4M3` (28), now an associated const.
+  - `CusparseOrder`: `Col = 1`, `Row = 2` (was `Row = 0`, an invalid value).
+  - `CuptiResult`: `NotReady`/`NotCompatible`/`NotInitialized`/`NotSupported`
+    are 13/14/15/27; `from_raw` no longer `transmute`s codes 10–12 into them.
+  Pinned by `cuda-sys/tests/header_values.rs`. cuDNN and cuTENSOR could not
+  be run on this host (not installed); the corrections are header-verified,
+  not live-tested.
+- **cuda:** the live tests in `driver_extras.rs` share a lock: global-mode
+  stream capture is invalidated by unsafe calls from any thread, so the
+  capture-mode test is not safe alongside concurrent GPU tests.
 
 ## [2.4.0] - 2026-10-13
 
