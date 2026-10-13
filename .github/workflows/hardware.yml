@@ -42,7 +42,7 @@ jobs:
     # only on developer machines, which CI cannot see. That is what this closes.
     runs-on: [self-hosted, linux, cuda]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
 
       # Fail loudly if this runner has no GPU. The CUDA tests gate on device
@@ -87,7 +87,7 @@ jobs:
     # ROCm 6.2+ and its libraries (libamdhip64, libhiprtc) must be installed.
     runs-on: [self-hosted, linux, rocm]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       # End-to-end: HIPRTC compile → module load → launch → MemPool round-trip.
       - run: cargo test -p ironaccelerator-rocm --test rocm_smoke -- --nocapture
@@ -104,7 +104,7 @@ jobs:
     # one with Intel's `ocloc`); without it the test skips cleanly.
     runs-on: [self-hosted, linux, intel-gpu]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test -p ironaccelerator-levelzero --test dispatch -- --nocapture
       - run: cargo test -p ironaccelerator-levelzero --lib -- --nocapture
@@ -119,7 +119,7 @@ jobs:
     # it — there is no compute round-trip to run at the driver line.
     runs-on: [self-hosted, linux, fpga]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test -p ironaccelerator-fpga -- --nocapture
       - run: cargo test -p ironaccelerator --no-default-features --features fpga --test runtime_smoke -- --nocapture

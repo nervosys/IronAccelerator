@@ -6,6 +6,17 @@ All notable changes to **IronAccelerator** are documented here. Format follows
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-10-13
+
+### Changed
+
+- crates.io descriptions corrected: `ironaccelerator-dx12` now mentions DXIL
+  compute dispatch (shipped in 2.0.0, described as probe-only until now), and
+  `ironaccelerator-webgpu` no longer claims a compute path — it is a host-bound
+  adapter binding.
+- CI: `actions/checkout` v4 → v5 (Node 20 runtime deprecated on GitHub
+  Actions).
+
 ## [2.3.0] - 2026-10-13
 
 ### Added
